@@ -1,0 +1,150 @@
+package dev.bennethogan.bennetsmod.client;
+
+import dev.bennethogan.bennetsmod.network.ModPackets;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
+
+public class KeyboardCaptureManager {
+
+    public enum CaptureMode { NONE, CC, CREATE }
+
+    private static CaptureMode mode = CaptureMode.NONE;
+    private static @Nullable BlockPos capturedPos = null;
+
+    private static int createCurrentValue = 0;
+    private static int createMinValue     = 0;
+    private static int createMaxValue     = 256;
+
+    // what the player has typed so far in Create mode; cleared on Enter, nulled on ESC
+    private static final StringBuilder createInputBuffer = new StringBuilder();
+
+    public static boolean isCapturing()       { return mode != CaptureMode.NONE; }
+    public static boolean isCCCapturing()     { return mode == CaptureMode.CC; }
+    public static boolean isCreateCapturing() { return mode == CaptureMode.CREATE; }
+    public static CaptureMode getMode()       { return mode; }
+    public static @Nullable BlockPos getCapturedPos() { return capturedPos; }
+
+    public static void setCaptureMode(@Nullable BlockPos keyboardPos, boolean capture) {
+        if (capture && keyboardPos != null) {
+            mode        = CaptureMode.CC;
+            capturedPos = keyboardPos;
+        } else {
+            mode        = CaptureMode.NONE;
+            capturedPos = null;
+        }
+    }
+
+    public static void exitCapture() {
+        if (capturedPos == null) return;
+        BlockPos pos = capturedPos;
+        mode        = CaptureMode.NONE;
+        capturedPos = null;
+        showDisconnected();
+        ModPackets.sendKeyboardReleasePacket(pos);
+    }
+
+    public static void setCreateCaptureMode(BlockPos keyboardPos, int currentValue, int min, int max) {
+        mode               = CaptureMode.CREATE;
+        capturedPos        = keyboardPos;
+        createCurrentValue = currentValue;
+        createMinValue     = min;
+        createMaxValue     = max;
+        createInputBuffer.setLength(0);
+    }
+
+    public static void handleCreateChar(char ch) {
+        if (mode != CaptureMode.CREATE || capturedPos == null) return;
+
+        if (ch == '\n' || ch == '\r') {
+            String pending = createInputBuffer.toString().trim();
+            if (!pending.isEmpty()) {
+                try {
+                    if (pending.startsWith("+")) {
+                        int delta = Integer.parseInt(pending.substring(1));
+                        createCurrentValue = Math.min(createCurrentValue + delta, createMaxValue);
+                    } else if (pending.startsWith("--")) {
+                        int delta = Integer.parseInt(pending.substring(2));
+                        createCurrentValue = Math.max(createCurrentValue - delta, createMinValue);
+                    } else {
+                        int parsed = Integer.parseInt(pending);
+                        createCurrentValue = Math.max(createMinValue, Math.min(parsed, createMaxValue));
+                    }
+                } catch (NumberFormatException ignored) {}
+            }
+            if (capturedPos != null) ModPackets.sendCharPacket(capturedPos, '\n');
+            createInputBuffer.setLength(0);
+
+        } else if (ch == 8) {
+            if (createInputBuffer.length() > 0) {
+                createInputBuffer.deleteCharAt(createInputBuffer.length() - 1);
+                ModPackets.sendCharPacket(capturedPos, (char) 8);
+            }
+        } else if (Character.isDigit(ch) || ch == '-' || ch == '+') {
+            createInputBuffer.append(ch);
+            ModPackets.sendCharPacket(capturedPos, ch);
+        }
+    }
+
+    public static void exitCreateCapture() {
+        if (capturedPos == null) return;
+        BlockPos pos = capturedPos;
+        mode        = CaptureMode.NONE;
+        capturedPos = null;
+        createInputBuffer.setLength(0);
+        showDisconnected();
+        ModPackets.sendKeyboardReleasePacket(pos);
+    }
+
+    public static String getCreateInputBuffer()  { return createInputBuffer.toString(); }
+    public static int getCreateCurrentValue()    { return createCurrentValue; }
+    public static int getCreateMinValue()        { return createMinValue; }
+    public static int getCreateMaxValue()        { return createMaxValue; }
+
+    public static void forwardKeyPress(int keyCode, boolean held) {
+        if (capturedPos == null) return;
+        ModPackets.sendKeyInputPacket(capturedPos, keyCode, held);
+    }
+
+    public static void forwardKeyUp(int keyCode) {
+        if (capturedPos == null) return;
+        ModPackets.sendKeyUpPacket(capturedPos, keyCode);
+    }
+
+    public static void forwardChar(char character) {
+        if (capturedPos == null) return;
+        ModPackets.sendCharPacket(capturedPos, character);
+    }
+
+    private static void showDisconnected() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player != null)
+            mc.player.displayClientMessage(Component.literal("§c[Keyboard] §fDisconnected."), true);
+    }
+
+    public static void tickHud() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return;
+
+        switch (mode) {
+            case CC -> mc.player.displayClientMessage(
+                    Component.literal("§a[Keyboard] §fTyping to linked computer — press §aESC §fto stop."),
+                    true);
+
+            case CREATE -> {
+                String buf = createInputBuffer.toString();
+                String typed = buf.isEmpty()
+                        ? "§7(type a value, Enter to apply, ESC to exit)"
+                        : "§e" + buf + "§7_";
+                mc.player.displayClientMessage(
+                        Component.literal(
+                                "§b[Keyboard] §7" + createMinValue + "–" + createMaxValue +
+                                " §fcurrent: §b" + createCurrentValue + "  §f→  " + typed),
+                        true);
+            }
+
+            case NONE -> {}
+        }
+    }
+}

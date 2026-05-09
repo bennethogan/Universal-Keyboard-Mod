@@ -1,0 +1,19 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "create" }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "AA ",
+    "BBC"
+  ],
+  "key": {
+    "A": { "tag": "minecraft:wooden_buttons" },
+    "B": { "item": "create:iron_sheet" },
+    "C": { "item": "create:precision_mechanism" }
+  },
+  "result": {
+    "id": "universalkeyboard:universal_keyboard",
+    "count": 1
+  }
+}
