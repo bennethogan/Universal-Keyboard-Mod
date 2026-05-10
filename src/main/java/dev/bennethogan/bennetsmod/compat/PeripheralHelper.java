@@ -7,6 +7,7 @@ import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.ArrayList;
@@ -37,8 +38,15 @@ public class PeripheralHelper {
             int fuelCapacityMb
     ) {}
 
-    private static final Set<String> THRUSTER_TYPES =
-            Set.of("propulsion_thruster", "vector_thruster", "creative_thruster");
+    private static final Set<String> THRUSTER_TYPES = Set.of(
+            "thruster",                 // propulsion thruster (fuel/basic)
+            "ion_thruster",             // ion thruster
+            "vector_thruster",          // vector thruster
+            "liquid_vector_thruster",   // liquid (fluid) vector thruster
+            "creative_thruster",        // creative propulsion thruster
+            "creative_vector_thruster", // creative vector thruster
+            "propulsion_thruster"       // legacy — kept for old versions
+    );
 
     public static boolean isThrusterType(String type) {
         return THRUSTER_TYPES.contains(type);
@@ -73,6 +81,45 @@ public class PeripheralHelper {
     public static boolean isCCPresent() {
         init();
         return ccPresent;
+    }
+
+    /** Inverse of ensureThrusterPeripheralMode — restores NORMAL mode and zeros inputs. */
+    public static void releaseThrusterControl(Level level, BlockPos pos) {
+        init();
+        if (!ccPresent) return;
+        Object p = getPeripheral(level, pos);
+        if (p == null || !isThrusterType(getPeripheralType(p))) return;
+        try {
+            Field beField = findField(p.getClass(), "blockEntity");
+            if (beField == null) return;
+            beField.setAccessible(true);
+            Object be = beField.get(p);
+            if (be == null) return;
+
+            Object target = be;
+            try {
+                Method getCtrl = be.getClass().getMethod("getControllerBE");
+                Object ctrl = getCtrl.invoke(be);
+                if (ctrl != null) target = ctrl;
+            } catch (Exception ignored) {}
+
+            try { target.getClass().getMethod("setDigitalInput", float.class).invoke(target, 0.0f); }
+            catch (Exception ignored) {}
+            try { target.getClass().getMethod("setRedstonePower", int.class).invoke(target, 0); }
+            catch (Exception ignored) {}
+
+            Class<?> modeClass = findNestedEnum(target.getClass(), "ControlMode");
+            if (modeClass != null) {
+                for (Object c : modeClass.getEnumConstants()) {
+                    if (((Enum<?>) c).name().equals("NORMAL")) {
+                        target.getClass().getMethod("setControlMode", modeClass).invoke(target, c);
+                        break;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            UniversalKeyboardMod.LOGGER.warn("releaseThrusterControl failed: {}", e.getMessage());
+        }
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -170,10 +217,106 @@ public class PeripheralHelper {
         return null;
     }
 
+    public static double getDoubleGetter(Object peripheral, String methodName) {
+        return getDoubleVal(peripheral, methodName);
+    }
+
+    /**
+     * Reflectively sets the block entity inside a Propulsion peripheral to PERIPHERAL control mode
+     * so that setDigitalInput() actually dirties thrust. Our mod never calls CC's attach(), so
+     * without this the block entity stays in NORMAL mode and all power setters are no-ops.
+     */
+    private static void ensureThrusterPeripheralMode(Object peripheral) {
+        try {
+            Field beField = findField(peripheral.getClass(), "blockEntity");
+            if (beField == null) return;
+            beField.setAccessible(true);
+            Object be = beField.get(peripheral);
+            if (be == null) return;
+
+            // For multiblock thrusters the peripheral wraps a member block entity,
+            // but only the controller calculates thrust. Route to the controller.
+            Object target = be;
+            try {
+                Method getCtrl = be.getClass().getMethod("getControllerBE");
+                Object ctrl = getCtrl.invoke(be);
+                if (ctrl != null) target = ctrl;
+            } catch (Exception ignored) {}
+
+            Class<?> modeClass = findNestedEnum(target.getClass(), "ControlMode");
+            if (modeClass == null) return;
+
+            Object peripheralMode = null;
+            for (Object c : modeClass.getEnumConstants()) {
+                if (((Enum<?>) c).name().equals("PERIPHERAL")) { peripheralMode = c; break; }
+            }
+            if (peripheralMode == null) return;
+
+            Method setMode = target.getClass().getMethod("setControlMode", modeClass);
+            setMode.invoke(target, peripheralMode);
+        } catch (Exception e) {
+            UniversalKeyboardMod.LOGGER.warn("ensureThrusterPeripheralMode failed: {}", e.getMessage());
+        }
+    }
+
+    private static @Nullable Field findField(Class<?> cls, String name) {
+        while (cls != null) {
+            try { return cls.getDeclaredField(name); } catch (NoSuchFieldException ignored) {}
+            cls = cls.getSuperclass();
+        }
+        return null;
+    }
+
+    private static @Nullable Class<?> findNestedEnum(Class<?> cls, String simpleName) {
+        while (cls != null) {
+            for (Class<?> inner : cls.getDeclaredClasses()) {
+                if (inner.isEnum() && inner.getSimpleName().equals(simpleName)) return inner;
+            }
+            cls = cls.getSuperclass();
+        }
+        return null;
+    }
+
+    // Names of peripheral methods that map to setDigitalInput on the block entity.
+    private static final java.util.Set<String> THRUST_SETTER_METHODS = Set.of(
+            "setPower", "setThrust", "setPowerNormalized", "setThrustNormalized");
+
+    /**
+     * For multiblock thrusters the peripheral wraps a non-controller member whose
+     * setDigitalInput() doesn't forward to the controller in the compiled JAR (our
+     * override is in the source reference only). After the normal peripheral call, also
+     * directly invoke setDigitalInput on the resolved controller.
+     */
+    private static void forceControllerDigitalInput(Object peripheral, String methodName, double value) {
+        try {
+            Field beField = findField(peripheral.getClass(), "blockEntity");
+            if (beField == null) return;
+            beField.setAccessible(true);
+            Object be = beField.get(peripheral);
+            if (be == null) return;
+
+            Object ctrl;
+            try {
+                ctrl = be.getClass().getMethod("getControllerBE").invoke(be);
+            } catch (Exception e) { return; }
+            // getControllerBE() returns `this` when already the controller — skip those
+            if (ctrl == null || ctrl == be) return;
+
+            float normalized = methodName.endsWith("Normalized")
+                    ? (float) Math.max(0, Math.min(1.0, value))
+                    : (float) Math.max(0, Math.min(15, Math.round(value))) / 15.0f;
+
+            ctrl.getClass().getMethod("setDigitalInput", float.class).invoke(ctrl, normalized);
+        } catch (Exception e) {
+            UniversalKeyboardMod.LOGGER.warn("forceControllerDigitalInput failed: {}", e.getMessage());
+        }
+    }
+
     // Call a single-arg @LuaFunction method with a double value; auto-casts to int/float/long as needed.
     public static @Nullable String callMethodWithDouble(Object peripheral, String methodName, double value) {
         init();
         if (luaFunctionClass == null) return "CC not present";
+        ensureThrusterPeripheralMode(peripheral);
         for (Method m : peripheral.getClass().getMethods()) {
             if (!m.getName().equals(methodName)) continue;
             if (m.getAnnotation(luaFunctionClass) == null) continue;
@@ -188,6 +331,10 @@ public class PeripheralHelper {
             else continue;
             try {
                 m.invoke(peripheral, arg);
+                // Multiblock fix: the compiled Propulsion JAR may not forward
+                // setDigitalInput from member to controller. Do it explicitly.
+                if (THRUST_SETTER_METHODS.contains(methodName))
+                    forceControllerDigitalInput(peripheral, methodName, value);
                 return null;
             } catch (Exception e) {
                 Throwable cause = e.getCause() != null ? e.getCause() : e;
@@ -205,13 +352,20 @@ public class PeripheralHelper {
         if (p == null) return null;
         String type = getPeripheralType(p);
         if (!isThrusterType(type)) return null;
+        // Vector peripherals expose getThrust() → int 0-15.
+        // Non-vector peripherals expose getPower() → double 0.0-1.0; scale to 0-15.
+        boolean isVector = type.contains("vector");
+        int thrust = isVector
+                ? getIntVal(p, "getThrust")
+                : (int) Math.round(getDoubleVal(p, "getPower") * 15);
+
         return new ThrusterState(
                 type,
                 getDoubleVal(p, "getTargetVectorX"),
                 getDoubleVal(p, "getTargetVectorY"),
                 getDoubleVal(p, "getVectorX"),
                 getDoubleVal(p, "getVectorY"),
-                getIntVal(p, "getThrust"),
+                thrust,
                 getIntVal(p, "getThrustConfig"),
                 getDoubleVal(p, "getCurrentThrustPN"),
                 getDoubleVal(p, "getDisplayedThrustPN"),

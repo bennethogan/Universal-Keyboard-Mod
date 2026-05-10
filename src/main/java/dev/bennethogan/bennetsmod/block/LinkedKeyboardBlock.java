@@ -92,22 +92,22 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
     }
 
     @Override
-    public boolean isSignalSource(BlockState state) { return false; }
+    public boolean isSignalSource(BlockState state) { return true; }
 
-    // shift+right-click: open autotype script editor
     @Override
-    protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level,
-                                              BlockPos pos, Player player, InteractionHand hand,
-                                              BlockHitResult hit) {
-        if (player.isShiftKeyDown()) {
-            if (level.isClientSide) return ItemInteractionResult.SUCCESS;
-            if (!(player instanceof ServerPlayer sp)) return ItemInteractionResult.CONSUME;
-            if (level.getBlockEntity(pos) instanceof LinkedKeyboardBlockEntity be)
-                ModPackets.sendOpenAutoTypeScreen(sp, pos, be.getAutoTypeScript());
-            return ItemInteractionResult.CONSUME;
-        }
-        return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+    public int getSignal(BlockState state, BlockGetter level, BlockPos pos, Direction dir) {
+        if (level.getBlockEntity(pos) instanceof LinkedKeyboardBlockEntity be)
+            return be.getRedstoneOutput(dir);
+        return 0;
     }
+
+    @Override
+    public int getDirectSignal(BlockState state, BlockGetter level, BlockPos pos, Direction dir) {
+        return getSignal(state, level, pos, dir);
+    }
+
+    // shift+right-click previously opened the autotype script editor — removed.
+    // Sequencer TYPE_TEXT steps replace that functionality.
 
     // right-click (empty hand): open the mode selection screen for the linked target
     @Override

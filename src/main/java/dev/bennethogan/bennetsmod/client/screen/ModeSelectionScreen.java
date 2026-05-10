@@ -36,7 +36,7 @@ public class ModeSelectionScreen extends Screen {
         int titleH    = 14;
         int subtitleH = 12;
         int rowsH     = modes.length * (BTN_H + ROW_GAP);
-        int closeH    = BTN_H + PAD;
+        int closeH    = BTN_H + PAD * 2; // unlink + cancel row
         panelH = PAD + titleH + subtitleH + 6 + rowsH + closeH;
 
         panelX = (width  - PANEL_W) / 2;
@@ -59,10 +59,20 @@ public class ModeSelectionScreen extends Screen {
         }
 
         y += 2;
-        addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> onClose())
-                .pos(panelX + PANEL_W / 2 - 40, y)
-                .size(80, BTN_H)
+        int halfW = (PANEL_W - PAD * 2 - 4) / 2;
+        addRenderableWidget(Button.builder(Component.literal("Unlink"), b -> onUnlink())
+                .pos(panelX + PAD, y)
+                .size(halfW, BTN_H)
                 .build());
+        addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> onClose())
+                .pos(panelX + PAD + halfW + 4, y)
+                .size(halfW, BTN_H)
+                .build());
+    }
+
+    private void onUnlink() {
+        ModPackets.sendUnlinkKeyboard(keyboardPos);
+        onClose();
     }
 
     private void selectMode(KeyboardMode mode) {

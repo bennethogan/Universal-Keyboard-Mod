@@ -9,26 +9,39 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class PeripheralMethodScreen extends Screen {
 
-    private static final int PANEL_W  = 250;
-    private static final int PAD      = 8;
-    private static final int ROW_H    = 9;
-    private static final int BTN_H    = 18;
+    private static final int PANEL_W     = 250;
+    private static final int PAD         = 8;
+    private static final int ROW_H       = 9;   // getter row height
+    private static final int BTN_H       = 18;  // setter button height
+    private static final int MAX_GETTERS = 6;  // max visible getter rows
+    private static final int MAX_SETTERS = 4;  // max visible setter button slots
 
-    private final BlockPos    keyboardPos;
-    private final String      peripheralType;
+    private final BlockPos       keyboardPos;
+    private final String         peripheralType;
     private final List<String[]> getters; // [name, value]
     private final List<String[]> setters; // [name, argType]
 
     private int panelX, panelY, panelH;
     private int selectedIdx = -1;
 
-    // y positions computed in init, reused in render
-    private int getterLabelY, getterStartY;
+    // Scroll state
+    private int getterScroll = 0;
+    private int setterScroll = 0;
+
+    // Y bounds for hover-based scroll routing
+    private int getterAreaY1, getterAreaY2;
+    private int setterAreaY1, setterAreaY2;
+
+    // Fixed setter button slots (updated on scroll)
+    private final List<Button> setterBtns = new ArrayList<>();
     private int setterLabelY;
+
+    private int getterLabelY, getterStartY;
     private int inputY;
 
     private EditBox inputBox;
@@ -44,11 +57,13 @@ public class PeripheralMethodScreen extends Screen {
 
     @Override
     protected void init() {
-        int shownGetters = Math.min(getters.size(), 6);
-        int shownSetters = Math.min(setters.size(), 6);
+        setterBtns.clear();
 
-        int getterH = getters.isEmpty() ? 0 : 10 + shownGetters * ROW_H + 4;
-        int setterH = setters.isEmpty() ? 0 : 10 + shownSetters * BTN_H + 4;
+        int visG = Math.min(getters.size(), MAX_GETTERS);
+        int visS = Math.min(setters.size(), MAX_SETTERS);
+
+        int getterH = getters.isEmpty() ? 0 : 10 + visG * ROW_H + 4;
+        int setterH = setters.isEmpty() ? 0 : 10 + visS * BTN_H + 4;
         int inputH  = BTN_H + 4;
         int closeH  = BTN_H + PAD;
 
@@ -57,29 +72,34 @@ public class PeripheralMethodScreen extends Screen {
         panelX = (width  - PANEL_W) / 2;
         panelY = (height - panelH)  / 2;
 
-        int y = panelY + PAD + 12 + 4; // below title
+        int y = panelY + PAD + 12 + 4;
 
-        // Getter section positions (text only, no widgets)
+        // Getter section
         if (!getters.isEmpty()) {
             getterLabelY = y;
             y += 10;
             getterStartY = y;
-            y += shownGetters * ROW_H + 4;
+            getterAreaY1 = y;
+            getterAreaY2 = y + visG * ROW_H;
+            y += visG * ROW_H + 4;
         }
 
         // Setter section
         if (!setters.isEmpty()) {
             setterLabelY = y;
             y += 10;
-            for (int i = 0; i < shownSetters; i++) {
-                final int idx = i;
-                String label = setters.get(i)[0] + " (" + setters.get(i)[1] + ")";
-                addRenderableWidget(Button.builder(Component.literal(label), b -> selectSetter(idx))
+            setterAreaY1 = y;
+            for (int i = 0; i < visS; i++) {
+                int slot = i;
+                Button btn = Button.builder(Component.literal(""), b -> selectSetterSlot(slot))
                         .pos(panelX + PAD, y)
                         .size(PANEL_W - PAD * 2, BTN_H)
-                        .build());
+                        .build();
+                addRenderableWidget(btn);
+                setterBtns.add(btn);
                 y += BTN_H;
             }
+            setterAreaY2 = y;
             y += 4;
         }
 
@@ -98,7 +118,6 @@ public class PeripheralMethodScreen extends Screen {
                 .build());
         y += BTN_H + 4;
 
-        // Close + Refresh
         int halfW = PANEL_W / 2 - PAD;
         addRenderableWidget(Button.builder(Component.literal("Refresh"), b -> requestRefresh())
                 .pos(panelX + PAD, y)
@@ -108,14 +127,106 @@ public class PeripheralMethodScreen extends Screen {
                 .pos(panelX + PAD + halfW + 4, y)
                 .size(halfW - 4, BTN_H)
                 .build());
+
+        refreshSetterButtons();
     }
 
-    private void selectSetter(int idx) {
-        selectedIdx = idx;
+    // ── Scroll ────────────────────────────────────────────────────────────────
+
+    @Override
+    public boolean mouseScrolled(double mx, double my, double dx, double dy) {
+        int delta = (int) -Math.signum(dy);
+        if (my >= getterAreaY1 && my <= getterAreaY2 && getters.size() > MAX_GETTERS) {
+            getterScroll = Math.max(0, Math.min(getters.size() - MAX_GETTERS, getterScroll + delta));
+            return true;
+        }
+        if (my >= setterAreaY1 && my <= setterAreaY2 && setters.size() > MAX_SETTERS) {
+            setterScroll = Math.max(0, Math.min(setters.size() - MAX_SETTERS, setterScroll + delta));
+            refreshSetterButtons();
+            return true;
+        }
+        return super.mouseScrolled(mx, my, dx, dy);
+    }
+
+    private void refreshSetterButtons() {
+        for (int slot = 0; slot < setterBtns.size(); slot++) {
+            int dataIdx = setterScroll + slot;
+            Button btn = setterBtns.get(slot);
+            if (dataIdx < setters.size()) {
+                String label = setters.get(dataIdx)[0] + " (" + setters.get(dataIdx)[1] + ")";
+                btn.setMessage(Component.literal(label));
+                btn.visible = true;
+                btn.active  = true;
+            } else {
+                btn.visible = false;
+            }
+        }
+    }
+
+    private void selectSetterSlot(int slot) {
+        int dataIdx = setterScroll + slot;
+        if (dataIdx < 0 || dataIdx >= setters.size()) return;
+        selectedIdx = dataIdx;
         inputBox.setValue("");
         setFocused(inputBox);
         inputBox.setFocused(true);
     }
+
+    // ── Rendering ─────────────────────────────────────────────────────────────
+
+    @Override
+    public void render(GuiGraphics g, int mx, int my, float pt) {
+        renderBackground(g, mx, my, pt);
+
+        // Panel box
+        g.fill(panelX,              panelY,              panelX + PANEL_W,   panelY + panelH, 0xFF111111);
+        g.fill(panelX,              panelY,              panelX + PANEL_W,   panelY + 1,      0xFF666666);
+        g.fill(panelX,              panelY + panelH - 1, panelX + PANEL_W,   panelY + panelH, 0xFF666666);
+        g.fill(panelX,              panelY,              panelX + 1,         panelY + panelH, 0xFF666666);
+        g.fill(panelX + PANEL_W -1, panelY,              panelX + PANEL_W,   panelY + panelH, 0xFF666666);
+
+        // Title
+        g.drawCenteredString(font, "§b" + peripheralType, panelX + PANEL_W / 2, panelY + PAD, 0xFFFFFF);
+
+        // Getter section
+        if (!getters.isEmpty()) {
+            int vis = Math.min(getters.size(), MAX_GETTERS);
+            String getterLabel = (getters.size() > MAX_GETTERS)
+                    ? "§7Values: §8(scroll, " + getterScroll + "/" + (getters.size() - MAX_GETTERS) + ")"
+                    : "§7Values:";
+            g.drawString(font, getterLabel, panelX + PAD, getterLabelY, 0xAAAAAA, true);
+
+            for (int i = 0; i < vis; i++) {
+                int di = getterScroll + i;
+                if (di >= getters.size()) break;
+                String[] e = getters.get(di);
+                g.drawString(font, "§8" + e[0] + ": §f" + e[1],
+                        panelX + PAD + 4, getterStartY + i * ROW_H, 0xFFFFFF, true);
+            }
+        }
+
+        // Setter section label
+        if (!setters.isEmpty()) {
+            String hint = selectedIdx >= 0
+                    ? "§7Controls: (§e" + setters.get(selectedIdx)[0] + "§7 selected)"
+                    : (setters.size() > MAX_SETTERS
+                            ? "§7Controls: §8(scroll, " + setterScroll + "/" + (setters.size() - MAX_SETTERS) + ")"
+                            : "§7Controls:");
+            g.drawString(font, hint, panelX + PAD, setterLabelY, 0xAAAAAA, true);
+        }
+
+        // Input row label
+        if (selectedIdx >= 0 && selectedIdx < setters.size()) {
+            String argType = setters.get(selectedIdx)[1];
+            g.drawString(font, "§7(" + argType + ")", panelX + PAD, inputY - 9, 0x888888, true);
+        }
+
+        for (var renderable : this.renderables) {
+            renderable.render(g, mx, my, pt);
+        }
+    }
+
+    // ── Actions ───────────────────────────────────────────────────────────────
 
     private void submitCall() {
         if (selectedIdx < 0 || selectedIdx >= setters.size()) return;
@@ -126,57 +237,7 @@ public class PeripheralMethodScreen extends Screen {
     }
 
     private void requestRefresh() {
-        // empty methodName = server just rescans and resends the menu
         ModPackets.sendCallPeripheralMethod(keyboardPos, "", "");
-    }
-
-    @Override
-    public void render(GuiGraphics g, int mx, int my, float pt) {
-        renderBackground(g, mx, my, pt);
-
-        // Panel box
-        g.fill(panelX,              panelY,              panelX + PANEL_W,     panelY + panelH,     0xFF111111);
-        g.fill(panelX,              panelY,              panelX + PANEL_W,     panelY + 1,           0xFF666666);
-        g.fill(panelX,              panelY + panelH - 1, panelX + PANEL_W,     panelY + panelH,     0xFF666666);
-        g.fill(panelX,              panelY,              panelX + 1,           panelY + panelH,     0xFF666666);
-        g.fill(panelX + PANEL_W -1, panelY,              panelX + PANEL_W,     panelY + panelH,     0xFF666666);
-
-        // Title
-        g.drawCenteredString(font, "§b" + peripheralType, panelX + PANEL_W / 2, panelY + PAD, 0xFFFFFF);
-
-        // Getter section
-        if (!getters.isEmpty()) {
-            g.drawString(font, "§7Values:", panelX + PAD, getterLabelY, 0xAAAAAA, true);
-            int shown = Math.min(getters.size(), 6);
-            for (int i = 0; i < shown; i++) {
-                String[] e = getters.get(i);
-                g.drawString(font, "§8" + e[0] + ": §f" + e[1],
-                        panelX + PAD + 4, getterStartY + i * ROW_H, 0xFFFFFF, true);
-            }
-            if (getters.size() > 6)
-                g.drawString(font, "§8(+" + (getters.size() - 6) + " more)",
-                        panelX + PAD + 4, getterStartY + 6 * ROW_H, 0x666666, true);
-        }
-
-        // Setter section label
-        if (!setters.isEmpty()) {
-            String hint = selectedIdx >= 0
-                    ? "§7Controls: (§e" + setters.get(selectedIdx)[0] + "§7 selected)"
-                    : "§7Controls:";
-            g.drawString(font, hint, panelX + PAD, setterLabelY, 0xAAAAAA, true);
-        }
-
-        // Input row label
-        if (selectedIdx >= 0 && selectedIdx < setters.size()) {
-            String argType = setters.get(selectedIdx)[1];
-            g.drawString(font, "§7(" + argType + ")", panelX + PAD, inputY - 9, 0x888888, true);
-        }
-
-        // Render widgets directly — do NOT call super.render() here because Screen.render()
-        // calls renderBackground() a second time, blurring everything we just drew above.
-        for (var renderable : this.renderables) {
-            renderable.render(g, mx, my, pt);
-        }
     }
 
     @Override

@@ -5,6 +5,7 @@ import dev.bennethogan.bennetsmod.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.bennetsmod.compat.CreateValueHelper;
 import dev.bennethogan.bennetsmod.compat.KeyboardMode;
 import dev.bennethogan.bennetsmod.compat.PeripheralHelper;
+import dev.bennethogan.bennetsmod.sequencer.SequencerStep;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -243,8 +244,12 @@ public class ModPackets {
         registrar.playToServer(CallPeripheralMethodPacket.TYPE, CallPeripheralMethodPacket.CODEC, ModPackets::handleCallPeripheralMethod);
         registrar.playToClient(OpenModeSelectionPacket.TYPE,    OpenModeSelectionPacket.CODEC,    ModPackets::handleOpenModeSelection);
         registrar.playToServer(SelectModePacket.TYPE,           SelectModePacket.CODEC,           ModPackets::handleSelectMode);
-        registrar.playToClient(OpenThrusterControlPacket.TYPE,  OpenThrusterControlPacket.CODEC,  ModPackets::handleOpenThrusterControl);
-        registrar.playToServer(SetThrusterValuePacket.TYPE,     SetThrusterValuePacket.CODEC,     ModPackets::handleSetThrusterValue);
+        registrar.playToClient(OpenThrusterControlPacket.TYPE,   OpenThrusterControlPacket.CODEC,   ModPackets::handleOpenThrusterControl);
+        registrar.playToServer(SetThrusterValuePacket.TYPE,      SetThrusterValuePacket.CODEC,      ModPackets::handleSetThrusterValue);
+        registrar.playToClient(OpenSequencerPacket.TYPE,         OpenSequencerPacket.CODEC,         ModPackets::handleOpenSequencer);
+        registrar.playToServer(SaveAndRunSequencerPacket.TYPE,   SaveAndRunSequencerPacket.CODEC,   ModPackets::handleSaveAndRunSequencer);
+        registrar.playToServer(StopSequencerPacket.TYPE,         StopSequencerPacket.CODEC,         ModPackets::handleStopSequencer);
+        registrar.playToServer(UnlinkKeyboardPacket.TYPE,        UnlinkKeyboardPacket.CODEC,        ModPackets::handleUnlinkKeyboard);
     }
 
     private static void handleKeyboardCapture(KeyboardCapturePacket packet, IPayloadContext ctx) {
@@ -431,6 +436,7 @@ public class ModPackets {
                     }
                     sendOpenThrusterControl(sp, packet.keyboardPos(), state);
                 }
+                case PERIPHERAL_SEQUENCER -> sendOpenSequencer(sp, packet.keyboardPos(), keyboard);
             }
         });
     }
@@ -480,6 +486,97 @@ public class ModPackets {
         PacketDistributor.sendToServer(new CallPeripheralMethodPacket(keyboardPos, methodName, argString));
     }
 
+    // ── Sequencer packets ──────────────────────────────────────────────────────
+
+    // server → client: open sequencer editor
+    public record OpenSequencerPacket(
+            BlockPos keyboardPos,
+            List<SequencerStep> steps,
+            boolean running,
+            int currentStep,
+            String peripheralType,
+            List<String> availableGetterNames,
+            List<String[]> availableSetters
+    ) implements CustomPacketPayload {
+        public static final Type<OpenSequencerPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "open_sequencer"));
+        public static final StreamCodec<FriendlyByteBuf, OpenSequencerPacket> CODEC = StreamCodec.of(
+                (buf, pkt) -> {
+                    BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos());
+                    buf.writeInt(pkt.steps().size());
+                    for (SequencerStep s : pkt.steps()) s.encode(buf);
+                    buf.writeBoolean(pkt.running());
+                    buf.writeInt(pkt.currentStep());
+                    buf.writeUtf(pkt.peripheralType());
+                    buf.writeInt(pkt.availableGetterNames().size());
+                    for (String g : pkt.availableGetterNames()) buf.writeUtf(g);
+                    buf.writeInt(pkt.availableSetters().size());
+                    for (String[] s : pkt.availableSetters()) { buf.writeUtf(s[0]); buf.writeUtf(s[1]); }
+                },
+                buf -> {
+                    BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
+                    int sc = buf.readInt();
+                    List<SequencerStep> steps = new ArrayList<>(sc);
+                    for (int i = 0; i < sc; i++) steps.add(SequencerStep.decode(buf));
+                    boolean running    = buf.readBoolean();
+                    int currentStep    = buf.readInt();
+                    String pType       = buf.readUtf();
+                    int gc = buf.readInt();
+                    List<String> getters = new ArrayList<>(gc);
+                    for (int i = 0; i < gc; i++) getters.add(buf.readUtf());
+                    int stc = buf.readInt();
+                    List<String[]> setters = new ArrayList<>(stc);
+                    for (int i = 0; i < stc; i++) setters.add(new String[]{ buf.readUtf(), buf.readUtf() });
+                    return new OpenSequencerPacket(pos, steps, running, currentStep, pType, getters, setters);
+                });
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // client → server: save steps (and optionally start running)
+    public record SaveAndRunSequencerPacket(
+            BlockPos keyboardPos, List<SequencerStep> steps, boolean run
+    ) implements CustomPacketPayload {
+        public static final Type<SaveAndRunSequencerPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "save_and_run_sequencer"));
+        public static final StreamCodec<FriendlyByteBuf, SaveAndRunSequencerPacket> CODEC = StreamCodec.of(
+                (buf, pkt) -> {
+                    BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos());
+                    buf.writeInt(pkt.steps().size());
+                    for (SequencerStep s : pkt.steps()) s.encode(buf);
+                    buf.writeBoolean(pkt.run());
+                },
+                buf -> {
+                    BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
+                    int sc = buf.readInt();
+                    List<SequencerStep> steps = new ArrayList<>(sc);
+                    for (int i = 0; i < sc; i++) steps.add(SequencerStep.decode(buf));
+                    return new SaveAndRunSequencerPacket(pos, steps, buf.readBoolean());
+                });
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // client → server: unlink keyboard from its target
+    public record UnlinkKeyboardPacket(BlockPos keyboardPos) implements CustomPacketPayload {
+        public static final Type<UnlinkKeyboardPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "unlink_keyboard"));
+        public static final StreamCodec<FriendlyByteBuf, UnlinkKeyboardPacket> CODEC = StreamCodec.of(
+                (buf, pkt) -> BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos()),
+                buf -> new UnlinkKeyboardPacket(BlockPos.STREAM_CODEC.decode(buf)));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // client → server: stop sequencer
+    public record StopSequencerPacket(BlockPos keyboardPos) implements CustomPacketPayload {
+        public static final Type<StopSequencerPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "stop_sequencer"));
+        public static final StreamCodec<FriendlyByteBuf, StopSequencerPacket> CODEC = StreamCodec.of(
+                (buf, pkt) -> BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos()),
+                buf -> new StopSequencerPacket(BlockPos.STREAM_CODEC.decode(buf)));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // ── End sequencer packets ──────────────────────────────────────────────────
+
     public static void sendOpenThrusterControl(ServerPlayer player, BlockPos keyboardPos,
                                                 PeripheralHelper.ThrusterState state) {
         PacketDistributor.sendToPlayer(player, new OpenThrusterControlPacket(
@@ -495,6 +592,10 @@ public class ModPackets {
 
     public static void sendSetThrusterValue(BlockPos keyboardPos, String methodName, double value) {
         PacketDistributor.sendToServer(new SetThrusterValuePacket(keyboardPos, methodName, value));
+    }
+
+    public static void sendUnlinkKeyboard(BlockPos keyboardPos) {
+        PacketDistributor.sendToServer(new UnlinkKeyboardPacket(keyboardPos));
     }
 
     private static void handleOpenThrusterControl(OpenThrusterControlPacket packet, IPayloadContext ctx) {
@@ -538,12 +639,91 @@ public class ModPackets {
                 PeripheralHelper.callMethodWithDouble(peripheral, packet.methodName(), packet.argValue());
             }
 
-            // Re-scan primary and send updated state back to client
             PeripheralHelper.ThrusterState state =
                     PeripheralHelper.scanThruster(sp.serverLevel(), targets.get(0));
             if (state != null) {
                 sendOpenThrusterControl(sp, packet.keyboardPos(), state);
             }
         });
+    }
+
+    // ── Sequencer handlers ────────────────────────────────────────────────────
+
+    private static void handleOpenSequencer(OpenSequencerPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+            if (mc.screen instanceof dev.bennethogan.bennetsmod.client.screen.SequencerScreen existing
+                    && existing.getKeyboardPos().equals(packet.keyboardPos())) {
+                existing.updateState(packet.steps(), packet.running(), packet.currentStep(),
+                        packet.availableGetterNames(), packet.availableSetters());
+            } else {
+                mc.setScreen(new dev.bennethogan.bennetsmod.client.screen.SequencerScreen(
+                        packet.keyboardPos(), packet.steps(), packet.running(), packet.currentStep(),
+                        packet.peripheralType(), packet.availableGetterNames(), packet.availableSetters()));
+            }
+        });
+    }
+
+    private static void handleSaveAndRunSequencer(SaveAndRunSequencerPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity keyboard)) return;
+            keyboard.setSequencerSteps(packet.steps());
+            if (packet.run()) keyboard.startSequencer();
+            sendOpenSequencer(sp, packet.keyboardPos(), keyboard);
+        });
+    }
+
+    private static void handleUnlinkKeyboard(UnlinkKeyboardPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            if (sp.serverLevel().getBlockEntity(packet.keyboardPos()) instanceof LinkedKeyboardBlockEntity be)
+                be.unlink();
+        });
+    }
+
+    private static void handleStopSequencer(StopSequencerPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (be instanceof LinkedKeyboardBlockEntity keyboard) {
+                keyboard.stopSequencer();
+                sendOpenSequencer(sp, packet.keyboardPos(), keyboard);
+            }
+        });
+    }
+
+    private static void sendOpenSequencer(ServerPlayer player, BlockPos keyboardPos,
+                                           LinkedKeyboardBlockEntity keyboard) {
+        BlockPos primary = keyboard.getLinkedTargetPos();
+        String pType = "";
+        List<String> getterNames = List.of();
+        List<String[]> setters   = List.of();
+        if (primary != null && !keyboard.isLinkedAsComputer()) {
+            // Skip scan for CC computers — their methods (getID, isOn…) aren't useful
+            // in the sequencer; TYPE_TEXT steps handle all CC computer interaction.
+            PeripheralHelper.ScanResult result = PeripheralHelper.scanAndCall(
+                    player.serverLevel(), primary, "", "");
+            if (result != null) {
+                pType       = result.type();
+                getterNames = result.getters().stream().map(g -> g[0]).toList();
+                setters     = result.setters();
+            }
+        } else if (primary != null) {
+            pType = "CC Computer";
+        }
+        PacketDistributor.sendToPlayer(player, new OpenSequencerPacket(
+                keyboardPos, keyboard.getSequencerSteps(),
+                keyboard.isSequencerRunning(), keyboard.getSequencerCurrentStep(),
+                pType, getterNames, setters));
+    }
+
+    public static void sendSaveAndRunSequencer(BlockPos keyboardPos, List<SequencerStep> steps, boolean run) {
+        PacketDistributor.sendToServer(new SaveAndRunSequencerPacket(keyboardPos, steps, run));
+    }
+
+    public static void sendStopSequencer(BlockPos keyboardPos) {
+        PacketDistributor.sendToServer(new StopSequencerPacket(keyboardPos));
     }
 }

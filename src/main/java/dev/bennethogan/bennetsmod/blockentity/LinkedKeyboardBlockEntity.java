@@ -3,8 +3,11 @@ package dev.bennethogan.bennetsmod.blockentity;
 import dev.bennethogan.bennetsmod.UniversalKeyboardMod;
 import dev.bennethogan.bennetsmod.compat.CreateValueHelper;
 import dev.bennethogan.bennetsmod.compat.KeyboardMode;
+import dev.bennethogan.bennetsmod.compat.PeripheralHelper;
 import dev.bennethogan.bennetsmod.config.ModConfig;
+import dev.bennethogan.bennetsmod.sequencer.SequencerStep;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -38,6 +41,16 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     private @Nullable String inlineCaptureBuffer = null;
 
+    // ----- Peripheral Sequencer -----
+
+    private final List<SequencerStep> sequencerSteps    = new ArrayList<>();
+    private boolean sequencerRunning     = false;
+    private int     sequencerCurrentStep = 0;
+    private int     sequencerDelayTicker = 0; // ticks remaining for current DELAY step
+
+    // Redstone outputs written by SET_REDSTONE steps — indexed by Direction.ordinal()
+    private final int[] redstoneOutputs = new int[Direction.values().length];
+
     // Cached peripheral getter values for Create display source
     private final Map<String, String> cachedGetterValues = new LinkedHashMap<>();
     private String cachedPeripheralType = "";
@@ -67,7 +80,12 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     }
 
     public void unlink() {
+        if (level != null && !level.isClientSide) {
+            for (BlockPos pos : linkedTargetPositions)
+                PeripheralHelper.releaseThrusterControl(level, pos);
+        }
         linkedTargetPositions.clear();
+        stopSequencer(); // clears redstone outputs too
         setChanged();
     }
 
@@ -206,6 +224,154 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     public boolean wasPowered() { return wasPowered; }
 
+    // ----- Sequencer API -----
+
+    public List<SequencerStep> getSequencerSteps()  { return Collections.unmodifiableList(sequencerSteps); }
+    public boolean isSequencerRunning()             { return sequencerRunning; }
+    public int     getSequencerCurrentStep()        { return sequencerCurrentStep; }
+
+    public void setSequencerSteps(List<SequencerStep> steps) {
+        sequencerSteps.clear();
+        sequencerSteps.addAll(steps);
+        setChanged();
+    }
+
+    public void startSequencer() {
+        if (sequencerSteps.isEmpty()) return;
+        sequencerRunning     = true;
+        sequencerCurrentStep = 0;
+        sequencerDelayTicker = 0;
+        setChanged();
+    }
+
+    public void stopSequencer() {
+        sequencerRunning = false;
+        clearRedstoneOutputs();
+        setChanged();
+    }
+
+    public int getRedstoneOutput(Direction dir) {
+        return redstoneOutputs[dir.ordinal()];
+    }
+
+    private void setRedstoneOutput(Direction dir, int power) {
+        int clamped = Math.max(0, Math.min(15, power));
+        if (redstoneOutputs[dir.ordinal()] == clamped) return;
+        redstoneOutputs[dir.ordinal()] = clamped;
+        setChanged();
+        if (level != null && !level.isClientSide)
+            level.updateNeighborsAt(worldPosition, getBlockState().getBlock());
+    }
+
+    private void clearRedstoneOutputs() {
+        boolean changed = false;
+        for (int i = 0; i < redstoneOutputs.length; i++) {
+            if (redstoneOutputs[i] != 0) { redstoneOutputs[i] = 0; changed = true; }
+        }
+        if (changed && level != null && !level.isClientSide)
+            level.updateNeighborsAt(worldPosition, getBlockState().getBlock());
+    }
+
+    void tickSequencer() {
+        if (sequencerCurrentStep >= sequencerSteps.size()) {
+            sequencerRunning = false;
+            setChanged();
+            return;
+        }
+        SequencerStep step = sequencerSteps.get(sequencerCurrentStep);
+        switch (step.type) {
+            case DELAY -> {
+                if (sequencerDelayTicker <= 0) {
+                    float secs = 1.0f;
+                    try { secs = Float.parseFloat(step.delaySecondsStr); } catch (NumberFormatException ignored) {}
+                    sequencerDelayTicker = Math.max(1, Math.round(secs * 20));
+                }
+                if (--sequencerDelayTicker <= 0) advanceSequencer();
+            }
+            case CONDITION -> {
+                if (evaluateCondition(step)) advanceSequencer();
+            }
+            case SET_VALUE -> {
+                applySequencerSetValue(step);
+                advanceSequencer();
+            }
+            case SET_REDSTONE -> {
+                applySequencerSetRedstone(step);
+                advanceSequencer();
+            }
+            case TYPE_TEXT -> {
+                applySequencerTypeText(step);
+                advanceSequencer();
+            }
+            case CYCLE -> {
+                sequencerCurrentStep = 0;
+                sequencerDelayTicker = 0;
+                setChanged();
+            }
+            case END -> {
+                sequencerRunning = false;
+                setChanged();
+            }
+        }
+    }
+
+    private void advanceSequencer() {
+        sequencerCurrentStep++;
+        sequencerDelayTicker = 0;
+        setChanged();
+    }
+
+    private boolean evaluateCondition(SequencerStep step) {
+        if (level == null) return false;
+        double actual;
+        Direction dir = step.conditionSource.direction;
+        if (dir != null) {
+            // Ask the neighboring block what signal it emits toward us (same convention as Level.hasNeighborSignal)
+            actual = level.getSignal(worldPosition.relative(dir), dir);
+        } else {
+            BlockPos primary = getLinkedTargetPos();
+            if (primary == null) return false;
+            Object p = PeripheralHelper.getPeripheral(level, primary);
+            if (p == null) return false;
+            actual = PeripheralHelper.getDoubleGetter(p, step.conditionGetter);
+        }
+        double threshold;
+        try   { threshold = Double.parseDouble(step.conditionThresholdStr); }
+        catch (NumberFormatException e) { threshold = 0; }
+        return switch (step.conditionOp) {
+            case ">" -> actual > threshold;
+            case "<" -> actual < threshold;
+            case "=" -> Math.abs(actual - threshold) < 0.001;
+            default  -> false;
+        };
+    }
+
+    private void applySequencerSetValue(SequencerStep step) {
+        if (linkedTargetPositions.isEmpty() || level == null || step.setMethod.isEmpty()) return;
+        double value;
+        try   { value = Double.parseDouble(step.setValueStr); }
+        catch (NumberFormatException e) { return; }
+        double range   = ModConfig.COMMON.keyboardRange.get();
+        double rangeSq = range * range;
+        for (BlockPos targetPos : linkedTargetPositions) {
+            if (worldPosition.distSqr(targetPos) > rangeSq) continue;
+            Object p = PeripheralHelper.getPeripheral(level, targetPos);
+            if (p != null) PeripheralHelper.callMethodWithDouble(p, step.setMethod, value);
+        }
+    }
+
+    private void applySequencerTypeText(SequencerStep step) {
+        for (char c : step.typeTextStr.toCharArray()) typeQueue.add(c);
+        if (step.typeTextEnter) typeQueue.add('\n');
+    }
+
+    private void applySequencerSetRedstone(SequencerStep step) {
+        int signal;
+        try   { signal = Integer.parseInt(step.redstoneOutSignalStr.trim()); }
+        catch (NumberFormatException e) { signal = 0; }
+        setRedstoneOutput(step.redstoneOutDir, signal);
+    }
+
     // ----- Display source data (Create integration) -----
 
     public Map<String, String> getCachedGetterValues() { return cachedGetterValues; }
@@ -274,6 +440,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             be.refreshPeripheralCache();
         }
 
+        if (be.sequencerRunning) be.tickSequencer();
+
         // Remove any mesh targets whose block entity was broken (only when chunk is loaded)
         if (level.getGameTime() % 100 == 0 && !be.linkedTargetPositions.isEmpty()) {
             boolean changed = be.linkedTargetPositions.removeIf(
@@ -282,7 +450,9 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         }
     }
 
-    public void onRemoved() {}
+    public void onRemoved() {
+        unlink();
+    }
 
     // ----- CC computer interaction — broadcasts to all mesh targets in range -----
 
@@ -338,6 +508,14 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         tag.putBoolean("was_powered", wasPowered);
         tag.putString("autotype_script", autoTypeScript);
         tag.putInt("script_line_index", scriptLineIndex);
+        if (!sequencerSteps.isEmpty()) {
+            ListTag seqList = new ListTag();
+            for (SequencerStep step : sequencerSteps) seqList.add(step.save());
+            tag.put("sequencer_steps", seqList);
+        }
+        tag.putBoolean("sequencer_running",      sequencerRunning);
+        tag.putInt("sequencer_current_step",     sequencerCurrentStep);
+        tag.putIntArray("redstone_outputs",      redstoneOutputs);
     }
 
     @Override
@@ -364,5 +542,17 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         wasPowered      = tag.getBoolean("was_powered");
         autoTypeScript  = tag.getString("autotype_script");
         scriptLineIndex = tag.getInt("script_line_index");
+        sequencerSteps.clear();
+        if (tag.contains("sequencer_steps", Tag.TAG_LIST)) {
+            ListTag seqList = tag.getList("sequencer_steps", Tag.TAG_COMPOUND);
+            for (int i = 0; i < seqList.size(); i++)
+                sequencerSteps.add(SequencerStep.load(seqList.getCompound(i)));
+        }
+        sequencerRunning     = tag.getBoolean("sequencer_running");
+        sequencerCurrentStep = tag.getInt("sequencer_current_step");
+        if (tag.contains("redstone_outputs")) {
+            int[] saved = tag.getIntArray("redstone_outputs");
+            System.arraycopy(saved, 0, redstoneOutputs, 0, Math.min(saved.length, redstoneOutputs.length));
+        }
     }
 }

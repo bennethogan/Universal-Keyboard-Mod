@@ -11,7 +11,8 @@ public enum KeyboardMode {
     CC_COMPUTER(       "CC Computer",       "Type to a CC:Tweaked computer"),
     CC_PERIPHERAL(     "CC Peripheral",     "Call setter methods on a CC peripheral"),
     VALUE_PANEL(       "Value Panel",       "Set values on a Create scroll-value block"),
-    THRUSTER_CONTROL(  "Thruster Control",  "Control thruster direction and power"),
+    THRUSTER_CONTROL(    "Thruster Control",  "Control thruster direction and power"),
+    PERIPHERAL_SEQUENCER("Sequencer",        "Script peripheral calls with conditions and delays"),
     ;
 
     public final String displayName;
@@ -35,6 +36,7 @@ public enum KeyboardMode {
                 Object p = PeripheralHelper.getPeripheral(level, pos);
                 yield p != null && PeripheralHelper.isThrusterType(PeripheralHelper.getPeripheralType(p));
             }
+            case PERIPHERAL_SEQUENCER -> PeripheralHelper.hasPeripheral(level, pos) || isCCComputer(be);
         };
     }
 
@@ -43,7 +45,8 @@ public enum KeyboardMode {
             case CC_COMPUTER      -> "not a CC computer";
             case CC_PERIPHERAL    -> "no peripheral";
             case VALUE_PANEL      -> "no scroll value";
-            case THRUSTER_CONTROL -> "not a thruster peripheral";
+            case THRUSTER_CONTROL      -> "not a thruster peripheral";
+            case PERIPHERAL_SEQUENCER  -> "no peripheral";
         };
     }
 
