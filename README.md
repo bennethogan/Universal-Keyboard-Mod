@@ -3,7 +3,7 @@
 
 Universal Keyboard mod that allows you to control various features I wanted better control over.
 
-Right click something to link the keyboard, and place. Configurable wireless range with 100 blocks default. Current support for:
+Right click something to link the keyboard, and place. Configurable wireless range with 16 blocks default. Current support for:
 
 1. CC:Tweaked computer-- once linked you can type on the keyboard without having the terminal open. Useful if you dont want to set up a pocket computer to do that.
 -------------------
@@ -27,12 +27,14 @@ https://www.youtube.com/watch?v=3qiGU5Us97k
 
 5. Lastly for now is the Create: Propulsion Simulated thrusters. There is a special GUI for them to make controlling easier. It uses the CC:tweaked peripheral compat to do this, so it's limited to whatever there is currently a public method for. Will be improved later. See image below:
 
+NOTE: YOU MUST USE THE LATEST NIGHTLY BUILD OF CREATE: PROPULSION SIMULATED from their Discord server. There have been significant reworks, so until the release version is posted on Curseforge you should just be using it anyway. But this keyboard was built around the latest updates for Propulsion
+
 
 <img width="854" height="480" alt="2026-05-09_20 11 48" src="https://github.com/user-attachments/assets/f4e4c5c3-f1ef-473b-a111-ae6d42742798" />
 
 ------------------------------------------------------------------------
 
-Lots more to come, so help me test and give me your thoughts! I don't have a discord server so if you want to put a suggesion in 'Issues' I will certainly read it.
+Lots more to come, so help me test and give me your thoughts! I don't have a discord server so if you want to put a suggestion in 'Issues' I will certainly read it.
 
 Also there is a cooler recipe if you have Create downloaded, but Create is not required:
 <img width="1920" height="1123" alt="2026-05-09_20 07 39" src="https://github.com/user-attachments/assets/5d87b6bf-7f4a-4694-aa9c-6661a1ca42e4" />
