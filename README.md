@@ -7,14 +7,18 @@ Right click something to link the keyboard, and place. Configurable wireless ran
 
 1. CC:Tweaked computer-- once linked you can type on the keyboard without having the terminal open. Useful if you dont want to set up a pocket computer to do that.
 -------------------
+
 3. A "sequencer" that is just visual scripting, using the CC peripherals and redstone signals around the keyboard. I will link to a Youtube video I posted, to help that be best understood:
 https://www.youtube.com/watch?v=3qiGU5Us97k
 ---------------------------
 
+
 3. Any CC:Tweaked peripheral-- because so many mods already add compats for this, I am using that for the majority of the features. Currently the GUI is a little rough but you can see the values being returned by peripheral.call, and you can set anything that allows setting values.
 
 <img width="854" height="480" alt="2026-05-09_20 12 14" src="https://github.com/user-attachments/assets/870da0fe-845f-46eb-bcec-b61a4ee613d4" />
+
 -------------------------------------------------------------
+
 4. Those Create "value panels" that can currently only be controlled manually by clicking and holding with a wrench. You can now set it remotely, or again with the sequencer
 
 <img width="854" height="480" alt="2026-05-09_20 11 27" src="https://github.com/user-attachments/assets/b6cfa7da-8839-409d-b4df-bd02bf6958ff" />
