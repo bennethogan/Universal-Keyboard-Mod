@@ -288,6 +288,11 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                 }
                 if (--sequencerDelayTicker <= 0) advanceSequencer();
             }
+            case IF -> {
+                if (evaluateIfCondition(step))
+                    sequencerCurrentStep += step.ifSkipCount; // extra skip before the normal +1
+                advanceSequencer();
+            }
             case CONDITION -> {
                 if (evaluateCondition(step)) advanceSequencer();
             }
@@ -319,6 +324,38 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         sequencerCurrentStep++;
         sequencerDelayTicker = 0;
         setChanged();
+    }
+
+    private boolean evaluateIfCondition(SequencerStep step) {
+        if (level == null || step.ifGetter.isEmpty()) return false;
+        double actual;
+        // Check if getter refers to a redstone input side
+        int rsIdx = -1;
+        for (int i = 0; i < SequencerStep.RS_INPUT_GETTER_NAMES.length; i++) {
+            if (SequencerStep.RS_INPUT_GETTER_NAMES[i].equals(step.ifGetter)) { rsIdx = i; break; }
+        }
+        if (rsIdx >= 0) {
+            Direction dir = SequencerStep.RS_INPUT_GETTER_DIRS[rsIdx];
+            actual = level.getSignal(worldPosition.relative(dir), dir);
+        } else {
+            BlockPos primary = getLinkedTargetPos();
+            if (primary == null) return false;
+            Object p = PeripheralHelper.getPeripheral(level, primary);
+            if (p == null) return false;
+            actual = PeripheralHelper.getDoubleGetter(p, step.ifGetter);
+        }
+        double threshold;
+        try { threshold = Double.parseDouble(step.ifValueStr); }
+        catch (NumberFormatException e) { threshold = 0; }
+        return switch (step.ifOp) {
+            case ">"  -> actual > threshold;
+            case ">=" -> actual >= threshold;
+            case "="  -> Math.abs(actual - threshold) < 0.001;
+            case "<=" -> actual <= threshold;
+            case "<"  -> actual < threshold;
+            case "!=" -> Math.abs(actual - threshold) >= 0.001;
+            default   -> false;
+        };
     }
 
     private boolean evaluateCondition(SequencerStep step) {

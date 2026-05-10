@@ -30,6 +30,7 @@ public class PeripheralHelper {
             double currentVectorX, double currentVectorY,
             int thrust,
             int thrustConfig,
+            double configMax,       // 100.0 for creative_thruster; maxPn for creative_vector_thruster
             double currentThrustPn,
             double displayedThrustPn,
             double airflowMs,
@@ -312,14 +313,44 @@ public class PeripheralHelper {
         }
     }
 
-    // Call a single-arg @LuaFunction method with a double value; auto-casts to int/float/long as needed.
+    // Call setVector(x, y) on a vector peripheral; falls back to setVectorX + setVectorY if absent.
+    public static void callVectorSetter(Object peripheral, double x, double y) {
+        init();
+        if (!ccPresent) return;
+        // Try the atomic two-arg setVector(double, double) first.
+        for (Method m : peripheral.getClass().getMethods()) {
+            if (!m.getName().equals("setVector")) continue;
+            Parameter[] params = m.getParameters();
+            if (params.length != 2) continue;
+            Class<?> t0 = params[0].getType(), t1 = params[1].getType();
+            boolean bothDouble = (t0 == double.class || t0 == Double.class || t0 == float.class || t0 == Float.class)
+                    && (t1 == double.class || t1 == Double.class || t1 == float.class || t1 == Float.class);
+            if (!bothDouble) continue;
+            Object a0 = (t0 == float.class || t0 == Float.class) ? (float) x : x;
+            Object a1 = (t1 == float.class || t1 == Float.class) ? (float) y : y;
+            try {
+                m.invoke(peripheral, a0, a1);
+                return;
+            } catch (Exception e) {
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                UniversalKeyboardMod.LOGGER.warn("setVector({},{}) failed: {}", x, y, cause.getMessage());
+                return;
+            }
+        }
+        // Fall back to separate single-axis setters.
+        callMethodWithDouble(peripheral, "setVectorX", x);
+        callMethodWithDouble(peripheral, "setVectorY", y);
+    }
+
+    // Call a single-arg method with a double value; auto-casts to int/float/long as needed.
+    // No @LuaFunction annotation check — callers only pass names from the peripheral browser
+    // or the hardcoded thruster-control method list, so annotation filtering is redundant here.
     public static @Nullable String callMethodWithDouble(Object peripheral, String methodName, double value) {
         init();
-        if (luaFunctionClass == null) return "CC not present";
+        if (!ccPresent) return "CC not present";
         ensureThrusterPeripheralMode(peripheral);
         for (Method m : peripheral.getClass().getMethods()) {
             if (!m.getName().equals(methodName)) continue;
-            if (m.getAnnotation(luaFunctionClass) == null) continue;
             Parameter[] params = m.getParameters();
             if (params.length != 1) continue;
             Class<?> type = params[0].getType();
@@ -354,10 +385,25 @@ public class PeripheralHelper {
         if (!isThrusterType(type)) return null;
         // Vector peripherals expose getThrust() → int 0-15.
         // Non-vector peripherals expose getPower() → double 0.0-1.0; scale to 0-15.
-        boolean isVector = type.contains("vector");
+        boolean isVector          = type.contains("vector");
+        boolean isCreativeVector  = type.equals("creative_vector_thruster");
         int thrust = isVector
                 ? getIntVal(p, "getThrust")
                 : (int) Math.round(getDoubleVal(p, "getPower") * 15);
+
+        // creative_vector_thruster uses setThrustOutput(pN) instead of setThrustConfig(%).
+        // configMax carries the max pN so the screen can scale the slider correctly.
+        // thrustConfig is expressed as 0-100 (% of max) for both creative types.
+        double configMax;
+        int thrustConfig;
+        if (isCreativeVector) {
+            configMax   = getDoubleVal(p, "getMaxThrustOutputPn");
+            double disp = getDoubleVal(p, "getDisplayedThrustPN");
+            thrustConfig = configMax > 0 ? (int) Math.round(disp / configMax * 100) : 0;
+        } else {
+            configMax    = 100.0;
+            thrustConfig = getIntVal(p, "getThrustConfig");
+        }
 
         return new ThrusterState(
                 type,
@@ -366,7 +412,8 @@ public class PeripheralHelper {
                 getDoubleVal(p, "getVectorX"),
                 getDoubleVal(p, "getVectorY"),
                 thrust,
-                getIntVal(p, "getThrustConfig"),
+                thrustConfig,
+                configMax,
                 getDoubleVal(p, "getCurrentThrustPN"),
                 getDoubleVal(p, "getDisplayedThrustPN"),
                 getDoubleVal(p, "getAirflowMs"),

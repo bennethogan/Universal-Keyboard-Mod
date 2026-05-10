@@ -35,6 +35,7 @@ public class ThrusterControlScreen extends Screen {
     private double currentVectorX, currentVectorY;
     private int    thrust;
     private int    thrustConfig;
+    private double configMax;
     private double currentThrustPn;
     private double displayedThrustPn;
     private double airflowMs;
@@ -54,7 +55,7 @@ public class ThrusterControlScreen extends Screen {
     // ── Constructor ───────────────────────────────────────────────────────────
     public ThrusterControlScreen(BlockPos keyboardPos, String peripheralType,
             double targetVX, double targetVY, double currentVX, double currentVY,
-            int thrust, int thrustConfig,
+            int thrust, int thrustConfig, double configMax,
             double currentThrustPn, double displayedThrustPn,
             double airflowMs, int obstruction,
             int fuelAmountMb, int fuelCapacityMb) {
@@ -67,6 +68,7 @@ public class ThrusterControlScreen extends Screen {
         this.currentVectorY    = currentVY;
         this.thrust            = thrust;
         this.thrustConfig      = thrustConfig;
+        this.configMax         = configMax;
         this.currentThrustPn   = currentThrustPn;
         this.displayedThrustPn = displayedThrustPn;
         this.airflowMs         = airflowMs;
@@ -80,7 +82,7 @@ public class ThrusterControlScreen extends Screen {
     // ── updateState — only updates telemetry, never slider positions ──────────
     public void updateState(String peripheralType,
             double targetVX, double targetVY, double currentVX, double currentVY,
-            int thrust, int thrustConfig,
+            int thrust, int thrustConfig, double configMax,
             double currentThrustPn, double displayedThrustPn,
             double airflowMs, int obstruction,
             int fuelAmountMb, int fuelCapacityMb) {
@@ -94,6 +96,7 @@ public class ThrusterControlScreen extends Screen {
         // a just-set value and would flicker the slider back to the stale position.
         this.thrust            = thrust;
         this.thrustConfig      = thrustConfig;
+        this.configMax         = configMax;
         this.currentThrustPn   = currentThrustPn;
         this.displayedThrustPn = displayedThrustPn;
         this.airflowMs         = airflowMs;
@@ -141,11 +144,20 @@ public class ThrusterControlScreen extends Screen {
         addRenderableWidget(thrustSlider);
 
         // Config slider (creative thrusters)
+        // creative_vector_thruster uses setThrustOutput(pN); creative_thruster uses setThrustConfig(%).
         if (isCreative) {
+            boolean isCreativeVector = "creative_vector_thruster".equals(peripheralType);
             int cfgSliderX = sliderX + SLIDER_W + PAD / 2;
             configSlider = new ThrottleSlider(cfgSliderX, sliderY, SLIDER_W, READOUT_H,
                     "CFG", 0, 100, thrustConfig,
-                    val -> ModPackets.sendSetThrusterValue(keyboardPos, "setThrustConfig", val));
+                    val -> {
+                        if (isCreativeVector) {
+                            ModPackets.sendSetThrusterValue(keyboardPos, "setThrustOutput",
+                                    val / 100.0 * configMax);
+                        } else {
+                            ModPackets.sendSetThrusterValue(keyboardPos, "setThrustConfig", val);
+                        }
+                    });
             addRenderableWidget(configSlider);
         }
 
@@ -154,10 +166,7 @@ public class ThrusterControlScreen extends Screen {
             int gridY = contentY + READOUT_H + LABEL_H + PAD;
             int gridX = panelX + (panelW - INST_OUTER) / 2;
             grid = new InstrumentGridWidget(gridX, gridY, targetVectorX, targetVectorY,
-                    (vx, vy) -> {
-                        ModPackets.sendSetThrusterValue(keyboardPos, "setVectorX", vx);
-                        ModPackets.sendSetThrusterValue(keyboardPos, "setVectorY", vy);
-                    });
+                    (vx, vy) -> ModPackets.sendSetThrusterVector(keyboardPos, vx, vy));
             addRenderableWidget(grid);
         }
 

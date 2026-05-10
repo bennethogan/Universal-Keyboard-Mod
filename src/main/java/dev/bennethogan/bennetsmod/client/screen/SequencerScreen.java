@@ -297,6 +297,8 @@ public class SequencerScreen extends Screen {
         Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST
     };
 
+    private static final String[] IF_OPS = {">", ">=", "=", "<=", "<", "!="};
+
     private class RowWidgets {
         final int rowIdx;
 
@@ -315,6 +317,12 @@ public class SequencerScreen extends Screen {
         // TYPE_TEXT
         EditBox typeTextInput;
         Button  typeEnterBtn;
+
+        // IF
+        Button  ifGetterBtn;
+        Button  ifOpBtn;
+        EditBox ifValueInput;
+        Button  ifSkipBtn;
 
         // CONDITION
         Button  sourceBtn;
@@ -405,6 +413,40 @@ public class SequencerScreen extends Screen {
                     .build();
             addRenderableWidget(typeEnterBtn);
 
+            // ── IF ─────────────────────────────────────────────────────────
+
+            // getter: 0-70, op: 74-100, value: 104-154, skip btn: 158-204
+            ifGetterBtn = Button.builder(Component.literal(""), b -> cycleIfGetter())
+                    .pos(cx + COL_CTX, rowY + 1)
+                    .size(70, BTN_H)
+                    .build();
+            addRenderableWidget(ifGetterBtn);
+
+            ifOpBtn = Button.builder(Component.literal(">"), b -> cycleIfOp())
+                    .pos(cx + COL_CTX + 74, rowY + 1)
+                    .size(26, BTN_H)
+                    .build();
+            addRenderableWidget(ifOpBtn);
+
+            ifValueInput = new EditBox(font,
+                    cx + COL_CTX + 104, rowY + 1, 50, BTN_H,
+                    Component.literal("0"));
+            ifValueInput.setMaxLength(16);
+            ifValueInput.setHint(Component.literal("§7value"));
+            ifValueInput.setResponder(str -> {
+                if (!refreshing) {
+                    int si = scrollOffset + rowIdx;
+                    if (si < steps.size()) steps.get(si).ifValueStr = str;
+                }
+            });
+            addRenderableWidget(ifValueInput);
+
+            ifSkipBtn = Button.builder(Component.literal("skip: 1"), b -> cycleIfSkip())
+                    .pos(cx + COL_CTX + 158, rowY + 1)
+                    .size(46, BTN_H)
+                    .build();
+            addRenderableWidget(ifSkipBtn);
+
             // ── CONDITION ──────────────────────────────────────────────────
 
             sourceBtn = Button.builder(Component.literal(""), b -> cycleSource())
@@ -491,6 +533,41 @@ public class SequencerScreen extends Screen {
             rsDirBtn.setMessage(Component.literal("→ " + step.redstoneOutDir.getName().toUpperCase()));
         }
 
+        private void cycleIfGetter() {
+            int si = scrollOffset + rowIdx;
+            if (si >= steps.size()) return;
+            SequencerStep step = steps.get(si);
+            List<String> combined = buildIfGetterList();
+            if (combined.isEmpty()) return;
+            int idx = combined.indexOf(step.ifGetter);
+            step.ifGetter = combined.get((idx + 1) % combined.size());
+            ifGetterBtn.setMessage(Component.literal(step.ifGetter));
+        }
+
+        private void cycleIfOp() {
+            int si = scrollOffset + rowIdx;
+            if (si >= steps.size()) return;
+            SequencerStep step = steps.get(si);
+            int idx = java.util.Arrays.asList(IF_OPS).indexOf(step.ifOp);
+            step.ifOp = IF_OPS[(idx + 1) % IF_OPS.length];
+            ifOpBtn.setMessage(Component.literal(step.ifOp));
+        }
+
+        private void cycleIfSkip() {
+            int si = scrollOffset + rowIdx;
+            if (si >= steps.size()) return;
+            SequencerStep step = steps.get(si);
+            step.ifSkipCount = (step.ifSkipCount % 9) + 1; // cycles 1–9
+            ifSkipBtn.setMessage(Component.literal("skip: " + step.ifSkipCount));
+        }
+
+        private List<String> buildIfGetterList() {
+            List<String> list = new ArrayList<>();
+            for (String name : SequencerStep.RS_INPUT_GETTER_NAMES) list.add(name);
+            list.addAll(availableGetters);
+            return list;
+        }
+
         private void cycleSource() {
             int si = scrollOffset + rowIdx;
             if (si >= steps.size()) return;
@@ -518,16 +595,20 @@ public class SequencerScreen extends Screen {
 
             typeBtn.visible      = hasStep;
             deleteBtn.visible    = hasStep;
-            methodBtn.visible    = false;
-            valueInput.visible   = false;
+            methodBtn.visible     = false;
+            valueInput.visible    = false;
             rsDirBtn.visible      = false;
             rsSignalInput.visible = false;
             typeTextInput.visible = false;
             typeEnterBtn.visible  = false;
+            ifGetterBtn.visible   = false;
+            ifOpBtn.visible       = false;
+            ifValueInput.visible  = false;
+            ifSkipBtn.visible     = false;
             sourceBtn.visible     = false;
-            getterBtn.visible    = false;
-            opInput.visible      = false;
-            delayInput.visible   = false;
+            getterBtn.visible     = false;
+            opInput.visible       = false;
+            delayInput.visible    = false;
 
             if (!hasStep) return;
 
@@ -546,6 +627,20 @@ public class SequencerScreen extends Screen {
                         step.setMethod = availableSetters.get(0)[0];
                     methodBtn.setMessage(Component.literal(mLabel));
                     valueInput.setValue(step.setValueStr);
+                }
+                case IF -> {
+                    ifGetterBtn.visible  = true;
+                    ifOpBtn.visible      = true;
+                    ifValueInput.visible = true;
+                    ifSkipBtn.visible    = true;
+                    List<String> combined = buildIfGetterList();
+                    if (step.ifGetter.isEmpty() && !combined.isEmpty())
+                        step.ifGetter = combined.get(0);
+                    ifGetterBtn.setMessage(Component.literal(
+                            step.ifGetter.isEmpty() ? "(none)" : step.ifGetter));
+                    ifOpBtn.setMessage(Component.literal(step.ifOp));
+                    ifValueInput.setValue(step.ifValueStr);
+                    ifSkipBtn.setMessage(Component.literal("skip: " + step.ifSkipCount));
                 }
                 case CONDITION -> {
                     sourceBtn.visible = true;

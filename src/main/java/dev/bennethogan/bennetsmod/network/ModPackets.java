@@ -157,7 +157,7 @@ public class ModPackets {
             BlockPos keyboardPos, String peripheralType,
             double targetVectorX, double targetVectorY,
             double currentVectorX, double currentVectorY,
-            int thrust, int thrustConfig,
+            int thrust, int thrustConfig, double configMax,
             double currentThrustPn, double displayedThrustPn,
             double airflowMs, int obstruction,
             int fuelAmountMb, int fuelCapacityMb
@@ -170,7 +170,7 @@ public class ModPackets {
                     buf.writeUtf(pkt.peripheralType());
                     buf.writeDouble(pkt.targetVectorX()); buf.writeDouble(pkt.targetVectorY());
                     buf.writeDouble(pkt.currentVectorX()); buf.writeDouble(pkt.currentVectorY());
-                    buf.writeInt(pkt.thrust()); buf.writeInt(pkt.thrustConfig());
+                    buf.writeInt(pkt.thrust()); buf.writeInt(pkt.thrustConfig()); buf.writeDouble(pkt.configMax());
                     buf.writeDouble(pkt.currentThrustPn()); buf.writeDouble(pkt.displayedThrustPn());
                     buf.writeDouble(pkt.airflowMs()); buf.writeInt(pkt.obstruction());
                     buf.writeInt(pkt.fuelAmountMb()); buf.writeInt(pkt.fuelCapacityMb());
@@ -179,7 +179,7 @@ public class ModPackets {
                         BlockPos.STREAM_CODEC.decode(buf), buf.readUtf(),
                         buf.readDouble(), buf.readDouble(),
                         buf.readDouble(), buf.readDouble(),
-                        buf.readInt(), buf.readInt(),
+                        buf.readInt(), buf.readInt(), buf.readDouble(),
                         buf.readDouble(), buf.readDouble(),
                         buf.readDouble(), buf.readInt(),
                         buf.readInt(), buf.readInt()
@@ -201,6 +201,24 @@ public class ModPackets {
                 },
                 buf -> new SetThrusterValuePacket(
                         BlockPos.STREAM_CODEC.decode(buf), buf.readUtf(), buf.readDouble()
+                ));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // client → server: set both vector axes atomically (calls setVector(x,y) on the peripheral)
+    public record SetThrusterVectorPacket(
+            BlockPos keyboardPos, double x, double y
+    ) implements CustomPacketPayload {
+        public static final Type<SetThrusterVectorPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "set_thruster_vector"));
+        public static final StreamCodec<FriendlyByteBuf, SetThrusterVectorPacket> CODEC = StreamCodec.of(
+                (buf, pkt) -> {
+                    BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos());
+                    buf.writeDouble(pkt.x());
+                    buf.writeDouble(pkt.y());
+                },
+                buf -> new SetThrusterVectorPacket(
+                        BlockPos.STREAM_CODEC.decode(buf), buf.readDouble(), buf.readDouble()
                 ));
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
@@ -246,6 +264,7 @@ public class ModPackets {
         registrar.playToServer(SelectModePacket.TYPE,           SelectModePacket.CODEC,           ModPackets::handleSelectMode);
         registrar.playToClient(OpenThrusterControlPacket.TYPE,   OpenThrusterControlPacket.CODEC,   ModPackets::handleOpenThrusterControl);
         registrar.playToServer(SetThrusterValuePacket.TYPE,      SetThrusterValuePacket.CODEC,      ModPackets::handleSetThrusterValue);
+        registrar.playToServer(SetThrusterVectorPacket.TYPE,     SetThrusterVectorPacket.CODEC,     ModPackets::handleSetThrusterVector);
         registrar.playToClient(OpenSequencerPacket.TYPE,         OpenSequencerPacket.CODEC,         ModPackets::handleOpenSequencer);
         registrar.playToServer(SaveAndRunSequencerPacket.TYPE,   SaveAndRunSequencerPacket.CODEC,   ModPackets::handleSaveAndRunSequencer);
         registrar.playToServer(StopSequencerPacket.TYPE,         StopSequencerPacket.CODEC,         ModPackets::handleStopSequencer);
@@ -583,7 +602,7 @@ public class ModPackets {
                 keyboardPos, state.type(),
                 state.targetVectorX(), state.targetVectorY(),
                 state.currentVectorX(), state.currentVectorY(),
-                state.thrust(), state.thrustConfig(),
+                state.thrust(), state.thrustConfig(), state.configMax(),
                 state.currentThrustPn(), state.displayedThrustPn(),
                 state.airflowMs(), state.obstruction(),
                 state.fuelAmountMb(), state.fuelCapacityMb()
@@ -607,7 +626,7 @@ public class ModPackets {
                         packet.peripheralType(),
                         packet.targetVectorX(), packet.targetVectorY(),
                         packet.currentVectorX(), packet.currentVectorY(),
-                        packet.thrust(), packet.thrustConfig(),
+                        packet.thrust(), packet.thrustConfig(), packet.configMax(),
                         packet.currentThrustPn(), packet.displayedThrustPn(),
                         packet.airflowMs(), packet.obstruction(),
                         packet.fuelAmountMb(), packet.fuelCapacityMb());
@@ -616,7 +635,7 @@ public class ModPackets {
                         packet.keyboardPos(), packet.peripheralType(),
                         packet.targetVectorX(), packet.targetVectorY(),
                         packet.currentVectorX(), packet.currentVectorY(),
-                        packet.thrust(), packet.thrustConfig(),
+                        packet.thrust(), packet.thrustConfig(), packet.configMax(),
                         packet.currentThrustPn(), packet.displayedThrustPn(),
                         packet.airflowMs(), packet.obstruction(),
                         packet.fuelAmountMb(), packet.fuelCapacityMb()));
@@ -645,6 +664,33 @@ public class ModPackets {
                 sendOpenThrusterControl(sp, packet.keyboardPos(), state);
             }
         });
+    }
+
+    private static void handleSetThrusterVector(SetThrusterVectorPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity keyboard)) return;
+
+            List<BlockPos> targets = keyboard.getLinkedTargetPositions();
+            if (targets.isEmpty()) return;
+
+            for (BlockPos targetPos : targets) {
+                Object peripheral = PeripheralHelper.getPeripheral(sp.serverLevel(), targetPos);
+                if (peripheral == null) continue;
+                PeripheralHelper.callVectorSetter(peripheral, packet.x(), packet.y());
+            }
+
+            PeripheralHelper.ThrusterState state =
+                    PeripheralHelper.scanThruster(sp.serverLevel(), targets.get(0));
+            if (state != null) {
+                sendOpenThrusterControl(sp, packet.keyboardPos(), state);
+            }
+        });
+    }
+
+    public static void sendSetThrusterVector(BlockPos keyboardPos, double x, double y) {
+        PacketDistributor.sendToServer(new SetThrusterVectorPacket(keyboardPos, x, y));
     }
 
     // ── Sequencer handlers ────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ public class SequencerStep {
         SET_VALUE("Set Value"),
         SET_REDSTONE("Set RS Out"),
         TYPE_TEXT("Type Text"),
+        IF("If / Skip"),
         CONDITION("Wait For"),
         DELAY("Delay"),
         CYCLE("Loop"),
@@ -39,6 +40,10 @@ public class SequencerStep {
         }
     }
 
+    // Redstone input side names used as special IF getter values (shared client/server)
+    public static final String[]    RS_INPUT_GETTER_NAMES = {"RS North", "RS South", "RS East", "RS West"};
+    public static final Direction[] RS_INPUT_GETTER_DIRS  = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST};
+
     // ── Fields ────────────────────────────────────────────────────────────────
 
     public Type            type;
@@ -60,6 +65,12 @@ public class SequencerStep {
     // TYPE_TEXT
     public String  typeTextStr   = "";
     public boolean typeTextEnter = true; // press Enter after typing
+
+    // IF
+    public String ifGetter    = "";
+    public String ifOp        = ">";   // ">", ">=", "=", "<=", "<", "!="
+    public String ifValueStr  = "0";
+    public int    ifSkipCount = 1;     // steps to skip when condition is TRUE
 
     // DELAY
     public String delaySecondsStr = "1.0";
@@ -87,6 +98,10 @@ public class SequencerStep {
         tag.putString("conditionGetter",       conditionGetter);
         tag.putString("conditionOp",           conditionOp);
         tag.putString("conditionThresholdStr", conditionThresholdStr);
+        tag.putString("ifGetter",              ifGetter);
+        tag.putString("ifOp",                  ifOp);
+        tag.putString("ifValueStr",            ifValueStr);
+        tag.putInt("ifSkipCount",              ifSkipCount);
         tag.putString("delaySecondsStr",       delaySecondsStr);
         return tag;
     }
@@ -109,6 +124,10 @@ public class SequencerStep {
         s.conditionGetter       = tag.getString("conditionGetter");
         s.conditionOp           = def(tag.getString("conditionOp"),           ">");
         s.conditionThresholdStr = def(tag.getString("conditionThresholdStr"),  "0");
+        s.ifGetter              = tag.getString("ifGetter");
+        s.ifOp                  = def(tag.getString("ifOp"),                   ">");
+        s.ifValueStr            = def(tag.getString("ifValueStr"),              "0");
+        s.ifSkipCount           = tag.contains("ifSkipCount") ? tag.getInt("ifSkipCount") : 1;
         s.delaySecondsStr       = def(tag.getString("delaySecondsStr"),        "1.0");
         return s;
     }
@@ -127,6 +146,10 @@ public class SequencerStep {
         buf.writeUtf(conditionGetter);
         buf.writeUtf(conditionOp);
         buf.writeUtf(conditionThresholdStr);
+        buf.writeUtf(ifGetter);
+        buf.writeUtf(ifOp);
+        buf.writeUtf(ifValueStr);
+        buf.writeByte(Math.max(1, Math.min(99, ifSkipCount)));
         buf.writeUtf(delaySecondsStr);
     }
 
@@ -148,6 +171,10 @@ public class SequencerStep {
         s.conditionGetter       = buf.readUtf();
         s.conditionOp           = buf.readUtf();
         s.conditionThresholdStr = buf.readUtf();
+        s.ifGetter              = buf.readUtf();
+        s.ifOp                  = buf.readUtf();
+        s.ifValueStr            = buf.readUtf();
+        s.ifSkipCount           = buf.readByte() & 0xFF;
         s.delaySecondsStr       = buf.readUtf();
         return s;
     }
