@@ -1,5 +1,5 @@
 
-<img width="1920" height="1123" alt="2026-05-09_10 24 51" src="https://github.com/user-attachments/assets/2ecc9426-9a7d-4011-ad40-acab1637e06f" />
+[![Universal Keyboard mod for Minecraft NeoForge](http://img.youtube.com/vi/3qiGU5Us97k/0.jpg)](http://www.youtube.com/watch?v=3qiGU5Us97k)
 
 Universal Keyboard mod that allows you to control various features I wanted better control over.
 
@@ -8,8 +8,14 @@ Right click something to link the keyboard, and place. Configurable wireless ran
 1. CC:Tweaked computer-- once linked you can type on the keyboard without having the terminal open. Useful if you dont want to set up a pocket computer to do that.
 -------------------
 
-3. A "sequencer" that is just visual scripting, using the CC peripherals and redstone signals around the keyboard. I will link to a Youtube video I posted, to help that be best understood:
-https://www.youtube.com/watch?v=3qiGU5Us97k
+2. A "sequencer" that is just visual scripting, using the CC peripherals and redstone signals around the keyboard. Watch the video to help it be best understood.
+
+My most recent update added this if/skip, which is a little hard to understand if you arent used to it. Its the least intuitive part, so I will just include the photo and say that this can be used as a very basic altiude control (add more lines and it might work really well):
+
+<img width="2560" height="1377" alt="2026-05-10_20 12 09" src="https://github.com/user-attachments/assets/a293078c-a329-434f-a4d2-4a10c856dfe8" />
+
+So if the redstone signal being received is high enough (above 10 signal strength), we skip 1 row. That would have raised the thruster output. Then it checks if signal stregnth is too low. If its too low, also skip lowering the thruster power. Its a band where if it goes to high, the power gets cut, and if the RS signal goes too low, the power gets increased. In a loop. Ask if you have questions
+
 ---------------------------
 
 
