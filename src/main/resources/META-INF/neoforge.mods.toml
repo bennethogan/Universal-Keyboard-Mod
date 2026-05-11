@@ -6,7 +6,7 @@ license = "MIT"
     modId = "universalkeyboard"
     version = "1.0.3"
     displayName = "Universal Keyboard: Edit Create's Value Panel Remotely!"
-    description = "Easy to use GUI controller for CC:Tweaked computer & peripherals, Create's value panels, Create: Propulsion thrusters, and more"
+    description = """
 TODO
 """
     logoFile = "logo.png"
