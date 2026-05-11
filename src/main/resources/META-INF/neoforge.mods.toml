@@ -1,44 +1,42 @@
 modLoader = "javafml"
 loaderVersion = "[4,)"
-license = "MIT"
+license = "${mod_license}"
 
 [[mods]]
-    modId = "universalkeyboard"
-    version = "1.0.3"
-    displayName = "Universal Keyboard: Edit Create's Value Panel Remotely!"
+    modId = "${mod_id}"
+    version = "${mod_version}"
+    displayName = "${mod_name}"
     description = """
-TODO
+Universal Keyboard — remotely control Create value panels, CC computers, and peripherals.
 """
     logoFile = "logo.png"
     authors = "bennethogan"
-    #displayURL = "https://..."
-    #issueTrackerURL = "https://..."
 
 [[mixins]]
-    config = "bennetsmod.mixins.json"
+    config = "${mod_id}.mixins.json"
 
-[[dependencies.universalkeyboard]]
+[[dependencies.${mod_id}]]
     modId = "neoforge"
     type = "required"
     versionRange = "[21.1,)"
     ordering = "NONE"
     side = "BOTH"
 
-[[dependencies.universalkeyboard]]
+[[dependencies.${mod_id}]]
     modId = "minecraft"
     type = "required"
     versionRange = "[1.21.1,1.22)"
     ordering = "NONE"
     side = "BOTH"
 
-[[dependencies.universalkeyboard]]
+[[dependencies.${mod_id}]]
     modId = "computercraft"
     type = "optional"
     versionRange = "[1.114,)"
     ordering = "NONE"
     side = "BOTH"
 
-[[dependencies.universalkeyboard]]
+[[dependencies.${mod_id}]]
     modId = "create"
     type = "optional"
     versionRange = "[0.5,)"

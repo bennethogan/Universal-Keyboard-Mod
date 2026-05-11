@@ -70,6 +70,18 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
+processResources {
+    var replaceProperties = [
+        mod_id       : mod_id,       mod_name    : mod_name,
+        mod_version  : mod_version,  mod_license : mod_license,
+        mod_group_id : mod_group_id
+    ]
+    inputs.properties replaceProperties
+    filesMatching(['META-INF/neoforge.mods.toml']) {
+        expand replaceProperties
+    }
+}
+
 idea {
     module {
         downloadSources = true

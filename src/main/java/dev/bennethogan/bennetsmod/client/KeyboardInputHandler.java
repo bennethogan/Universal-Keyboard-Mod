@@ -1,6 +1,10 @@
 package dev.bennethogan.bennetsmod.client;
 
+import dev.bennethogan.bennetsmod.blockentity.LinkedKeyboardBlockEntity;
+import dev.bennethogan.bennetsmod.item.LinkedKeyboardItem;
+import dev.bennethogan.bennetsmod.network.ModPackets;
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
@@ -53,6 +57,50 @@ public class KeyboardInputHandler {
     @SubscribeEvent
     public static void onInteractionKey(InputEvent.InteractionKeyMappingTriggered event) {
         if (KeyboardCaptureManager.isCapturing()) event.setCanceled(true);
+    }
+
+    /**
+     * Intercepts scroll wheel for two cases:
+     * 1. Player is in CC/Create capture mode → cycle active channel on the placed keyboard.
+     * 2. Player is holding a LinkedKeyboardItem in linking mode → cycle item's active linking channel.
+     */
+    @SubscribeEvent
+    public static void onMouseScroll(InputEvent.MouseScrollingEvent event) {
+        Minecraft mc = Minecraft.getInstance();
+
+        // Case 1: scroll while in keyboard capture mode (CC or Create)
+        if (KeyboardCaptureManager.isCapturing()) {
+            double scrollY = event.getScrollDeltaY();
+            if (scrollY != 0) {
+                int delta = scrollY > 0 ? -1 : 1; // scroll up = previous channel, scroll down = next
+                KeyboardCaptureManager.scrollChannel(delta);
+                event.setCanceled(true);
+            }
+            return;
+        }
+
+        // Case 2: scroll while holding a linked keyboard item in linking mode
+        if (mc.player == null || mc.screen != null) return;
+        ItemStack held = mc.player.getMainHandItem();
+        if (!(held.getItem() instanceof LinkedKeyboardItem)) {
+            held = mc.player.getOffhandItem();
+            if (!(held.getItem() instanceof LinkedKeyboardItem)) return;
+        }
+        if (!LinkedKeyboardItem.isLinkingMode(held)) return;
+
+        double scrollY = event.getScrollDeltaY();
+        if (scrollY == 0) return;
+
+        int current = LinkedKeyboardItem.getActiveLinkingChannel(held);
+        int delta = scrollY > 0 ? -1 : 1;
+        int next = ((current - 1 + delta) % LinkedKeyboardBlockEntity.MAX_CHANNELS
+                + LinkedKeyboardBlockEntity.MAX_CHANNELS) % LinkedKeyboardBlockEntity.MAX_CHANNELS + 1;
+
+        // Optimistic client-side update for immediate tooltip feedback
+        LinkedKeyboardItem.setActiveLinkingChannel(held, next);
+        // Confirm with server (server will sync item back)
+        ModPackets.sendSetLinkingChannel(next);
+        event.setCanceled(true);
     }
 
     private static void suppressMovementKey(int keyCode, int scanCode) {

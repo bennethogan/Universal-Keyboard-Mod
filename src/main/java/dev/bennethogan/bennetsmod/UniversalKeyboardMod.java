@@ -4,6 +4,7 @@ import dev.bennethogan.bennetsmod.block.ModBlocks;
 import dev.bennethogan.bennetsmod.blockentity.ModBlockEntities;
 import dev.bennethogan.bennetsmod.config.ModConfig;
 import dev.bennethogan.bennetsmod.item.ModItems;
+import dev.bennethogan.bennetsmod.network.ModPackets;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -25,6 +26,7 @@ public class UniversalKeyboardMod {
 
         modContainer.registerConfig(Type.COMMON, ModConfig.COMMON_SPEC);
 
+        modEventBus.addListener(ModPackets::onRegisterServerPayloads);
         modEventBus.addListener(this::onRegisterCapabilities);
         modEventBus.addListener(this::commonSetup);
 

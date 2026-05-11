@@ -12,12 +12,12 @@ public class KeyboardCaptureManager {
 
     private static CaptureMode mode = CaptureMode.NONE;
     private static @Nullable BlockPos capturedPos = null;
+    private static int capturedChannel = 1;
 
     private static int createCurrentValue = 0;
     private static int createMinValue     = 0;
     private static int createMaxValue     = 256;
 
-    // what the player has typed so far in Create mode; cleared on Enter, nulled on ESC
     private static final StringBuilder createInputBuffer = new StringBuilder();
 
     public static boolean isCapturing()       { return mode != CaptureMode.NONE; }
@@ -25,6 +25,11 @@ public class KeyboardCaptureManager {
     public static boolean isCreateCapturing() { return mode == CaptureMode.CREATE; }
     public static CaptureMode getMode()       { return mode; }
     public static @Nullable BlockPos getCapturedPos() { return capturedPos; }
+    public static int getCapturedChannel()    { return capturedChannel; }
+
+    public static void setCapturedChannel(int ch) {
+        capturedChannel = Math.max(1, Math.min(8, ch));
+    }
 
     public static void setCaptureMode(@Nullable BlockPos keyboardPos, boolean capture) {
         if (capture && keyboardPos != null) {
@@ -33,6 +38,7 @@ public class KeyboardCaptureManager {
         } else {
             mode        = CaptureMode.NONE;
             capturedPos = null;
+            capturedChannel = 1;
         }
     }
 
@@ -41,6 +47,7 @@ public class KeyboardCaptureManager {
         BlockPos pos = capturedPos;
         mode        = CaptureMode.NONE;
         capturedPos = null;
+        capturedChannel = 1;
         showDisconnected();
         ModPackets.sendKeyboardReleasePacket(pos);
     }
@@ -92,6 +99,7 @@ public class KeyboardCaptureManager {
         BlockPos pos = capturedPos;
         mode        = CaptureMode.NONE;
         capturedPos = null;
+        capturedChannel = 1;
         createInputBuffer.setLength(0);
         showDisconnected();
         ModPackets.sendKeyboardReleasePacket(pos);
@@ -117,6 +125,14 @@ public class KeyboardCaptureManager {
         ModPackets.sendCharPacket(capturedPos, character);
     }
 
+    /** Called by scroll handler to cycle channel while in capture mode. */
+    public static void scrollChannel(int delta) {
+        if (capturedPos == null) return;
+        int next = ((capturedChannel - 1 + delta) % 8 + 8) % 8 + 1;
+        capturedChannel = next;
+        ModPackets.sendSetActiveChannel(capturedPos, capturedChannel);
+    }
+
     private static void showDisconnected() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null)
@@ -129,18 +145,22 @@ public class KeyboardCaptureManager {
 
         switch (mode) {
             case CC -> mc.player.displayClientMessage(
-                    Component.literal("§a[Keyboard] §fTyping to linked computer — press §aESC §fto stop."),
+                    Component.literal(
+                            "§a[Keyboard] §fTyping — §bCh " + capturedChannel +
+                            " §7| scroll: change channel | ESC: stop"),
                     true);
 
             case CREATE -> {
                 String buf = createInputBuffer.toString();
                 String typed = buf.isEmpty()
-                        ? "§7(type a value, Enter to apply, ESC to exit)"
+                        ? "§7(type a value, Enter to apply)"
                         : "§e" + buf + "§7_";
                 mc.player.displayClientMessage(
                         Component.literal(
-                                "§b[Keyboard] §7" + createMinValue + "–" + createMaxValue +
-                                " §fcurrent: §b" + createCurrentValue + "  §f→  " + typed),
+                                "§b[Keyboard] §bCh " + capturedChannel +
+                                " §7| " + createMinValue + "–" + createMaxValue +
+                                " §fcur: §b" + createCurrentValue +
+                                " §7| scroll: ch §f→  " + typed),
                         true);
             }
 

@@ -5,6 +5,7 @@ import dev.bennethogan.bennetsmod.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.bennetsmod.compat.CreateValueHelper;
 import dev.bennethogan.bennetsmod.compat.KeyboardMode;
 import dev.bennethogan.bennetsmod.compat.PeripheralHelper;
+import dev.bennethogan.bennetsmod.item.LinkedKeyboardItem;
 import dev.bennethogan.bennetsmod.sequencer.SequencerStep;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
@@ -13,6 +14,8 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -107,10 +110,11 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    // server → client: open peripheral method browser
+    // server → client: open peripheral method browser (channel included for button display)
     public record OpenPeripheralMenuPacket(
             BlockPos keyboardPos, String peripheralType,
-            List<String[]> getters, List<String[]> setters
+            List<String[]> getters, List<String[]> setters,
+            int channel
     ) implements CustomPacketPayload {
         public static final Type<OpenPeripheralMenuPacket> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "open_peripheral_menu"));
@@ -122,6 +126,7 @@ public class ModPackets {
                     for (String[] e : pkt.getters()) { buf.writeUtf(e[0]); buf.writeUtf(e[1]); }
                     buf.writeInt(pkt.setters().size());
                     for (String[] e : pkt.setters()) { buf.writeUtf(e[0]); buf.writeUtf(e[1]); }
+                    buf.writeInt(pkt.channel());
                 },
                 buf -> {
                     BlockPos pos  = BlockPos.STREAM_CODEC.decode(buf);
@@ -132,7 +137,8 @@ public class ModPackets {
                     int sc = buf.readInt();
                     List<String[]> setters = new ArrayList<>(sc);
                     for (int i = 0; i < sc; i++) setters.add(new String[]{ buf.readUtf(), buf.readUtf() });
-                    return new OpenPeripheralMenuPacket(pos, type, getters, setters);
+                    int channel = buf.readInt();
+                    return new OpenPeripheralMenuPacket(pos, type, getters, setters, channel);
                 });
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
@@ -152,7 +158,7 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    // server → client: open the thruster control screen
+    // server → client: open the thruster control screen (channel included for button display)
     public record OpenThrusterControlPacket(
             BlockPos keyboardPos, String peripheralType,
             double targetVectorX, double targetVectorY,
@@ -160,7 +166,8 @@ public class ModPackets {
             int thrust, int thrustConfig, double configMax,
             double currentThrustPn, double displayedThrustPn,
             double airflowMs, int obstruction,
-            int fuelAmountMb, int fuelCapacityMb
+            int fuelAmountMb, int fuelCapacityMb,
+            int channel
     ) implements CustomPacketPayload {
         public static final Type<OpenThrusterControlPacket> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "open_thruster_control"));
@@ -174,6 +181,7 @@ public class ModPackets {
                     buf.writeDouble(pkt.currentThrustPn()); buf.writeDouble(pkt.displayedThrustPn());
                     buf.writeDouble(pkt.airflowMs()); buf.writeInt(pkt.obstruction());
                     buf.writeInt(pkt.fuelAmountMb()); buf.writeInt(pkt.fuelCapacityMb());
+                    buf.writeInt(pkt.channel());
                 },
                 buf -> new OpenThrusterControlPacket(
                         BlockPos.STREAM_CODEC.decode(buf), buf.readUtf(),
@@ -182,7 +190,8 @@ public class ModPackets {
                         buf.readInt(), buf.readInt(), buf.readDouble(),
                         buf.readDouble(), buf.readDouble(),
                         buf.readDouble(), buf.readInt(),
-                        buf.readInt(), buf.readInt()
+                        buf.readInt(), buf.readInt(),
+                        buf.readInt()
                 ));
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
@@ -250,31 +259,87 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    public static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar("1");
-        registrar.playToClient(KeyboardCapturePacket.TYPE,    KeyboardCapturePacket.CODEC,    ModPackets::handleKeyboardCapture);
-        registrar.playToServer(KeyInputPacket.TYPE,            KeyInputPacket.CODEC,            ModPackets::handleKeyInput);
-        registrar.playToServer(KeyboardReleasePacket.TYPE,     KeyboardReleasePacket.CODEC,     ModPackets::handleKeyboardRelease);
-        registrar.playToServer(SaveAutoTypeScriptPacket.TYPE,  SaveAutoTypeScriptPacket.CODEC,  ModPackets::handleSaveAutoTypeScript);
-        registrar.playToClient(OpenAutoTypeScreenPacket.TYPE,  OpenAutoTypeScreenPacket.CODEC,  ModPackets::handleOpenAutoTypeScreen);
-        registrar.playToClient(StartCreateCapturePacket.TYPE,  StartCreateCapturePacket.CODEC,  ModPackets::handleStartCreateCapture);
-        registrar.playToClient(OpenPeripheralMenuPacket.TYPE,   OpenPeripheralMenuPacket.CODEC,   ModPackets::handleOpenPeripheralMenu);
-        registrar.playToServer(CallPeripheralMethodPacket.TYPE, CallPeripheralMethodPacket.CODEC, ModPackets::handleCallPeripheralMethod);
-        registrar.playToClient(OpenModeSelectionPacket.TYPE,    OpenModeSelectionPacket.CODEC,    ModPackets::handleOpenModeSelection);
-        registrar.playToServer(SelectModePacket.TYPE,           SelectModePacket.CODEC,           ModPackets::handleSelectMode);
-        registrar.playToClient(OpenThrusterControlPacket.TYPE,   OpenThrusterControlPacket.CODEC,   ModPackets::handleOpenThrusterControl);
-        registrar.playToServer(SetThrusterValuePacket.TYPE,      SetThrusterValuePacket.CODEC,      ModPackets::handleSetThrusterValue);
-        registrar.playToServer(SetThrusterVectorPacket.TYPE,     SetThrusterVectorPacket.CODEC,     ModPackets::handleSetThrusterVector);
-        registrar.playToClient(OpenSequencerPacket.TYPE,         OpenSequencerPacket.CODEC,         ModPackets::handleOpenSequencer);
-        registrar.playToServer(SaveAndRunSequencerPacket.TYPE,   SaveAndRunSequencerPacket.CODEC,   ModPackets::handleSaveAndRunSequencer);
-        registrar.playToServer(StopSequencerPacket.TYPE,         StopSequencerPacket.CODEC,         ModPackets::handleStopSequencer);
-        registrar.playToServer(UnlinkKeyboardPacket.TYPE,        UnlinkKeyboardPacket.CODEC,        ModPackets::handleUnlinkKeyboard);
+    // ── Channel packets ──────────────────────────────────────────────────────
+
+    // client → server: set active channel on a placed keyboard block entity
+    public record SetActiveChannelPacket(BlockPos keyboardPos, int channel) implements CustomPacketPayload {
+        public static final Type<SetActiveChannelPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "set_active_channel"));
+        public static final StreamCodec<FriendlyByteBuf, SetActiveChannelPacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, SetActiveChannelPacket::keyboardPos,
+                        ByteBufCodecs.INT,     SetActiveChannelPacket::channel,
+                        SetActiveChannelPacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    private static void handleKeyboardCapture(KeyboardCapturePacket packet, IPayloadContext ctx) {
-        ctx.enqueueWork(() ->
-                dev.bennethogan.bennetsmod.client.KeyboardCaptureManager.setCaptureMode(
-                        packet.keyboardPos(), packet.capture()));
+    // server → client: inform client of the current active channel (for HUD display)
+    public record ChannelChangedPacket(BlockPos keyboardPos, int channel) implements CustomPacketPayload {
+        public static final Type<ChannelChangedPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "channel_changed"));
+        public static final StreamCodec<FriendlyByteBuf, ChannelChangedPacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, ChannelChangedPacket::keyboardPos,
+                        ByteBufCodecs.INT,     ChannelChangedPacket::channel,
+                        ChannelChangedPacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // client → server: set active channel on the held keyboard item (linking mode scroll)
+    public record SetLinkingChannelPacket(int channel) implements CustomPacketPayload {
+        public static final Type<SetLinkingChannelPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "set_linking_channel"));
+        public static final StreamCodec<FriendlyByteBuf, SetLinkingChannelPacket> CODEC =
+                StreamCodec.composite(
+                        ByteBufCodecs.INT, SetLinkingChannelPacket::channel,
+                        SetLinkingChannelPacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // client → server: cycle active channel on a placed keyboard and re-open the given mode's screen
+    public record CycleChannelAndReopenPacket(BlockPos keyboardPos, byte modeOrdinal) implements CustomPacketPayload {
+        public static final Type<CycleChannelAndReopenPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "cycle_channel_reopen"));
+        public static final StreamCodec<FriendlyByteBuf, CycleChannelAndReopenPacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, CycleChannelAndReopenPacket::keyboardPos,
+                        ByteBufCodecs.BYTE,    CycleChannelAndReopenPacket::modeOrdinal,
+                        CycleChannelAndReopenPacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // ── End channel packets ──────────────────────────────────────────────────
+
+    public static void onRegisterServerPayloads(RegisterPayloadHandlersEvent event) {
+        PayloadRegistrar registrar = event.registrar("1");
+        // playToServer — handlers run on the server, safe to register from the common @Mod class
+        registrar.playToServer(KeyInputPacket.TYPE,               KeyInputPacket.CODEC,               ModPackets::handleKeyInput);
+        registrar.playToServer(KeyboardReleasePacket.TYPE,        KeyboardReleasePacket.CODEC,        ModPackets::handleKeyboardRelease);
+        registrar.playToServer(SaveAutoTypeScriptPacket.TYPE,     SaveAutoTypeScriptPacket.CODEC,     ModPackets::handleSaveAutoTypeScript);
+        registrar.playToServer(CallPeripheralMethodPacket.TYPE,   CallPeripheralMethodPacket.CODEC,   ModPackets::handleCallPeripheralMethod);
+        registrar.playToServer(SelectModePacket.TYPE,             SelectModePacket.CODEC,             ModPackets::handleSelectMode);
+        registrar.playToServer(SetThrusterValuePacket.TYPE,       SetThrusterValuePacket.CODEC,       ModPackets::handleSetThrusterValue);
+        registrar.playToServer(SetThrusterVectorPacket.TYPE,      SetThrusterVectorPacket.CODEC,      ModPackets::handleSetThrusterVector);
+        registrar.playToServer(SaveAndRunSequencerPacket.TYPE,    SaveAndRunSequencerPacket.CODEC,    ModPackets::handleSaveAndRunSequencer);
+        registrar.playToServer(StopSequencerPacket.TYPE,          StopSequencerPacket.CODEC,          ModPackets::handleStopSequencer);
+        registrar.playToServer(UnlinkKeyboardPacket.TYPE,         UnlinkKeyboardPacket.CODEC,         ModPackets::handleUnlinkKeyboard);
+        registrar.playToServer(SetActiveChannelPacket.TYPE,       SetActiveChannelPacket.CODEC,       ModPackets::handleSetActiveChannel);
+        registrar.playToServer(SetLinkingChannelPacket.TYPE,      SetLinkingChannelPacket.CODEC,      ModPackets::handleSetLinkingChannel);
+        registrar.playToServer(CycleChannelAndReopenPacket.TYPE,  CycleChannelAndReopenPacket.CODEC,  ModPackets::handleCycleChannelAndReopen);
+
+        // playToClient — the server must declare these channels so the handshake succeeds.
+        // Real handlers are registered by ClientPacketHandlers (client only); skip here on client
+        // to avoid double-registration. No-op lambdas contain no client-only class references.
+        if (!net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
+            registrar.playToClient(KeyboardCapturePacket.TYPE,     KeyboardCapturePacket.CODEC,     (p, c) -> {});
+            registrar.playToClient(OpenAutoTypeScreenPacket.TYPE,  OpenAutoTypeScreenPacket.CODEC,  (p, c) -> {});
+            registrar.playToClient(StartCreateCapturePacket.TYPE,  StartCreateCapturePacket.CODEC,  (p, c) -> {});
+            registrar.playToClient(OpenPeripheralMenuPacket.TYPE,  OpenPeripheralMenuPacket.CODEC,  (p, c) -> {});
+            registrar.playToClient(OpenModeSelectionPacket.TYPE,   OpenModeSelectionPacket.CODEC,   (p, c) -> {});
+            registrar.playToClient(OpenThrusterControlPacket.TYPE, OpenThrusterControlPacket.CODEC, (p, c) -> {});
+            registrar.playToClient(OpenSequencerPacket.TYPE,       OpenSequencerPacket.CODEC,       (p, c) -> {});
+            registrar.playToClient(ChannelChangedPacket.TYPE,      ChannelChangedPacket.CODEC,      (p, c) -> {});
+        }
     }
 
     private static void handleKeyInput(KeyInputPacket packet, IPayloadContext ctx) {
@@ -309,7 +374,7 @@ public class ModPackets {
         });
     }
 
-    private static void handleSaveAutoTypeScript(SaveAutoTypeScriptPacket packet, IPayloadContext ctx) {
+    static void handleSaveAutoTypeScript(SaveAutoTypeScriptPacket packet, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
             if (!(ctx.player() instanceof ServerPlayer sp)) return;
             if (sp.blockPosition().distSqr(packet.keyboardPos()) > 64) return;
@@ -318,31 +383,6 @@ public class ModPackets {
             keyboard.setAutoTypeScript(packet.script());
             sp.displayClientMessage(
                     net.minecraft.network.chat.Component.literal("§aAuto-type script saved."), true);
-        });
-    }
-
-    private static void handleOpenAutoTypeScreen(OpenAutoTypeScreenPacket packet, IPayloadContext ctx) {
-        ctx.enqueueWork(() -> {
-            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
-            mc.setScreen(new dev.bennethogan.bennetsmod.client.screen.AutoTypeScreen(
-                    packet.keyboardPos(), packet.currentScript()));
-        });
-    }
-
-    private static void handleStartCreateCapture(StartCreateCapturePacket packet, IPayloadContext ctx) {
-        ctx.enqueueWork(() ->
-                dev.bennethogan.bennetsmod.client.KeyboardCaptureManager.setCreateCaptureMode(
-                        packet.keyboardPos(),
-                        packet.currentValue(),
-                        packet.minValue(),
-                        packet.maxValue()));
-    }
-
-    private static void handleOpenPeripheralMenu(OpenPeripheralMenuPacket packet, IPayloadContext ctx) {
-        ctx.enqueueWork(() -> {
-            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
-            mc.setScreen(new dev.bennethogan.bennetsmod.client.screen.PeripheralMethodScreen(
-                    packet.keyboardPos(), packet.peripheralType(), packet.getters(), packet.setters()));
         });
     }
 
@@ -358,18 +398,16 @@ public class ModPackets {
             String methodName = packet.methodName();
             String argString  = packet.argString();
 
-            // If this is a setter call, broadcast it to all mesh targets first
             String callError = null;
             if (!methodName.isEmpty()) {
                 for (BlockPos targetPos : targets) {
                     Object peripheral = PeripheralHelper.getPeripheral(sp.serverLevel(), targetPos);
                     if (peripheral == null) continue;
                     String err = PeripheralHelper.callSetter(peripheral, methodName, argString);
-                    if (err != null && callError == null) callError = err; // report first error
+                    if (err != null && callError == null) callError = err;
                 }
             }
 
-            // Re-scan primary target to refresh the menu
             BlockPos primary = targets.get(0);
             PeripheralHelper.ScanResult result = PeripheralHelper.scanAndCall(
                     sp.serverLevel(), primary, "", "");
@@ -383,15 +421,8 @@ public class ModPackets {
                 sp.displayClientMessage(net.minecraft.network.chat.Component.literal(
                         "§c[Keyboard] §f" + callError), true);
             }
-            sendOpenPeripheralMenu(sp, packet.keyboardPos(), result.type(), result.getters(), result.setters());
-        });
-    }
-
-    private static void handleOpenModeSelection(OpenModeSelectionPacket packet, IPayloadContext ctx) {
-        ctx.enqueueWork(() -> {
-            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
-            mc.setScreen(new dev.bennethogan.bennetsmod.client.screen.ModeSelectionScreen(
-                    packet.keyboardPos(), packet.targetTypeName(), packet.availableBits()));
+            sendOpenPeripheralMenu(sp, packet.keyboardPos(), result.type(), result.getters(),
+                    result.setters(), keyboard.getActiveChannel());
         });
     }
 
@@ -408,59 +439,135 @@ public class ModPackets {
             if (idx < 0 || idx >= modes.length) return;
             KeyboardMode mode = modes[idx];
 
-            // Server-side authority: refuse unsupported modes
             if (!mode.isAvailableAt(sp.serverLevel(), targetPos)) {
                 sp.displayClientMessage(net.minecraft.network.chat.Component.literal(
                         "§c[Keyboard] §fThat mode isn't available for this block."), true);
                 return;
             }
 
-            switch (mode) {
-                case CC_COMPUTER -> {
-                    keyboard.turnOnLinkedComputer();
-                    sendKeyboardCapturePacket(sp, packet.keyboardPos(), true);
+            openModeForPlayer(sp, packet.keyboardPos(), keyboard, targetPos, mode);
+        });
+    }
+
+    private static void openModeForPlayer(ServerPlayer sp, BlockPos keyboardPos,
+                                           LinkedKeyboardBlockEntity keyboard,
+                                           BlockPos targetPos, KeyboardMode mode) {
+        switch (mode) {
+            case CC_COMPUTER -> {
+                keyboard.turnOnLinkedComputer();
+                sendKeyboardCapturePacket(sp, keyboardPos, true);
+                PacketDistributor.sendToPlayer(sp,
+                        new ChannelChangedPacket(keyboardPos, keyboard.getActiveChannel()));
+                sp.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                        "§a[Universal Keyboard] §fNow typing — Channel §e" + keyboard.getActiveChannel() +
+                        "§f. Scroll to change channel. Press §aESC §fto stop."), true);
+            }
+            case CC_PERIPHERAL -> {
+                PeripheralHelper.ScanResult result = PeripheralHelper.scanAndCall(
+                        sp.serverLevel(), targetPos, "", "");
+                if (result == null) {
                     sp.displayClientMessage(net.minecraft.network.chat.Component.literal(
-                            "§a[Universal Keyboard] §fNow typing to linked computer. Press §aESC §fto stop."), true);
+                            "§c[Keyboard] §fPeripheral not found."), true);
+                    return;
                 }
-                case CC_PERIPHERAL -> {
-                    PeripheralHelper.ScanResult result = PeripheralHelper.scanAndCall(
-                            sp.serverLevel(), targetPos, "", "");
-                    if (result == null) {
-                        sp.displayClientMessage(net.minecraft.network.chat.Component.literal(
-                                "§c[Keyboard] §fPeripheral not found."), true);
-                        return;
-                    }
-                    sendOpenPeripheralMenu(sp, packet.keyboardPos(), result.type(), result.getters(), result.setters());
+                sendOpenPeripheralMenu(sp, keyboardPos, result.type(), result.getters(),
+                        result.setters(), keyboard.getActiveChannel());
+            }
+            case VALUE_PANEL -> {
+                BlockEntity targetBe = sp.serverLevel().getBlockEntity(targetPos);
+                if (targetBe == null || !CreateValueHelper.hasScrollValue(targetBe)) {
+                    sp.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                            "§c[Keyboard] §fLinked block no longer has a scroll value."), true);
+                    return;
                 }
-                case VALUE_PANEL -> {
-                    BlockEntity targetBe = sp.serverLevel().getBlockEntity(targetPos);
-                    if (targetBe == null || !CreateValueHelper.hasScrollValue(targetBe)) {
-                        sp.displayClientMessage(net.minecraft.network.chat.Component.literal(
-                                "§c[Keyboard] §fLinked block no longer has a scroll value."), true);
-                        return;
-                    }
-                    int current = CreateValueHelper.getValue(targetBe);
-                    int min     = CreateValueHelper.getMin(targetBe);
-                    int max     = CreateValueHelper.getMax(targetBe);
-                    keyboard.startInlineCapture();
-                    sendStartCreateCapture(sp, packet.keyboardPos(), current, min, max);
+                int current = CreateValueHelper.getValue(targetBe);
+                int min     = CreateValueHelper.getMin(targetBe);
+                int max     = CreateValueHelper.getMax(targetBe);
+                keyboard.startInlineCapture();
+                sendStartCreateCapture(sp, keyboardPos, current, min, max);
+                PacketDistributor.sendToPlayer(sp,
+                        new ChannelChangedPacket(keyboardPos, keyboard.getActiveChannel()));
+            }
+            case THRUSTER_CONTROL -> {
+                PeripheralHelper.ThrusterState state =
+                        PeripheralHelper.scanThruster(sp.serverLevel(), targetPos);
+                if (state == null) {
+                    sp.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                            "§c[Keyboard] §fThruster not found or CC:Tweaked not installed."), true);
+                    return;
                 }
-                case THRUSTER_CONTROL -> {
-                    PeripheralHelper.ThrusterState state =
-                            PeripheralHelper.scanThruster(sp.serverLevel(), targetPos);
-                    if (state == null) {
-                        sp.displayClientMessage(net.minecraft.network.chat.Component.literal(
-                                "§c[Keyboard] §fThruster not found or CC:Tweaked not installed."), true);
-                        return;
-                    }
-                    sendOpenThrusterControl(sp, packet.keyboardPos(), state);
+                sendOpenThrusterControl(sp, keyboardPos, state, keyboard.getActiveChannel());
+            }
+            case PERIPHERAL_SEQUENCER -> sendOpenSequencer(sp, keyboardPos, keyboard);
+        }
+    }
+
+    // ── Channel handlers ─────────────────────────────────────────────────────
+
+    private static void handleSetActiveChannel(SetActiveChannelPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity keyboard)) return;
+            keyboard.setActiveChannel(packet.channel());
+            PacketDistributor.sendToPlayer(sp,
+                    new ChannelChangedPacket(packet.keyboardPos(), keyboard.getActiveChannel()));
+        });
+    }
+
+    private static void handleSetLinkingChannel(SetLinkingChannelPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            // Update active_channel on the held keyboard item (main hand or off hand)
+            for (InteractionHand hand : InteractionHand.values()) {
+                ItemStack held = sp.getItemInHand(hand);
+                if (held.getItem() instanceof LinkedKeyboardItem) {
+                    LinkedKeyboardItem.setActiveLinkingChannel(held, packet.channel());
+                    // Trigger inventory sync so client sees updated channel in tooltip
+                    sp.inventoryMenu.sendAllDataToRemote();
+                    return;
                 }
-                case PERIPHERAL_SEQUENCER -> sendOpenSequencer(sp, packet.keyboardPos(), keyboard);
             }
         });
     }
 
-    // client → server
+    private static void handleCycleChannelAndReopen(CycleChannelAndReopenPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity keyboard)) return;
+
+            keyboard.cycleActiveChannel();
+
+            BlockPos targetPos = keyboard.getLinkedTargetPos();
+            if (targetPos == null) {
+                // No target on new channel — still notify client
+                PacketDistributor.sendToPlayer(sp,
+                        new ChannelChangedPacket(packet.keyboardPos(), keyboard.getActiveChannel()));
+                sp.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                        "§b[Keyboard] §fChannel §e" + keyboard.getActiveChannel() + "§f — no device linked."), true);
+                return;
+            }
+
+            int idx = packet.modeOrdinal() & 0xFF;
+            KeyboardMode[] modes = KeyboardMode.values();
+            if (idx < 0 || idx >= modes.length) return;
+            KeyboardMode mode = modes[idx];
+
+            if (!mode.isAvailableAt(sp.serverLevel(), targetPos)) {
+                // Channel has a device but it's not compatible with this mode — show mode selection
+                int bits = KeyboardMode.availableBitfield(sp.serverLevel(), targetPos);
+                String typeName = sp.serverLevel().getBlockState(targetPos).getBlock().getName().getString();
+                sendOpenModeSelection(sp, packet.keyboardPos(), typeName, bits);
+                return;
+            }
+
+            openModeForPlayer(sp, packet.keyboardPos(), keyboard, targetPos, mode);
+        });
+    }
+
+    // ── Senders ──────────────────────────────────────────────────────────────
+
     public static void sendKeyInputPacket(BlockPos pos, int keyCode, boolean held) {
         PacketDistributor.sendToServer(KeyInputPacket.keyPress(pos, keyCode, held));
     }
@@ -476,8 +583,17 @@ public class ModPackets {
     public static void sendSaveAutoTypeScript(BlockPos pos, String script) {
         PacketDistributor.sendToServer(new SaveAutoTypeScriptPacket(pos, script));
     }
+    public static void sendSetActiveChannel(BlockPos keyboardPos, int channel) {
+        PacketDistributor.sendToServer(new SetActiveChannelPacket(keyboardPos, channel));
+    }
+    public static void sendSetLinkingChannel(int channel) {
+        PacketDistributor.sendToServer(new SetLinkingChannelPacket(channel));
+    }
+    public static void sendCycleChannelAndReopen(BlockPos keyboardPos, KeyboardMode mode) {
+        PacketDistributor.sendToServer(new CycleChannelAndReopenPacket(keyboardPos, (byte) mode.ordinal()));
+    }
 
-    // server → client
+    // server → client senders
     public static void sendKeyboardCapturePacket(ServerPlayer player, BlockPos pos, boolean capture) {
         PacketDistributor.sendToPlayer(player, new KeyboardCapturePacket(pos, capture));
     }
@@ -490,8 +606,10 @@ public class ModPackets {
                 new StartCreateCapturePacket(keyboardPos, currentValue, min, max));
     }
     public static void sendOpenPeripheralMenu(ServerPlayer player, BlockPos keyboardPos,
-                                               String type, List<String[]> getters, List<String[]> setters) {
-        PacketDistributor.sendToPlayer(player, new OpenPeripheralMenuPacket(keyboardPos, type, getters, setters));
+                                               String type, List<String[]> getters,
+                                               List<String[]> setters, int channel) {
+        PacketDistributor.sendToPlayer(player,
+                new OpenPeripheralMenuPacket(keyboardPos, type, getters, setters, channel));
     }
     public static void sendOpenModeSelection(ServerPlayer player, BlockPos keyboardPos,
                                               String targetTypeName, int availableBits) {
@@ -505,9 +623,8 @@ public class ModPackets {
         PacketDistributor.sendToServer(new CallPeripheralMethodPacket(keyboardPos, methodName, argString));
     }
 
-    // ── Sequencer packets ──────────────────────────────────────────────────────
+    // ── Sequencer packets ─────────────────────────────────────────────────────
 
-    // server → client: open sequencer editor
     public record OpenSequencerPacket(
             BlockPos keyboardPos,
             List<SequencerStep> steps,
@@ -551,7 +668,6 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    // client → server: save steps (and optionally start running)
     public record SaveAndRunSequencerPacket(
             BlockPos keyboardPos, List<SequencerStep> steps, boolean run
     ) implements CustomPacketPayload {
@@ -574,7 +690,6 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    // client → server: unlink keyboard from its target
     public record UnlinkKeyboardPacket(BlockPos keyboardPos) implements CustomPacketPayload {
         public static final Type<UnlinkKeyboardPacket> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "unlink_keyboard"));
@@ -584,7 +699,6 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    // client → server: stop sequencer
     public record StopSequencerPacket(BlockPos keyboardPos) implements CustomPacketPayload {
         public static final Type<StopSequencerPacket> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "stop_sequencer"));
@@ -594,10 +708,8 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    // ── End sequencer packets ──────────────────────────────────────────────────
-
     public static void sendOpenThrusterControl(ServerPlayer player, BlockPos keyboardPos,
-                                                PeripheralHelper.ThrusterState state) {
+                                                PeripheralHelper.ThrusterState state, int channel) {
         PacketDistributor.sendToPlayer(player, new OpenThrusterControlPacket(
                 keyboardPos, state.type(),
                 state.targetVectorX(), state.targetVectorY(),
@@ -605,7 +717,8 @@ public class ModPackets {
                 state.thrust(), state.thrustConfig(), state.configMax(),
                 state.currentThrustPn(), state.displayedThrustPn(),
                 state.airflowMs(), state.obstruction(),
-                state.fuelAmountMb(), state.fuelCapacityMb()
+                state.fuelAmountMb(), state.fuelCapacityMb(),
+                channel
         ));
     }
 
@@ -615,32 +728,6 @@ public class ModPackets {
 
     public static void sendUnlinkKeyboard(BlockPos keyboardPos) {
         PacketDistributor.sendToServer(new UnlinkKeyboardPacket(keyboardPos));
-    }
-
-    private static void handleOpenThrusterControl(OpenThrusterControlPacket packet, IPayloadContext ctx) {
-        ctx.enqueueWork(() -> {
-            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
-            if (mc.screen instanceof dev.bennethogan.bennetsmod.client.screen.ThrusterControlScreen existing
-                    && existing.getKeyboardPos().equals(packet.keyboardPos())) {
-                existing.updateState(
-                        packet.peripheralType(),
-                        packet.targetVectorX(), packet.targetVectorY(),
-                        packet.currentVectorX(), packet.currentVectorY(),
-                        packet.thrust(), packet.thrustConfig(), packet.configMax(),
-                        packet.currentThrustPn(), packet.displayedThrustPn(),
-                        packet.airflowMs(), packet.obstruction(),
-                        packet.fuelAmountMb(), packet.fuelCapacityMb());
-            } else {
-                mc.setScreen(new dev.bennethogan.bennetsmod.client.screen.ThrusterControlScreen(
-                        packet.keyboardPos(), packet.peripheralType(),
-                        packet.targetVectorX(), packet.targetVectorY(),
-                        packet.currentVectorX(), packet.currentVectorY(),
-                        packet.thrust(), packet.thrustConfig(), packet.configMax(),
-                        packet.currentThrustPn(), packet.displayedThrustPn(),
-                        packet.airflowMs(), packet.obstruction(),
-                        packet.fuelAmountMb(), packet.fuelCapacityMb()));
-            }
-        });
     }
 
     private static void handleSetThrusterValue(SetThrusterValuePacket packet, IPayloadContext ctx) {
@@ -661,7 +748,7 @@ public class ModPackets {
             PeripheralHelper.ThrusterState state =
                     PeripheralHelper.scanThruster(sp.serverLevel(), targets.get(0));
             if (state != null) {
-                sendOpenThrusterControl(sp, packet.keyboardPos(), state);
+                sendOpenThrusterControl(sp, packet.keyboardPos(), state, keyboard.getActiveChannel());
             }
         });
     }
@@ -684,7 +771,7 @@ public class ModPackets {
             PeripheralHelper.ThrusterState state =
                     PeripheralHelper.scanThruster(sp.serverLevel(), targets.get(0));
             if (state != null) {
-                sendOpenThrusterControl(sp, packet.keyboardPos(), state);
+                sendOpenThrusterControl(sp, packet.keyboardPos(), state, keyboard.getActiveChannel());
             }
         });
     }
@@ -694,21 +781,6 @@ public class ModPackets {
     }
 
     // ── Sequencer handlers ────────────────────────────────────────────────────
-
-    private static void handleOpenSequencer(OpenSequencerPacket packet, IPayloadContext ctx) {
-        ctx.enqueueWork(() -> {
-            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
-            if (mc.screen instanceof dev.bennethogan.bennetsmod.client.screen.SequencerScreen existing
-                    && existing.getKeyboardPos().equals(packet.keyboardPos())) {
-                existing.updateState(packet.steps(), packet.running(), packet.currentStep(),
-                        packet.availableGetterNames(), packet.availableSetters());
-            } else {
-                mc.setScreen(new dev.bennethogan.bennetsmod.client.screen.SequencerScreen(
-                        packet.keyboardPos(), packet.steps(), packet.running(), packet.currentStep(),
-                        packet.peripheralType(), packet.availableGetterNames(), packet.availableSetters()));
-            }
-        });
-    }
 
     private static void handleSaveAndRunSequencer(SaveAndRunSequencerPacket packet, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
@@ -747,8 +819,6 @@ public class ModPackets {
         List<String> getterNames = List.of();
         List<String[]> setters   = List.of();
         if (primary != null && !keyboard.isLinkedAsComputer()) {
-            // Skip scan for CC computers — their methods (getID, isOn…) aren't useful
-            // in the sequencer; TYPE_TEXT steps handle all CC computer interaction.
             PeripheralHelper.ScanResult result = PeripheralHelper.scanAndCall(
                     player.serverLevel(), primary, "", "");
             if (result != null) {

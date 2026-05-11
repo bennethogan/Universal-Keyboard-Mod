@@ -75,6 +75,9 @@ public class SequencerStep {
     // DELAY
     public String delaySecondsStr = "1.0";
 
+    // Channel (1-8) used by peripheral steps (SET_VALUE, TYPE_TEXT, IF, CONDITION)
+    public int channel = 1;
+
     // ── Construction ──────────────────────────────────────────────────────────
 
     public SequencerStep(Type type) { this.type = type; }
@@ -103,6 +106,7 @@ public class SequencerStep {
         tag.putString("ifValueStr",            ifValueStr);
         tag.putInt("ifSkipCount",              ifSkipCount);
         tag.putString("delaySecondsStr",       delaySecondsStr);
+        tag.putInt("channel",                  channel);
         return tag;
     }
 
@@ -129,6 +133,7 @@ public class SequencerStep {
         s.ifValueStr            = def(tag.getString("ifValueStr"),              "0");
         s.ifSkipCount           = tag.contains("ifSkipCount") ? tag.getInt("ifSkipCount") : 1;
         s.delaySecondsStr       = def(tag.getString("delaySecondsStr"),        "1.0");
+        s.channel               = tag.contains("channel") ? Math.max(1, Math.min(8, tag.getInt("channel"))) : 1;
         return s;
     }
 
@@ -151,6 +156,7 @@ public class SequencerStep {
         buf.writeUtf(ifValueStr);
         buf.writeByte(Math.max(1, Math.min(99, ifSkipCount)));
         buf.writeUtf(delaySecondsStr);
+        buf.writeByte(Math.max(1, Math.min(8, channel)));
     }
 
     public static SequencerStep decode(FriendlyByteBuf buf) {
@@ -176,6 +182,7 @@ public class SequencerStep {
         s.ifValueStr            = buf.readUtf();
         s.ifSkipCount           = buf.readByte() & 0xFF;
         s.delaySecondsStr       = buf.readUtf();
+        s.channel               = Math.max(1, Math.min(8, buf.readByte() & 0xFF));
         return s;
     }
 

@@ -33,7 +33,7 @@ public class SequencerScreen extends Screen {
 
     // ── Layout constants ──────────────────────────────────────────────────────
     private static final int PAD      = 8;
-    private static final int PANEL_W  = 320;
+    private static final int PANEL_W  = 340;
     private static final int ROW_H    = 20;
     private static final int ROW_GAP  = 2;
     private static final int VISIBLE  = 6;
@@ -42,9 +42,10 @@ public class SequencerScreen extends Screen {
 
     // Column X offsets inside the panel content area (from panelX + PAD)
     private static final int COL_NUM    = 0;   // width 16 (drawn as text)
-    private static final int COL_TYPE   = 18;  // width 66
-    private static final int COL_CTX    = 88;  // width 204 (= 18+66+4)
-    private static final int COL_DEL    = 296; // width 12 (= 88+204+4)
+    private static final int COL_CH     = 18;  // width 16 (channel button)
+    private static final int COL_TYPE   = 38;  // width 66 (= 18+16+4)
+    private static final int COL_CTX    = 108; // width 204 (= 38+66+4)
+    private static final int COL_DEL    = 316; // width 12 (= 108+204+4)
 
     // Context sub-columns
     private static final int CTX_METHOD = 0;   // width 104
@@ -303,6 +304,7 @@ public class SequencerScreen extends Screen {
         final int rowIdx;
 
         // Always-present
+        Button channelBtn;
         Button typeBtn;
         Button deleteBtn;
 
@@ -336,6 +338,13 @@ public class SequencerScreen extends Screen {
             this.rowIdx = rowIdx;
             int rowY = rowAreaY + rowIdx * (ROW_H + ROW_GAP);
             int cx   = panelX + PAD;
+
+            // Channel button (cycles 1-8 for peripheral steps, inactive for others)
+            channelBtn = Button.builder(Component.literal("-"), b -> cycleChannel())
+                    .pos(cx + COL_CH, rowY + 1)
+                    .size(16, BTN_H)
+                    .build();
+            addRenderableWidget(channelBtn);
 
             // Type cycling button
             typeBtn = Button.builder(Component.literal(""), b -> cycleType())
@@ -494,6 +503,19 @@ public class SequencerScreen extends Screen {
 
         // ── Cycling helpers ─────────────────────────────────────────────────
 
+        private void cycleChannel() {
+            int si = scrollOffset + rowIdx;
+            if (si >= steps.size()) return;
+            SequencerStep step = steps.get(si);
+            if (!stepUsesChannel(step.type)) return;
+            step.channel = (step.channel % 8) + 1;
+            channelBtn.setMessage(Component.literal(String.valueOf(step.channel)));
+        }
+
+        private boolean stepUsesChannel(Type t) {
+            return t == Type.SET_VALUE || t == Type.TYPE_TEXT || t == Type.IF || t == Type.CONDITION;
+        }
+
         private void cycleType() {
             int si = scrollOffset + rowIdx;
             if (si >= steps.size()) return;
@@ -593,6 +615,7 @@ public class SequencerScreen extends Screen {
             int si = scrollOffset + rowIdx;
             boolean hasStep = si < steps.size();
 
+            channelBtn.visible   = hasStep;
             typeBtn.visible      = hasStep;
             deleteBtn.visible    = hasStep;
             methodBtn.visible     = false;
@@ -614,6 +637,9 @@ public class SequencerScreen extends Screen {
 
             SequencerStep step = steps.get(si);
             typeBtn.setMessage(Component.literal(step.type.label));
+            boolean usesChannel = stepUsesChannel(step.type);
+            channelBtn.active = usesChannel;
+            channelBtn.setMessage(Component.literal(usesChannel ? String.valueOf(step.channel) : "-"));
 
             refreshing = true;
             switch (step.type) {

@@ -19,6 +19,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -27,14 +28,18 @@ import java.util.Queue;
 
 public class LinkedKeyboardBlockEntity extends BlockEntity {
 
-    // All linked targets — must all be the same BlockEntityType (mesh constraint).
-    private final List<BlockPos> linkedTargetPositions = new ArrayList<>();
+    public static final int MAX_CHANNELS = 8;
+
+    // Per-channel mesh targets: key = channel number (1–8), value = list of positions
+    private final Map<Integer, List<BlockPos>> channelTargets = new HashMap<>();
+    // Which channel is currently active (1–8)
+    private int activeChannel = 1;
 
     private String  autoTypeScript  = "";
     private boolean wasPowered      = false;
     private int     scriptLineIndex = 0;
 
-    private @Nullable Object peripheral = null; // KeyboardPeripheral, typed as Object so we load without CC
+    private @Nullable Object peripheral = null;
     private final Queue<Character> typeQueue = new LinkedList<>();
     private int typeTimer = 0;
     private static final int TICKS_PER_CHAR = 2;
@@ -46,9 +51,9 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     private final List<SequencerStep> sequencerSteps    = new ArrayList<>();
     private boolean sequencerRunning     = false;
     private int     sequencerCurrentStep = 0;
-    private int     sequencerDelayTicker = 0; // ticks remaining for current DELAY step
+    private int     sequencerDelayTicker = 0;
 
-    // Redstone outputs written by SET_REDSTONE steps — indexed by Direction.ordinal()
+    // Redstone outputs — indexed by Direction.ordinal()
     private final int[] redstoneOutputs = new int[Direction.values().length];
 
     // Cached peripheral getter values for Create display source
@@ -61,55 +66,114 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         super(ModBlockEntities.LINKED_KEYBOARD.get(), pos, state);
     }
 
-    // ----- linking / mesh -----
+    // ----- Channel helpers -----
 
-    public boolean isLinked()                              { return !linkedTargetPositions.isEmpty(); }
-    public List<BlockPos> getLinkedTargetPositions()       { return Collections.unmodifiableList(linkedTargetPositions); }
-
-    /** Returns the primary (first) linked target, used for mode detection and peripheral scan. */
-    public @Nullable BlockPos getLinkedTargetPos() {
-        return linkedTargetPositions.isEmpty() ? null : linkedTargetPositions.get(0);
+    private List<BlockPos> channelList(int ch) {
+        return channelTargets.computeIfAbsent(ch, k -> new ArrayList<>());
     }
 
-    /** Replace the whole mesh with the given list (called when keyboard item is placed). */
-    public void setLinkedTargets(List<BlockPos> positions) {
-        linkedTargetPositions.clear();
-        for (BlockPos p : positions) linkedTargetPositions.add(p.immutable());
+    public int getActiveChannel() { return activeChannel; }
+
+    public void setActiveChannel(int ch) {
+        activeChannel = Math.max(1, Math.min(MAX_CHANNELS, ch));
         setChanged();
-        UniversalKeyboardMod.LOGGER.info("mesh set: {} target(s)", linkedTargetPositions.size());
+    }
+
+    public void cycleActiveChannel() {
+        setActiveChannel((activeChannel % MAX_CHANNELS) + 1);
+    }
+
+    // ----- Linking / mesh -----
+
+    public boolean isLinked() {
+        return channelTargets.values().stream().anyMatch(l -> !l.isEmpty());
+    }
+
+    /** Returns targets for the active channel. */
+    public List<BlockPos> getLinkedTargetPositions() {
+        return Collections.unmodifiableList(channelList(activeChannel));
+    }
+
+    /** Returns targets for a specific channel. */
+    public List<BlockPos> getLinkedTargetPositions(int channel) {
+        return Collections.unmodifiableList(channelList(channel));
+    }
+
+    /** Returns the full channel map (read-only view). */
+    public Map<Integer, List<BlockPos>> getAllChannelTargets() {
+        return Collections.unmodifiableMap(channelTargets);
+    }
+
+    /** Primary linked target: first of the active channel, or first of any non-empty channel. */
+    public @Nullable BlockPos getLinkedTargetPos() {
+        List<BlockPos> active = channelList(activeChannel);
+        if (!active.isEmpty()) return active.get(0);
+        for (int ch = 1; ch <= MAX_CHANNELS; ch++) {
+            List<BlockPos> list = channelTargets.get(ch);
+            if (list != null && !list.isEmpty()) return list.get(0);
+        }
+        return null;
+    }
+
+    /** Replace the active channel's mesh (called when the keyboard item is placed). */
+    public void setLinkedTargets(List<BlockPos> positions) {
+        List<BlockPos> list = channelList(activeChannel);
+        list.clear();
+        for (BlockPos p : positions) list.add(p.immutable());
+        setChanged();
+        UniversalKeyboardMod.LOGGER.info("mesh set on channel {}: {} target(s)", activeChannel, list.size());
+    }
+
+    /** Replace all channels at once (called on keyboard item placement). */
+    public void setAllChannelTargets(Map<Integer, List<BlockPos>> allTargets) {
+        channelTargets.clear();
+        for (Map.Entry<Integer, List<BlockPos>> entry : allTargets.entrySet()) {
+            if (entry.getKey() < 1 || entry.getKey() > MAX_CHANNELS) continue;
+            List<BlockPos> copy = new ArrayList<>();
+            for (BlockPos p : entry.getValue()) copy.add(p.immutable());
+            if (!copy.isEmpty()) channelTargets.put(entry.getKey(), copy);
+        }
+        setChanged();
+        int total = channelTargets.values().stream().mapToInt(List::size).sum();
+        UniversalKeyboardMod.LOGGER.info("all channels set: {} channels, {} total targets",
+                channelTargets.size(), total);
     }
 
     public void unlink() {
         if (level != null && !level.isClientSide) {
-            for (BlockPos pos : linkedTargetPositions)
-                PeripheralHelper.releaseThrusterControl(level, pos);
+            for (List<BlockPos> list : channelTargets.values())
+                for (BlockPos pos : list)
+                    PeripheralHelper.releaseThrusterControl(level, pos);
         }
-        linkedTargetPositions.clear();
-        stopSequencer(); // clears redstone outputs too
+        channelTargets.clear();
+        stopSequencer();
         setChanged();
     }
 
     public boolean isTargetInRange() {
-        if (linkedTargetPositions.isEmpty() || level == null) return false;
+        BlockPos primary = getLinkedTargetPos();
+        if (primary == null || level == null) return false;
         double range = ModConfig.COMMON.keyboardRange.get();
-        return worldPosition.distSqr(linkedTargetPositions.get(0)) <= range * range;
+        return worldPosition.distSqr(primary) <= range * range;
     }
 
     public boolean isLinkedAsComputer() {
-        if (linkedTargetPositions.isEmpty() || level == null) return false;
-        BlockEntity be = level.getBlockEntity(linkedTargetPositions.get(0));
+        BlockPos primary = getLinkedTargetPos();
+        if (primary == null || level == null) return false;
+        BlockEntity be = level.getBlockEntity(primary);
         return be != null && KeyboardMode.isCCComputer(be);
     }
 
     public boolean isLinkedAsCreate() {
-        if (linkedTargetPositions.isEmpty() || level == null) return false;
-        BlockEntity be = level.getBlockEntity(linkedTargetPositions.get(0));
+        BlockPos primary = getLinkedTargetPos();
+        if (primary == null || level == null) return false;
+        BlockEntity be = level.getBlockEntity(primary);
         return be != null && CreateValueHelper.hasScrollValue(be);
     }
 
     public boolean isComputerInRange() { return isLinkedAsComputer() && isTargetInRange(); }
 
-    // ----- CC keyboard event forwarding — broadcasts to all mesh targets in range -----
+    // ----- CC keyboard event forwarding — active channel targets in range -----
 
     public void sendKeyEvent(int keyCode, boolean held)  { queueEventOnLinkedComputer("key", keyCode, held); }
     public void sendCharEvent(char ch)                    { queueEventOnLinkedComputer("char", String.valueOf(ch)); }
@@ -141,14 +205,14 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         if (!input.isEmpty()) applyCreateValueScript(input);
     }
 
-    /** Applies a Create scroll-value script to every mesh target in range. */
+    /** Applies a Create scroll-value script to every active-channel target in range. */
     public void applyCreateValueScript(String script) {
-        if (linkedTargetPositions.isEmpty() || level == null || level.isClientSide) return;
+        List<BlockPos> targets = getLinkedTargetPositions();
+        if (targets.isEmpty() || level == null || level.isClientSide) return;
 
         String trimmed = script.trim();
         if (trimmed.isEmpty()) return;
 
-        // Parse once, apply to all in-range Create targets
         boolean isAdd = trimmed.startsWith("+");
         boolean isSub = trimmed.startsWith("--");
         int parsedValue;
@@ -162,7 +226,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         double range = ModConfig.COMMON.keyboardRange.get();
         double rangeSq = range * range;
 
-        for (BlockPos targetPos : linkedTargetPositions) {
+        for (BlockPos targetPos : targets) {
             if (worldPosition.distSqr(targetPos) > rangeSq) continue;
             BlockEntity target = level.getBlockEntity(targetPos);
             if (target == null || !CreateValueHelper.hasScrollValue(target)) continue;
@@ -290,7 +354,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             }
             case IF -> {
                 if (evaluateIfCondition(step))
-                    sequencerCurrentStep += step.ifSkipCount; // extra skip before the normal +1
+                    sequencerCurrentStep += step.ifSkipCount;
                 advanceSequencer();
             }
             case CONDITION -> {
@@ -329,7 +393,6 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     private boolean evaluateIfCondition(SequencerStep step) {
         if (level == null || step.ifGetter.isEmpty()) return false;
         double actual;
-        // Check if getter refers to a redstone input side
         int rsIdx = -1;
         for (int i = 0; i < SequencerStep.RS_INPUT_GETTER_NAMES.length; i++) {
             if (SequencerStep.RS_INPUT_GETTER_NAMES[i].equals(step.ifGetter)) { rsIdx = i; break; }
@@ -338,9 +401,9 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             Direction dir = SequencerStep.RS_INPUT_GETTER_DIRS[rsIdx];
             actual = level.getSignal(worldPosition.relative(dir), dir);
         } else {
-            BlockPos primary = getLinkedTargetPos();
-            if (primary == null) return false;
-            Object p = PeripheralHelper.getPeripheral(level, primary);
+            List<BlockPos> ch = getLinkedTargetPositions(step.channel);
+            if (ch.isEmpty()) return false;
+            Object p = PeripheralHelper.getPeripheral(level, ch.get(0));
             if (p == null) return false;
             actual = PeripheralHelper.getDoubleGetter(p, step.ifGetter);
         }
@@ -363,12 +426,11 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         double actual;
         Direction dir = step.conditionSource.direction;
         if (dir != null) {
-            // Ask the neighboring block what signal it emits toward us (same convention as Level.hasNeighborSignal)
             actual = level.getSignal(worldPosition.relative(dir), dir);
         } else {
-            BlockPos primary = getLinkedTargetPos();
-            if (primary == null) return false;
-            Object p = PeripheralHelper.getPeripheral(level, primary);
+            List<BlockPos> ch = getLinkedTargetPositions(step.channel);
+            if (ch.isEmpty()) return false;
+            Object p = PeripheralHelper.getPeripheral(level, ch.get(0));
             if (p == null) return false;
             actual = PeripheralHelper.getDoubleGetter(p, step.conditionGetter);
         }
@@ -384,13 +446,14 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     }
 
     private void applySequencerSetValue(SequencerStep step) {
-        if (linkedTargetPositions.isEmpty() || level == null || step.setMethod.isEmpty()) return;
+        List<BlockPos> targets = getLinkedTargetPositions(step.channel);
+        if (targets.isEmpty() || level == null || step.setMethod.isEmpty()) return;
         double value;
         try   { value = Double.parseDouble(step.setValueStr); }
         catch (NumberFormatException e) { return; }
         double range   = ModConfig.COMMON.keyboardRange.get();
         double rangeSq = range * range;
-        for (BlockPos targetPos : linkedTargetPositions) {
+        for (BlockPos targetPos : targets) {
             if (worldPosition.distSqr(targetPos) > rangeSq) continue;
             Object p = PeripheralHelper.getPeripheral(level, targetPos);
             if (p != null) PeripheralHelper.callMethodWithDouble(p, step.setMethod, value);
@@ -415,18 +478,16 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     public String getCachedPeripheralType()            { return cachedPeripheralType; }
 
     void refreshPeripheralCache() {
-        if (linkedTargetPositions.isEmpty() || level == null || level.isClientSide) return;
-        // CC computers expose zero-arg @LuaFunction methods like turnOn() — calling them
-        // via scanMethods() would power-cycle the computer every refresh tick.
+        BlockPos primary = getLinkedTargetPos();
+        if (primary == null || level == null || level.isClientSide) return;
         if (isLinkedAsComputer()) {
             cachedGetterValues.clear();
             cachedPeripheralType = "";
             return;
         }
-        BlockPos primaryPos = linkedTargetPositions.get(0);
         try {
             var result = dev.bennethogan.bennetsmod.compat.PeripheralHelper.scanAndCall(
-                    level, primaryPos, "", "");
+                    level, primary, "", "");
             if (result == null) {
                 cachedGetterValues.clear();
                 cachedPeripheralType = "";
@@ -441,7 +502,6 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         }
     }
 
-    // KeyboardPeripheral instance — for CC code calling peripheral.wrap on this block
     public @Nullable Object getPeripheral() {
         if (peripheral == null) {
             try {
@@ -453,7 +513,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         return peripheral;
     }
 
-    // ----- ticking -----
+    // ----- Ticking -----
 
     public static void serverTick(Level level, BlockPos pos, BlockState state,
                                   LinkedKeyboardBlockEntity be) {
@@ -479,10 +539,11 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
         if (be.sequencerRunning) be.tickSequencer();
 
-        // Remove any mesh targets whose block entity was broken (only when chunk is loaded)
-        if (level.getGameTime() % 100 == 0 && !be.linkedTargetPositions.isEmpty()) {
-            boolean changed = be.linkedTargetPositions.removeIf(
-                    t -> level.isLoaded(t) && level.getBlockEntity(t) == null);
+        // Remove broken targets across all channels (only when loaded)
+        if (level.getGameTime() % 100 == 0 && be.isLinked()) {
+            boolean changed = false;
+            for (List<BlockPos> list : be.channelTargets.values())
+                changed |= list.removeIf(t -> level.isLoaded(t) && level.getBlockEntity(t) == null);
             if (changed) be.setChanged();
         }
     }
@@ -491,13 +552,14 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         unlink();
     }
 
-    // ----- CC computer interaction — broadcasts to all mesh targets in range -----
+    // ----- CC computer interaction — broadcasts to active-channel targets in range -----
 
     void queueEventOnLinkedComputer(String event, Object... args) {
-        if (linkedTargetPositions.isEmpty() || level == null || level.isClientSide) return;
+        List<BlockPos> targets = getLinkedTargetPositions();
+        if (targets.isEmpty() || level == null || level.isClientSide) return;
         double range = ModConfig.COMMON.keyboardRange.get();
         double rangeSq = range * range;
-        for (BlockPos targetPos : linkedTargetPositions) {
+        for (BlockPos targetPos : targets) {
             if (worldPosition.distSqr(targetPos) > rangeSq) continue;
             BlockEntity target = level.getBlockEntity(targetPos);
             if (target == null || !KeyboardMode.isCCComputer(target)) continue;
@@ -513,8 +575,9 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     }
 
     public void turnOnLinkedComputer() {
-        if (linkedTargetPositions.isEmpty() || level == null || level.isClientSide) return;
-        for (BlockPos targetPos : linkedTargetPositions) {
+        List<BlockPos> targets = getLinkedTargetPositions();
+        if (targets.isEmpty() || level == null || level.isClientSide) return;
+        for (BlockPos targetPos : targets) {
             BlockEntity target = level.getBlockEntity(targetPos);
             if (target == null || !KeyboardMode.isCCComputer(target)) continue;
             try {
@@ -531,17 +594,21 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     @Override
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
-        if (!linkedTargetPositions.isEmpty()) {
-            ListTag list = new ListTag();
-            for (BlockPos p : linkedTargetPositions) {
-                CompoundTag entry = new CompoundTag();
-                entry.putInt("x", p.getX());
-                entry.putInt("y", p.getY());
-                entry.putInt("z", p.getZ());
-                list.add(entry);
+
+        tag.putInt("active_channel", activeChannel);
+
+        for (Map.Entry<Integer, List<BlockPos>> entry : channelTargets.entrySet()) {
+            List<BlockPos> list = entry.getValue();
+            if (list.isEmpty()) continue;
+            ListTag listTag = new ListTag();
+            for (BlockPos p : list) {
+                CompoundTag e = new CompoundTag();
+                e.putInt("x", p.getX()); e.putInt("y", p.getY()); e.putInt("z", p.getZ());
+                listTag.add(e);
             }
-            tag.put("mesh_targets", list);
+            tag.put("ch" + entry.getKey() + "_targets", listTag);
         }
+
         tag.putBoolean("was_powered", wasPowered);
         tag.putString("autotype_script", autoTypeScript);
         tag.putInt("script_line_index", scriptLineIndex);
@@ -558,22 +625,44 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     @Override
     public void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
-        linkedTargetPositions.clear();
+        channelTargets.clear();
 
-        if (tag.contains("mesh_targets", Tag.TAG_LIST)) {
-            ListTag list = tag.getList("mesh_targets", Tag.TAG_COMPOUND);
-            for (int i = 0; i < list.size(); i++) {
-                CompoundTag e = list.getCompound(i);
-                linkedTargetPositions.add(new BlockPos(e.getInt("x"), e.getInt("y"), e.getInt("z")));
+        activeChannel = tag.contains("active_channel") ? tag.getInt("active_channel") : 1;
+        activeChannel = Math.max(1, Math.min(MAX_CHANNELS, activeChannel));
+
+        // Per-channel targets (new format)
+        for (int ch = 1; ch <= MAX_CHANNELS; ch++) {
+            String key = "ch" + ch + "_targets";
+            if (tag.contains(key, Tag.TAG_LIST)) {
+                ListTag listTag = tag.getList(key, Tag.TAG_COMPOUND);
+                List<BlockPos> list = new ArrayList<>();
+                for (int i = 0; i < listTag.size(); i++) {
+                    CompoundTag e = listTag.getCompound(i);
+                    list.add(new BlockPos(e.getInt("x"), e.getInt("y"), e.getInt("z")));
+                }
+                if (!list.isEmpty()) channelTargets.put(ch, list);
             }
-        } else if (tag.contains("target_x")) {
-            linkedTargetPositions.add(new BlockPos(tag.getInt("target_x"), tag.getInt("target_y"), tag.getInt("target_z")));
-        } else if (tag.contains("linked_x")) {
-            linkedTargetPositions.add(new BlockPos(tag.getInt("linked_x"), tag.getInt("linked_y"), tag.getInt("linked_z")));
-        } else if (tag.contains("create_x")) {
-            linkedTargetPositions.add(new BlockPos(tag.getInt("create_x"), tag.getInt("create_y"), tag.getInt("create_z")));
-        } else if (tag.contains("periph_x")) {
-            linkedTargetPositions.add(new BlockPos(tag.getInt("periph_x"), tag.getInt("periph_y"), tag.getInt("periph_z")));
+        }
+
+        // Legacy: old single-channel mesh_targets → channel 1
+        if (channelTargets.isEmpty()) {
+            List<BlockPos> legacy = new ArrayList<>();
+            if (tag.contains("mesh_targets", Tag.TAG_LIST)) {
+                ListTag list = tag.getList("mesh_targets", Tag.TAG_COMPOUND);
+                for (int i = 0; i < list.size(); i++) {
+                    CompoundTag e = list.getCompound(i);
+                    legacy.add(new BlockPos(e.getInt("x"), e.getInt("y"), e.getInt("z")));
+                }
+            } else if (tag.contains("target_x")) {
+                legacy.add(new BlockPos(tag.getInt("target_x"), tag.getInt("target_y"), tag.getInt("target_z")));
+            } else if (tag.contains("linked_x")) {
+                legacy.add(new BlockPos(tag.getInt("linked_x"), tag.getInt("linked_y"), tag.getInt("linked_z")));
+            } else if (tag.contains("create_x")) {
+                legacy.add(new BlockPos(tag.getInt("create_x"), tag.getInt("create_y"), tag.getInt("create_z")));
+            } else if (tag.contains("periph_x")) {
+                legacy.add(new BlockPos(tag.getInt("periph_x"), tag.getInt("periph_y"), tag.getInt("periph_z")));
+            }
+            if (!legacy.isEmpty()) channelTargets.put(1, legacy);
         }
 
         wasPowered      = tag.getBoolean("was_powered");

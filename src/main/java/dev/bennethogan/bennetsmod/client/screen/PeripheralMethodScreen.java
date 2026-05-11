@@ -1,5 +1,6 @@
 package dev.bennethogan.bennetsmod.client.screen;
 
+import dev.bennethogan.bennetsmod.compat.KeyboardMode;
 import dev.bennethogan.bennetsmod.network.ModPackets;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -25,6 +26,7 @@ public class PeripheralMethodScreen extends Screen {
     private final String         peripheralType;
     private final List<String[]> getters; // [name, value]
     private final List<String[]> setters; // [name, argType]
+    private int                  currentChannel;
 
     private int panelX, panelY, panelH;
     private int selectedIdx = -1;
@@ -47,12 +49,13 @@ public class PeripheralMethodScreen extends Screen {
     private EditBox inputBox;
 
     public PeripheralMethodScreen(BlockPos keyboardPos, String peripheralType,
-                                   List<String[]> getters, List<String[]> setters) {
+                                   List<String[]> getters, List<String[]> setters, int channel) {
         super(Component.empty());
         this.keyboardPos    = keyboardPos;
         this.peripheralType = peripheralType;
         this.getters        = getters;
         this.setters        = setters;
+        this.currentChannel = channel;
     }
 
     @Override
@@ -118,14 +121,22 @@ public class PeripheralMethodScreen extends Screen {
                 .build());
         y += BTN_H + 4;
 
-        int halfW = PANEL_W / 2 - PAD;
-        addRenderableWidget(Button.builder(Component.literal("Refresh"), b -> requestRefresh())
+        // Bottom row: [Channel N] [Refresh] [Close]
+        int rowW   = PANEL_W - PAD * 2;
+        int thirdW = (rowW - 8) / 3;
+        addRenderableWidget(Button.builder(
+                Component.literal("Channel " + currentChannel),
+                b -> ModPackets.sendCycleChannelAndReopen(keyboardPos, KeyboardMode.CC_PERIPHERAL))
                 .pos(panelX + PAD, y)
-                .size(halfW, BTN_H)
+                .size(thirdW, BTN_H)
+                .build());
+        addRenderableWidget(Button.builder(Component.literal("Refresh"), b -> requestRefresh())
+                .pos(panelX + PAD + thirdW + 4, y)
+                .size(thirdW, BTN_H)
                 .build());
         addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose())
-                .pos(panelX + PAD + halfW + 4, y)
-                .size(halfW - 4, BTN_H)
+                .pos(panelX + PAD + (thirdW + 4) * 2, y)
+                .size(rowW - (thirdW + 4) * 2, BTN_H)
                 .build());
 
         refreshSetterButtons();

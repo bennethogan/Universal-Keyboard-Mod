@@ -1,5 +1,6 @@
 package dev.bennethogan.bennetsmod.client.screen;
 
+import dev.bennethogan.bennetsmod.compat.KeyboardMode;
 import dev.bennethogan.bennetsmod.network.ModPackets;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -51,6 +52,7 @@ public class ThrusterControlScreen extends Screen {
     private InstrumentGridWidget grid;
     private ThrottleSlider       thrustSlider;
     private ThrottleSlider       configSlider;  // creative only
+    private int                  currentChannel;
 
     // ── Constructor ───────────────────────────────────────────────────────────
     public ThrusterControlScreen(BlockPos keyboardPos, String peripheralType,
@@ -58,7 +60,8 @@ public class ThrusterControlScreen extends Screen {
             int thrust, int thrustConfig, double configMax,
             double currentThrustPn, double displayedThrustPn,
             double airflowMs, int obstruction,
-            int fuelAmountMb, int fuelCapacityMb) {
+            int fuelAmountMb, int fuelCapacityMb,
+            int channel) {
         super(Component.empty());
         this.keyboardPos       = keyboardPos;
         this.peripheralType    = peripheralType;
@@ -75,9 +78,11 @@ public class ThrusterControlScreen extends Screen {
         this.obstruction       = obstruction;
         this.fuelAmountMb      = fuelAmountMb;
         this.fuelCapacityMb    = fuelCapacityMb;
+        this.currentChannel    = channel;
     }
 
-    public BlockPos getKeyboardPos() { return keyboardPos; }
+    public BlockPos getKeyboardPos()  { return keyboardPos; }
+    public int getCurrentChannel()    { return currentChannel; }
 
     // ── updateState — only updates telemetry, never slider positions ──────────
     public void updateState(String peripheralType,
@@ -85,15 +90,14 @@ public class ThrusterControlScreen extends Screen {
             int thrust, int thrustConfig, double configMax,
             double currentThrustPn, double displayedThrustPn,
             double airflowMs, int obstruction,
-            int fuelAmountMb, int fuelCapacityMb) {
+            int fuelAmountMb, int fuelCapacityMb,
+            int channel) {
         this.peripheralType    = peripheralType;
         this.targetVectorX     = targetVX;
         this.targetVectorY     = targetVY;
         this.currentVectorX    = currentVX;
         this.currentVectorY    = currentVY;
-        // Update display fields so the phosphor readout stays live.
-        // Sliders are intentionally NOT synced here — the peripheral getter can lag behind
-        // a just-set value and would flicker the slider back to the stale position.
+        // Sliders intentionally NOT synced — peripheral getter lags behind and would flicker.
         this.thrust            = thrust;
         this.thrustConfig      = thrustConfig;
         this.configMax         = configMax;
@@ -103,7 +107,7 @@ public class ThrusterControlScreen extends Screen {
         this.obstruction       = obstruction;
         this.fuelAmountMb      = fuelAmountMb;
         this.fuelCapacityMb    = fuelCapacityMb;
-        // Update grid crosshair position (already guarded against active drag inside widget)
+        this.currentChannel    = channel;
         if (grid != null) grid.setTarget(targetVX, targetVY);
     }
 
@@ -170,10 +174,20 @@ public class ThrusterControlScreen extends Screen {
             addRenderableWidget(grid);
         }
 
-        // Close button
+        // Bottom row: [Channel N] [Close]
+        int btnRowY   = panelY + panelH - PAD - BTN_H;
+        int btnRowW   = panelW - PAD * 2;
+        int channelBW = btnRowW / 2 - 2;
+        int closeBW   = btnRowW - channelBW - 4;
+        addRenderableWidget(Button.builder(
+                Component.literal("Channel " + currentChannel),
+                b -> ModPackets.sendCycleChannelAndReopen(keyboardPos, KeyboardMode.THRUSTER_CONTROL))
+                .pos(panelX + PAD, btnRowY)
+                .size(channelBW, BTN_H)
+                .build());
         addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose())
-                .pos(panelX + PAD, panelY + panelH - PAD - BTN_H)
-                .size(panelW - PAD * 2, BTN_H)
+                .pos(panelX + PAD + channelBW + 4, btnRowY)
+                .size(closeBW, BTN_H)
                 .build());
     }
 
