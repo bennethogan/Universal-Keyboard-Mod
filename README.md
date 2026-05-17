@@ -52,4 +52,4 @@ KNOWN BUGS -The creative vector thruster doesnt let me edit the ThrustPower. Thi
 Also there is a cooler recipe if you have Create downloaded, but Create is not required:
 <img width="1920" height="1123" alt="2026-05-09_20 07 39" src="https://github.com/user-attachments/assets/5d87b6bf-7f4a-4694-aa9c-6661a1ca42e4" />
 <img width="854" height="480" alt="2026-05-09_20 09 18" src="https://github.com/user-attachments/assets/c7805fea-ca2c-4101-a859-1334b9ca3a1d" />
-
+<img width="1920" height="1123" alt="2026-05-16_20 52 29" src="https://github.com/user-attachments/assets/2b9865ba-aa8c-45a2-8558-109682f20309" />
