@@ -120,9 +120,9 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
 
         BlockPos targetPos = be.getLinkedTargetPos();
         if (targetPos == null) {
-            player.displayClientMessage(Component.literal(
-                    "§c[Universal Keyboard] §fNot linked. Hold the keyboard item and right-click " +
-                    "the block you want to control first."), true);
+            // No linked device on this channel — show mode selection with only Sequencer available
+            int bits = 1 << KeyboardMode.PERIPHERAL_SEQUENCER.ordinal();
+            ModPackets.sendOpenModeSelection(sp, pos, "", bits);
             return InteractionResult.CONSUME;
         }
         if (!be.isTargetInRange()) {

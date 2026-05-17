@@ -14,4 +14,9 @@ public class ModItems {
             ITEMS.register("universal_keyboard", () ->
                     new LinkedKeyboardItem(ModBlocks.LINKED_KEYBOARD.get(),
                             new Item.Properties().stacksTo(1)));
+
+    public static final DeferredItem<LinkedKeyboardItem> TRANS_KEYBOARD =
+            ITEMS.register("trans_keyboard", () ->
+                    new LinkedKeyboardItem(ModBlocks.TRANS_KEYBOARD.get(),
+                            new Item.Properties().stacksTo(1)));
 }

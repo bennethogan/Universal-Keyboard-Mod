@@ -254,7 +254,22 @@ public class PeripheralHelper {
             if (peripheralMode == null) return;
 
             Method setMode = target.getClass().getMethod("setControlMode", modeClass);
+
+            // Read current power BEFORE switching mode. In NORMAL mode getPower() returns
+            // redstone-based power; after switching to PERIPHERAL it returns digitalInput (0).
+            // Preserve the level so the first peripheral call doesn't kill thrust — same as
+            // what CC's own attach() does: setDigitalInput(clamp(getPower(), 0, 1)).
+            float currentPower = 0f;
+            try {
+                Object r = target.getClass().getMethod("getPower").invoke(target);
+                if (r instanceof Number n) currentPower = Math.max(0f, Math.min(1f, n.floatValue()));
+            } catch (Exception ignored) {}
+
             setMode.invoke(target, peripheralMode);
+
+            try {
+                target.getClass().getMethod("setDigitalInput", float.class).invoke(target, currentPower);
+            } catch (Exception ignored) {}
         } catch (Exception e) {
             UniversalKeyboardMod.LOGGER.warn("ensureThrusterPeripheralMode failed: {}", e.getMessage());
         }
@@ -397,12 +412,22 @@ public class PeripheralHelper {
         double configMax;
         int thrustConfig;
         if (isCreativeVector) {
-            configMax   = getDoubleVal(p, "getMaxThrustOutputPn");
-            double disp = getDoubleVal(p, "getDisplayedThrustPN");
-            thrustConfig = configMax > 0 ? (int) Math.round(disp / configMax * 100) : 0;
+            configMax = getDoubleVal(p, "getMaxThrustOutputPn");
+            // peripheralThrustOutput field holds the exact override value — use it for accurate slider position.
+            double override = getBeFieldDouble(p, "peripheralThrustOutput");
+            thrustConfig = (override >= 0 && configMax > 0) ? (int) Math.round(override / configMax * 100) : 0;
         } else {
             configMax    = 100.0;
             thrustConfig = getIntVal(p, "getThrustConfig");
+        }
+
+        // creative_vector_thruster peripheral doesn't expose getCurrentThrustPN / getDisplayedThrustPN.
+        // Fall back to the block entity methods so the phosphor display shows real thrust data.
+        double currentThrustPn  = getDoubleVal(p, "getCurrentThrustPN");
+        double displayedThrustPn = getDoubleVal(p, "getDisplayedThrustPN");
+        if (isCreativeVector) {
+            if (currentThrustPn  == 0) currentThrustPn  = getBeMethodDouble(p, "getCurrentThrust");
+            if (displayedThrustPn == 0) displayedThrustPn = getBeMethodDouble(p, "getDisplayedThrustPnForTooltip");
         }
 
         return new ThrusterState(
@@ -414,13 +439,44 @@ public class PeripheralHelper {
                 thrust,
                 thrustConfig,
                 configMax,
-                getDoubleVal(p, "getCurrentThrustPN"),
-                getDoubleVal(p, "getDisplayedThrustPN"),
+                currentThrustPn,
+                displayedThrustPn,
                 getDoubleVal(p, "getAirflowMs"),
                 getIntVal(p, "getObstruction"),
                 getIntVal(p, "getFuelAmountMb"),
                 getIntVal(p, "getFuelCapacityMb")
         );
+    }
+
+    /** Read a double value from a method on the block entity embedded in the peripheral. */
+    private static double getBeMethodDouble(Object peripheral, String methodName) {
+        try {
+            Field beField = findField(peripheral.getClass(), "blockEntity");
+            if (beField == null) return 0;
+            beField.setAccessible(true);
+            Object be = beField.get(peripheral);
+            if (be == null) return 0;
+            Object r = be.getClass().getMethod(methodName).invoke(be);
+            if (r instanceof Number n) return n.doubleValue();
+        } catch (Exception ignored) {}
+        return 0;
+    }
+
+    /** Read a double from a named field on the block entity embedded in the peripheral. */
+    private static double getBeFieldDouble(Object peripheral, String fieldName) {
+        try {
+            Field beField = findField(peripheral.getClass(), "blockEntity");
+            if (beField == null) return -1;
+            beField.setAccessible(true);
+            Object be = beField.get(peripheral);
+            if (be == null) return -1;
+            Field f = findField(be.getClass(), fieldName);
+            if (f == null) return -1;
+            f.setAccessible(true);
+            Object v = f.get(be);
+            if (v instanceof Number n) return n.doubleValue();
+        } catch (Exception ignored) {}
+        return -1;
     }
 
     private static double getDoubleVal(Object p, String methodName) {

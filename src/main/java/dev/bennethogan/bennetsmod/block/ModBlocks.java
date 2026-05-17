@@ -18,4 +18,12 @@ public class ModBlocks {
                             .sound(SoundType.STONE)
                             .noOcclusion()
             ));
+
+    public static final DeferredBlock<LinkedKeyboardBlock> TRANS_KEYBOARD =
+            BLOCKS.register("trans_keyboard", () -> new LinkedKeyboardBlock(
+                    BlockBehaviour.Properties.of()
+                            .strength(1.0f)
+                            .sound(SoundType.STONE)
+                            .noOcclusion()
+            ));
 }

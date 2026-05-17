@@ -42,3 +42,10 @@ Universal Keyboard — remotely control Create value panels, CC computers, and p
     versionRange = "[0.5,)"
     ordering = "NONE"
     side = "BOTH"
+
+[[dependencies.${mod_id}]]
+    modId = "sable"
+    type = "optional"
+    versionRange = "[1,)"
+    ordering = "NONE"
+    side = "BOTH"

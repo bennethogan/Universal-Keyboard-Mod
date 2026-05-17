@@ -15,7 +15,8 @@ public class ModBlockEntities {
     public static final Supplier<BlockEntityType<LinkedKeyboardBlockEntity>> LINKED_KEYBOARD =
             BLOCK_ENTITIES.register("universal_keyboard", () ->
                     BlockEntityType.Builder.of(LinkedKeyboardBlockEntity::new,
-                            ModBlocks.LINKED_KEYBOARD.get()).build(null));
+                            ModBlocks.LINKED_KEYBOARD.get(),
+                            ModBlocks.TRANS_KEYBOARD.get()).build(null));
 
     public static void registerCapabilities(RegisterCapabilitiesEvent event) {
         try {

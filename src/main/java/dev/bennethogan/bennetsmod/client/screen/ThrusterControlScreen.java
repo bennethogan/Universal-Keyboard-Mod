@@ -19,14 +19,15 @@ import org.lwjgl.glfw.GLFW;
 public class ThrusterControlScreen extends Screen {
 
     // ── Constants ─────────────────────────────────────────────────────────────
-    private static final int PAD        = 8;
+    private static final int PAD        = 6;
     private static final int TITLE_H    = 12;
     private static final int READOUT_H  = 74;  // phosphor display height
     private static final int LABEL_H    = 12;  // slider-label row below readout
     private static final int SLIDER_W   = 24;  // vertical throttle slider width
     private static final int BTN_H      = 18;
-    private static final int INST_OUTER = 110; // instrument face widget outer size
+    private static final int INST_OUTER = 80;  // instrument face widget outer size
     private static final int INST_BEZEL = 8;   // metallic bezel thickness
+    private static final int TELEM_H    = 28;  // sublevel telemetry strip height
 
     // ── State (read-only telemetry — updated from server) ─────────────────────
     final  BlockPos keyboardPos;
@@ -43,9 +44,11 @@ public class ThrusterControlScreen extends Screen {
     private int    obstruction;
     private int    fuelAmountMb;
     private int    fuelCapacityMb;
+    private double[] sublevelSnapshot;
 
     // ── Layout ────────────────────────────────────────────────────────────────
     private int panelX, panelY, panelW, panelH;
+    private int tickCount = 0;
     private int readoutX, readoutY, readoutW;
 
     // ── Widgets ───────────────────────────────────────────────────────────────
@@ -61,7 +64,7 @@ public class ThrusterControlScreen extends Screen {
             double currentThrustPn, double displayedThrustPn,
             double airflowMs, int obstruction,
             int fuelAmountMb, int fuelCapacityMb,
-            int channel) {
+            int channel, double[] sublevelSnapshot) {
         super(Component.empty());
         this.keyboardPos       = keyboardPos;
         this.peripheralType    = peripheralType;
@@ -79,6 +82,7 @@ public class ThrusterControlScreen extends Screen {
         this.fuelAmountMb      = fuelAmountMb;
         this.fuelCapacityMb    = fuelCapacityMb;
         this.currentChannel    = channel;
+        this.sublevelSnapshot  = sublevelSnapshot != null ? sublevelSnapshot : new double[0];
     }
 
     public BlockPos getKeyboardPos()  { return keyboardPos; }
@@ -91,7 +95,7 @@ public class ThrusterControlScreen extends Screen {
             double currentThrustPn, double displayedThrustPn,
             double airflowMs, int obstruction,
             int fuelAmountMb, int fuelCapacityMb,
-            int channel) {
+            int channel, double[] sublevelSnapshot) {
         this.peripheralType    = peripheralType;
         this.targetVectorX     = targetVX;
         this.targetVectorY     = targetVY;
@@ -108,6 +112,7 @@ public class ThrusterControlScreen extends Screen {
         this.fuelAmountMb      = fuelAmountMb;
         this.fuelCapacityMb    = fuelCapacityMb;
         this.currentChannel    = channel;
+        this.sublevelSnapshot  = sublevelSnapshot != null ? sublevelSnapshot : new double[0];
         if (grid != null) grid.setTarget(targetVX, targetVY);
     }
 
@@ -128,7 +133,8 @@ public class ThrusterControlScreen extends Screen {
         // READOUT_H shared for all types; grid goes below for vector
 
         int contentH = READOUT_H + LABEL_H + (isVector ? PAD + INST_OUTER : 0);
-        panelH = PAD + TITLE_H + PAD + contentH + PAD + BTN_H + PAD;
+        boolean hasTelemetry = sublevelSnapshot != null && sublevelSnapshot.length >= 12;
+        panelH = PAD + TITLE_H + PAD + contentH + PAD + (hasTelemetry ? TELEM_H + PAD : 0) + BTN_H + PAD;
 
         panelX = (width  - panelW) / 2;
         panelY = (height - panelH) / 2;
@@ -148,14 +154,13 @@ public class ThrusterControlScreen extends Screen {
         addRenderableWidget(thrustSlider);
 
         // Config slider (creative thrusters)
-        // creative_vector_thruster uses setThrustOutput(pN); creative_thruster uses setThrustConfig(%).
         if (isCreative) {
             boolean isCreativeVector = "creative_vector_thruster".equals(peripheralType);
             int cfgSliderX = sliderX + SLIDER_W + PAD / 2;
             configSlider = new ThrottleSlider(cfgSliderX, sliderY, SLIDER_W, READOUT_H,
-                    "CFG", 0, 100, thrustConfig,
+                    "%", 0, 100, thrustConfig,
                     val -> {
-                        if (isCreativeVector) {
+                        if (isCreativeVector && configMax > 0) {
                             ModPackets.sendSetThrusterValue(keyboardPos, "setThrustOutput",
                                     val / 100.0 * configMax);
                         } else {
@@ -199,6 +204,7 @@ public class ThrusterControlScreen extends Screen {
         renderTitleBar(g);
         renderPhosphorDisplay(g);
         renderSliderLabels(g);
+        renderSublevelTelemetry(g);
         for (var w : renderables) w.render(g, mx, my, pt);
     }
 
@@ -302,7 +308,44 @@ public class ThrusterControlScreen extends Screen {
         if (configSlider != null) {
             int lx = configSlider.getX() + configSlider.getWidth() / 2;
             int ly = readoutY + READOUT_H + 2;
-            g.drawCenteredString(font, "§7CFG", lx, ly, 0xAAAAAA);
+            g.drawCenteredString(font, "§7%", lx, ly, 0xAAAAAA);
+        }
+    }
+
+    private void renderSublevelTelemetry(GuiGraphics g) {
+        if (sublevelSnapshot == null || sublevelSnapshot.length < 12) return;
+        boolean isVector   = peripheralType != null && peripheralType.contains("vector");
+        int contentH = READOUT_H + LABEL_H + (isVector ? PAD + INST_OUTER : 0);
+        int telemY = panelY + PAD + TITLE_H + PAD + contentH + PAD;
+        // Screen background strip
+        g.fill(panelX + PAD - 1, telemY - 1, panelX + panelW - PAD + 1, telemY + TELEM_H + 1, 0xFF0A0A0A);
+        g.fill(panelX + PAD,     telemY,     panelX + panelW - PAD,     telemY + TELEM_H,     0xFF050508);
+        g.fill(panelX + PAD + 1, telemY + 1, panelX + panelW - PAD - 1, telemY + TELEM_H - 1, 0x0A003300);
+
+        float sc = 0.60f;
+        g.pose().pushPose();
+        g.pose().translate(panelX + PAD + 4, telemY + 3, 0);
+        g.pose().scale(sc, sc, 1.0f);
+        int y = 0;
+        final int LINE = 9;
+        drawPhosphorLine(g, 0, y, String.format("POS %+.1f / %+.1f / %+.1f m",
+                sublevelSnapshot[0], sublevelSnapshot[1], sublevelSnapshot[2])); y += LINE;
+        drawPhosphorLine(g, 0, y, String.format("VEL %+.2f / %+.2f / %+.2f m/s",
+                sublevelSnapshot[3], sublevelSnapshot[4], sublevelSnapshot[5])); y += LINE;
+        drawPhosphorLine(g, 0, y, String.format("ROT %+.1f / %+.1f / %+.1f deg",
+                sublevelSnapshot[6], sublevelSnapshot[7], sublevelSnapshot[8])); y += LINE;
+        drawPhosphorLine(g, 0, y, String.format(" ω  %+.2f / %+.2f / %+.2f r/s",
+                sublevelSnapshot[9], sublevelSnapshot[10], sublevelSnapshot[11]));
+        g.pose().popPose();
+    }
+
+    // ── Tick (auto-refresh telemetry at ~2 Hz) ────────────────────────────────
+    @Override
+    public void tick() {
+        super.tick();
+        if (++tickCount >= 10) {
+            tickCount = 0;
+            ModPackets.sendRequestThrusterRefresh(keyboardPos);
         }
     }
 

@@ -1,6 +1,7 @@
 package dev.bennethogan.bennetsmod.client.screen;
 
 import dev.bennethogan.bennetsmod.compat.KeyboardMode;
+import dev.bennethogan.bennetsmod.compat.wireless.CreateWirelessHelper;
 import dev.bennethogan.bennetsmod.network.ModPackets;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -11,13 +12,15 @@ import org.lwjgl.glfw.GLFW;
 
 public class ModeSelectionScreen extends Screen {
 
-    private static final int PANEL_W = 280;
-    private static final int PAD     = 10;
-    private static final int BTN_H   = 18;
-    private static final int ROW_GAP = 4;
+    private static final int PANEL_W   = 280;
+    private static final int PAD       = 10;
+    private static final int BTN_H     = 18;
+    private static final int ROW_GAP   = 4;
+    private static final int SMALL_W   = 54;
+    private static final int SMALL_H   = 14;
+    private static final int HEADER_H  = PAD + SMALL_H + 8; // space for title row with small buttons
 
     private final BlockPos keyboardPos;
-    private final String   targetTypeName;
     private final int      availableBits;
 
     private int panelX, panelY, panelH;
@@ -25,25 +28,36 @@ public class ModeSelectionScreen extends Screen {
 
     public ModeSelectionScreen(BlockPos keyboardPos, String targetTypeName, int availableBits) {
         super(Component.empty());
-        this.keyboardPos    = keyboardPos;
-        this.targetTypeName = targetTypeName;
-        this.availableBits  = availableBits;
+        this.keyboardPos   = keyboardPos;
+        this.availableBits = availableBits;
     }
 
     @Override
     protected void init() {
         KeyboardMode[] modes = KeyboardMode.values();
-        int titleH    = 14;
-        int subtitleH = 12;
-        int rowsH     = modes.length * (BTN_H + ROW_GAP);
-        int closeH    = BTN_H + PAD * 2; // unlink + cancel row
-        panelH = PAD + titleH + subtitleH + 6 + rowsH + closeH;
+        int rowsH = modes.length * (BTN_H + ROW_GAP);
+        panelH = HEADER_H + rowsH + PAD;
 
         panelX = (width  - PANEL_W) / 2;
         panelY = (height - panelH)  / 2;
 
-        firstRowY = panelY + PAD + titleH + subtitleH + 6;
+        firstRowY = panelY + HEADER_H;
 
+        // Small "Unlink" button — top-left of panel
+        addRenderableWidget(Button.builder(Component.literal("Unlink"), b -> onUnlink())
+                .pos(panelX + PAD, panelY + PAD)
+                .size(SMALL_W, SMALL_H)
+                .build());
+
+        // Small "Wifi Setup" button — top-right of panel (only when Create wireless is available)
+        if (CreateWirelessHelper.isPresent()) {
+            addRenderableWidget(Button.builder(Component.literal("Wifi Setup"), b -> onWireless())
+                    .pos(panelX + PANEL_W - PAD - SMALL_W, panelY + PAD)
+                    .size(SMALL_W, SMALL_H)
+                    .build());
+        }
+
+        // Full-width mode buttons
         int y = firstRowY;
         for (KeyboardMode mode : modes) {
             boolean available = (availableBits & (1 << mode.ordinal())) != 0;
@@ -57,17 +71,11 @@ public class ModeSelectionScreen extends Screen {
             }
             y += BTN_H + ROW_GAP;
         }
+    }
 
-        y += 2;
-        int halfW = (PANEL_W - PAD * 2 - 4) / 2;
-        addRenderableWidget(Button.builder(Component.literal("Unlink"), b -> onUnlink())
-                .pos(panelX + PAD, y)
-                .size(halfW, BTN_H)
-                .build());
-        addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> onClose())
-                .pos(panelX + PAD + halfW + 4, y)
-                .size(halfW, BTN_H)
-                .build());
+    private void onWireless() {
+        ModPackets.sendOpenWirelessConfig(keyboardPos);
+        onClose();
     }
 
     private void onUnlink() {
@@ -77,8 +85,6 @@ public class ModeSelectionScreen extends Screen {
 
     private void selectMode(KeyboardMode mode) {
         ModPackets.sendSelectMode(keyboardPos, mode);
-        // Server's response packet will replace the screen for peripheral mode,
-        // or close it (for CC capture / Create capture which take over input).
         onClose();
     }
 
@@ -86,20 +92,18 @@ public class ModeSelectionScreen extends Screen {
     public void render(GuiGraphics g, int mx, int my, float pt) {
         renderBackground(g, mx, my, pt);
 
-        // Panel + border
+        // Panel fill + border
         g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, 0xFF111111);
-        g.fill(panelX, panelY, panelX + PANEL_W, panelY + 1, 0xFF666666);
-        g.fill(panelX, panelY + panelH - 1, panelX + PANEL_W, panelY + panelH, 0xFF666666);
-        g.fill(panelX, panelY, panelX + 1, panelY + panelH, 0xFF666666);
-        g.fill(panelX + PANEL_W - 1, panelY, panelX + PANEL_W, panelY + panelH, 0xFF666666);
+        g.fill(panelX, panelY,              panelX + PANEL_W, panelY + 1,         0xFF666666);
+        g.fill(panelX, panelY + panelH - 1, panelX + PANEL_W, panelY + panelH,   0xFF666666);
+        g.fill(panelX, panelY,              panelX + 1,        panelY + panelH,   0xFF666666);
+        g.fill(panelX + PANEL_W - 1, panelY, panelX + PANEL_W, panelY + panelH,  0xFF666666);
 
-        // Title + target type
-        g.drawCenteredString(font, "§bUniversal Keyboard",
-                panelX + PANEL_W / 2, panelY + PAD, 0xFFFFFF);
-        g.drawCenteredString(font, "§7" + targetTypeName,
-                panelX + PANEL_W / 2, panelY + PAD + 12, 0xAAAAAA);
+        // Title centred in header area, between the two small buttons
+        int titleY = panelY + PAD + (SMALL_H - 8) / 2;
+        g.drawCenteredString(font, "§bUniversal Keyboard", panelX + PANEL_W / 2, titleY, 0xFFFFFF);
 
-        // Greyed-out rows for unavailable modes (available rows are buttons drawn by widgets)
+        // Greyed-out rows for unavailable modes
         KeyboardMode[] modes = KeyboardMode.values();
         int y = firstRowY;
         for (KeyboardMode mode : modes) {
@@ -114,8 +118,6 @@ public class ModeSelectionScreen extends Screen {
             y += BTN_H + ROW_GAP;
         }
 
-        // Render widgets directly — do NOT call super.render(), which would call
-        // renderBackground() a second time and blur the text we just drew.
         for (var renderable : this.renderables) {
             renderable.render(g, mx, my, pt);
         }

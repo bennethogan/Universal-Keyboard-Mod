@@ -5,12 +5,14 @@ import dev.bennethogan.bennetsmod.blockentity.ModBlockEntities;
 import dev.bennethogan.bennetsmod.config.ModConfig;
 import dev.bennethogan.bennetsmod.item.ModItems;
 import dev.bennethogan.bennetsmod.network.ModPackets;
+import net.minecraft.world.item.CreativeModeTabs;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig.Type;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
+import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -23,12 +25,14 @@ public class UniversalKeyboardMod {
         ModBlocks.BLOCKS.register(modEventBus);
         ModItems.ITEMS.register(modEventBus);
         ModBlockEntities.BLOCK_ENTITIES.register(modEventBus);
+        dev.bennethogan.bennetsmod.menu.ModMenus.MENUS.register(modEventBus);
 
         modContainer.registerConfig(Type.COMMON, ModConfig.COMMON_SPEC);
 
         modEventBus.addListener(ModPackets::onRegisterServerPayloads);
         modEventBus.addListener(this::onRegisterCapabilities);
         modEventBus.addListener(this::commonSetup);
+        modEventBus.addListener(this::onBuildCreativeTab);
 
         // Register Create display source if Create is present
         try {
@@ -49,5 +53,12 @@ public class UniversalKeyboardMod {
 
     private void onRegisterCapabilities(RegisterCapabilitiesEvent event) {
         ModBlockEntities.registerCapabilities(event);
+    }
+
+    private void onBuildCreativeTab(BuildCreativeModeTabContentsEvent event) {
+        if (event.getTabKey() == CreativeModeTabs.REDSTONE_BLOCKS) {
+            event.accept(ModItems.LINKED_KEYBOARD);
+            event.accept(ModItems.TRANS_KEYBOARD);
+        }
     }
 }

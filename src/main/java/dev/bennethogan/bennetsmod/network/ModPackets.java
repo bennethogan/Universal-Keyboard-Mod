@@ -5,6 +5,8 @@ import dev.bennethogan.bennetsmod.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.bennetsmod.compat.CreateValueHelper;
 import dev.bennethogan.bennetsmod.compat.KeyboardMode;
 import dev.bennethogan.bennetsmod.compat.PeripheralHelper;
+import dev.bennethogan.bennetsmod.compat.SableCompat;
+import net.minecraft.world.level.Level;
 import dev.bennethogan.bennetsmod.item.LinkedKeyboardItem;
 import dev.bennethogan.bennetsmod.sequencer.SequencerStep;
 import net.minecraft.core.BlockPos;
@@ -167,7 +169,8 @@ public class ModPackets {
             double currentThrustPn, double displayedThrustPn,
             double airflowMs, int obstruction,
             int fuelAmountMb, int fuelCapacityMb,
-            int channel
+            int channel,
+            double[] sublevelSnapshot
     ) implements CustomPacketPayload {
         public static final Type<OpenThrusterControlPacket> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "open_thruster_control"));
@@ -182,17 +185,28 @@ public class ModPackets {
                     buf.writeDouble(pkt.airflowMs()); buf.writeInt(pkt.obstruction());
                     buf.writeInt(pkt.fuelAmountMb()); buf.writeInt(pkt.fuelCapacityMb());
                     buf.writeInt(pkt.channel());
+                    double[] snap = pkt.sublevelSnapshot();
+                    buf.writeInt(snap.length);
+                    for (double d : snap) buf.writeDouble(d);
                 },
-                buf -> new OpenThrusterControlPacket(
-                        BlockPos.STREAM_CODEC.decode(buf), buf.readUtf(),
-                        buf.readDouble(), buf.readDouble(),
-                        buf.readDouble(), buf.readDouble(),
-                        buf.readInt(), buf.readInt(), buf.readDouble(),
-                        buf.readDouble(), buf.readDouble(),
-                        buf.readDouble(), buf.readInt(),
-                        buf.readInt(), buf.readInt(),
-                        buf.readInt()
-                ));
+                buf -> {
+                    BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
+                    String type = buf.readUtf();
+                    double tvx = buf.readDouble(), tvy = buf.readDouble();
+                    double cvx = buf.readDouble(), cvy = buf.readDouble();
+                    int thrust = buf.readInt(), thrustCfg = buf.readInt();
+                    double cfgMax = buf.readDouble();
+                    double curPn = buf.readDouble(), dispPn = buf.readDouble();
+                    double airflow = buf.readDouble(); int obstr = buf.readInt();
+                    int fuelAmt = buf.readInt(), fuelCap = buf.readInt();
+                    int channel = buf.readInt();
+                    int snapLen = buf.readInt();
+                    double[] snap = new double[snapLen];
+                    for (int i = 0; i < snapLen; i++) snap[i] = buf.readDouble();
+                    return new OpenThrusterControlPacket(pos, type, tvx, tvy, cvx, cvy,
+                            thrust, thrustCfg, cfgMax, curPn, dispPn, airflow, obstr,
+                            fuelAmt, fuelCap, channel, snap);
+                });
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
@@ -310,6 +324,40 @@ public class ModPackets {
 
     // ── End channel packets ──────────────────────────────────────────────────
 
+    // client → server: open the wireless redstone config menu for this keyboard
+    public record OpenWirelessConfigPacket(BlockPos keyboardPos) implements CustomPacketPayload {
+        public static final Type<OpenWirelessConfigPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "open_wireless_config"));
+        public static final StreamCodec<FriendlyByteBuf, OpenWirelessConfigPacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, OpenWirelessConfigPacket::keyboardPos,
+                        OpenWirelessConfigPacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // client → server: add/remove a wireless entry
+    public record WirelessAddRemovePacket(BlockPos keyboardPos, boolean add) implements CustomPacketPayload {
+        public static final Type<WirelessAddRemovePacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "wireless_add_remove"));
+        public static final StreamCodec<FriendlyByteBuf, WirelessAddRemovePacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC,  WirelessAddRemovePacket::keyboardPos,
+                        ByteBufCodecs.BOOL,     WirelessAddRemovePacket::add,
+                        WirelessAddRemovePacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // client → server: re-read thruster state and push updated OpenThrusterControlPacket
+    public record RequestThrusterRefreshPacket(BlockPos keyboardPos) implements CustomPacketPayload {
+        public static final Type<RequestThrusterRefreshPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "request_thruster_refresh"));
+        public static final StreamCodec<FriendlyByteBuf, RequestThrusterRefreshPacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, RequestThrusterRefreshPacket::keyboardPos,
+                        RequestThrusterRefreshPacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
     public static void onRegisterServerPayloads(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar("1");
         // playToServer — handlers run on the server, safe to register from the common @Mod class
@@ -325,7 +373,10 @@ public class ModPackets {
         registrar.playToServer(UnlinkKeyboardPacket.TYPE,         UnlinkKeyboardPacket.CODEC,         ModPackets::handleUnlinkKeyboard);
         registrar.playToServer(SetActiveChannelPacket.TYPE,       SetActiveChannelPacket.CODEC,       ModPackets::handleSetActiveChannel);
         registrar.playToServer(SetLinkingChannelPacket.TYPE,      SetLinkingChannelPacket.CODEC,      ModPackets::handleSetLinkingChannel);
-        registrar.playToServer(CycleChannelAndReopenPacket.TYPE,  CycleChannelAndReopenPacket.CODEC,  ModPackets::handleCycleChannelAndReopen);
+        registrar.playToServer(CycleChannelAndReopenPacket.TYPE,    CycleChannelAndReopenPacket.CODEC,    ModPackets::handleCycleChannelAndReopen);
+        registrar.optional().playToServer(RequestThrusterRefreshPacket.TYPE,   RequestThrusterRefreshPacket.CODEC,   ModPackets::handleRequestThrusterRefresh);
+        registrar.optional().playToServer(OpenWirelessConfigPacket.TYPE,       OpenWirelessConfigPacket.CODEC,       ModPackets::handleOpenWirelessConfig);
+        registrar.optional().playToServer(WirelessAddRemovePacket.TYPE,        WirelessAddRemovePacket.CODEC,        ModPackets::handleWirelessAddRemove);
 
         // playToClient — the server must declare these channels so the handshake succeeds.
         // Real handlers are registered by ClientPacketHandlers (client only); skip here on client
@@ -432,7 +483,14 @@ public class ModPackets {
             BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
             if (!(be instanceof LinkedKeyboardBlockEntity keyboard)) return;
             BlockPos targetPos = keyboard.getLinkedTargetPos();
-            if (targetPos == null) return;
+            if (targetPos == null) {
+                // No linked target — sequencer works standalone (redstone / Sable getters)
+                int idx2 = packet.modeOrdinal() & 0xFF;
+                KeyboardMode[] modes2 = KeyboardMode.values();
+                if (idx2 >= 0 && idx2 < modes2.length && modes2[idx2] == KeyboardMode.PERIPHERAL_SEQUENCER)
+                    sendOpenSequencer(sp, packet.keyboardPos(), keyboard);
+                return;
+            }
 
             int idx = packet.modeOrdinal() & 0xFF;
             KeyboardMode[] modes = KeyboardMode.values();
@@ -496,7 +554,10 @@ public class ModPackets {
                             "§c[Keyboard] §fThruster not found or CC:Tweaked not installed."), true);
                     return;
                 }
-                sendOpenThrusterControl(sp, keyboardPos, state, keyboard.getActiveChannel());
+                Level kLevel = keyboard.getLevel();
+                double[] snap = (SableCompat.isPresent() && kLevel != null && SableCompat.isOnSublevel(kLevel, keyboard.getBlockPos()))
+                        ? SableCompat.getSnapshot(kLevel, keyboard.getBlockPos()) : new double[0];
+                sendOpenThrusterControl(sp, keyboardPos, state, keyboard.getActiveChannel(), snap);
             }
             case PERIPHERAL_SEQUENCER -> sendOpenSequencer(sp, keyboardPos, keyboard);
         }
@@ -537,7 +598,7 @@ public class ModPackets {
             BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
             if (!(be instanceof LinkedKeyboardBlockEntity keyboard)) return;
 
-            keyboard.cycleActiveChannel();
+            keyboard.cycleActiveChannelSmart();
 
             BlockPos targetPos = keyboard.getLinkedTargetPos();
             if (targetPos == null) {
@@ -709,7 +770,8 @@ public class ModPackets {
     }
 
     public static void sendOpenThrusterControl(ServerPlayer player, BlockPos keyboardPos,
-                                                PeripheralHelper.ThrusterState state, int channel) {
+                                                PeripheralHelper.ThrusterState state, int channel,
+                                                double[] sublevelSnapshot) {
         PacketDistributor.sendToPlayer(player, new OpenThrusterControlPacket(
                 keyboardPos, state.type(),
                 state.targetVectorX(), state.targetVectorY(),
@@ -718,7 +780,7 @@ public class ModPackets {
                 state.currentThrustPn(), state.displayedThrustPn(),
                 state.airflowMs(), state.obstruction(),
                 state.fuelAmountMb(), state.fuelCapacityMb(),
-                channel
+                channel, sublevelSnapshot
         ));
     }
 
@@ -748,7 +810,10 @@ public class ModPackets {
             PeripheralHelper.ThrusterState state =
                     PeripheralHelper.scanThruster(sp.serverLevel(), targets.get(0));
             if (state != null) {
-                sendOpenThrusterControl(sp, packet.keyboardPos(), state, keyboard.getActiveChannel());
+                Level kLvl = keyboard.getLevel();
+                double[] snap = (SableCompat.isPresent() && kLvl != null && SableCompat.isOnSublevel(kLvl, keyboard.getBlockPos()))
+                        ? SableCompat.getSnapshot(kLvl, keyboard.getBlockPos()) : new double[0];
+                sendOpenThrusterControl(sp, packet.keyboardPos(), state, keyboard.getActiveChannel(), snap);
             }
         });
     }
@@ -771,7 +836,10 @@ public class ModPackets {
             PeripheralHelper.ThrusterState state =
                     PeripheralHelper.scanThruster(sp.serverLevel(), targets.get(0));
             if (state != null) {
-                sendOpenThrusterControl(sp, packet.keyboardPos(), state, keyboard.getActiveChannel());
+                Level kLvl2 = keyboard.getLevel();
+                double[] snap2 = (SableCompat.isPresent() && kLvl2 != null && SableCompat.isOnSublevel(kLvl2, keyboard.getBlockPos()))
+                        ? SableCompat.getSnapshot(kLvl2, keyboard.getBlockPos()) : new double[0];
+                sendOpenThrusterControl(sp, packet.keyboardPos(), state, keyboard.getActiveChannel(), snap2);
             }
         });
     }
@@ -812,22 +880,34 @@ public class ModPackets {
         });
     }
 
-    private static void sendOpenSequencer(ServerPlayer player, BlockPos keyboardPos,
-                                           LinkedKeyboardBlockEntity keyboard) {
+    public static void sendOpenSequencer(ServerPlayer player, BlockPos keyboardPos,
+                                          LinkedKeyboardBlockEntity keyboard) {
         BlockPos primary = keyboard.getLinkedTargetPos();
         String pType = "";
-        List<String> getterNames = List.of();
+        List<String> getterNames = new ArrayList<>();
         List<String[]> setters   = List.of();
         if (primary != null && !keyboard.isLinkedAsComputer()) {
             PeripheralHelper.ScanResult result = PeripheralHelper.scanAndCall(
                     player.serverLevel(), primary, "", "");
             if (result != null) {
                 pType       = result.type();
-                getterNames = result.getters().stream().map(g -> g[0]).toList();
+                getterNames = new ArrayList<>(result.getters().stream().map(g -> g[0]).toList());
                 setters     = result.setters();
             }
         } else if (primary != null) {
             pType = "CC Computer";
+        }
+        // Append Sable sublevel getters when the keyboard is on a sublevel
+        Level kLevel = keyboard.getLevel();
+        if (SableCompat.isPresent() && kLevel != null) {
+            BlockPos kPos = keyboard.getBlockPos();
+            boolean onSub = SableCompat.isOnSublevel(kLevel, kPos);
+            UniversalKeyboardMod.LOGGER.debug("SableCompat check: keyboard @ {} onSublevel={} level={}",
+                    kPos, onSub, kLevel.getClass().getSimpleName());
+            if (onSub) {
+                for (String g : SableCompat.GETTER_NAMES) getterNames.add(g);
+                if (pType.isEmpty()) pType = "Sable Sublevel";
+            }
         }
         PacketDistributor.sendToPlayer(player, new OpenSequencerPacket(
                 keyboardPos, keyboard.getSequencerSteps(),
@@ -841,5 +921,68 @@ public class ModPackets {
 
     public static void sendStopSequencer(BlockPos keyboardPos) {
         PacketDistributor.sendToServer(new StopSequencerPacket(keyboardPos));
+    }
+
+    public static void sendRequestThrusterRefresh(BlockPos keyboardPos) {
+        PacketDistributor.sendToServer(new RequestThrusterRefreshPacket(keyboardPos));
+    }
+
+    private static void handleRequestThrusterRefresh(RequestThrusterRefreshPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity keyboard)) return;
+            List<BlockPos> targets = keyboard.getLinkedTargetPositions();
+            if (targets.isEmpty()) return;
+            PeripheralHelper.ThrusterState state = PeripheralHelper.scanThruster(sp.serverLevel(), targets.get(0));
+            if (state == null) return;
+            Level kLvl = keyboard.getLevel();
+            double[] snap = (SableCompat.isPresent() && kLvl != null && SableCompat.isOnSublevel(kLvl, keyboard.getBlockPos()))
+                    ? SableCompat.getSnapshot(kLvl, keyboard.getBlockPos()) : new double[0];
+            sendOpenThrusterControl(sp, packet.keyboardPos(), state, keyboard.getActiveChannel(), snap);
+        });
+    }
+
+    // ── Wireless config menu ─────────────────────────────────────────────────
+
+    public static void sendOpenWirelessConfig(BlockPos keyboardPos) {
+        PacketDistributor.sendToServer(new OpenWirelessConfigPacket(keyboardPos));
+    }
+
+    public static void sendWirelessAddRemove(BlockPos keyboardPos, boolean add) {
+        PacketDistributor.sendToServer(new WirelessAddRemovePacket(keyboardPos, add));
+    }
+
+    private static void handleOpenWirelessConfig(OpenWirelessConfigPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            if (!dev.bennethogan.bennetsmod.compat.wireless.CreateWirelessHelper.isPresent()) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity)) return;
+            sp.openMenu(new net.minecraft.world.MenuProvider() {
+                @Override public net.minecraft.network.chat.Component getDisplayName() {
+                    return net.minecraft.network.chat.Component.literal("Wireless Redstone");
+                }
+                @Override public net.minecraft.world.inventory.AbstractContainerMenu createMenu(
+                        int id, net.minecraft.world.entity.player.Inventory inv,
+                        net.minecraft.world.entity.player.Player player) {
+                    return new dev.bennethogan.bennetsmod.menu.WirelessConfigMenu(id, inv, packet.keyboardPos());
+                }
+            }, buf -> buf.writeBlockPos(packet.keyboardPos()));
+        });
+    }
+
+    private static void handleWirelessAddRemove(WirelessAddRemovePacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            if (packet.add()) {
+                kb.addWirelessEntry();
+            } else {
+                int n = kb.getWirelessCount();
+                if (n > 0) kb.removeWirelessEntry(n - 1);
+            }
+        });
     }
 }

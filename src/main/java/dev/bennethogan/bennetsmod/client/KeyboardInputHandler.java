@@ -14,8 +14,31 @@ public class KeyboardInputHandler {
 
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
-        if (!KeyboardCaptureManager.isCapturing()) return;
-        KeyboardCaptureManager.tickHud();
+        Minecraft mc = Minecraft.getInstance();
+
+        if (KeyboardCaptureManager.isCapturing()) {
+            KeyboardCaptureManager.tickHud();
+        }
+
+        // Persistent linking-mode action bar
+        if (mc.player == null || mc.screen != null) return;
+        ItemStack held = mc.player.getMainHandItem();
+        if (!(held.getItem() instanceof LinkedKeyboardItem)) {
+            held = mc.player.getOffhandItem();
+            if (!(held.getItem() instanceof LinkedKeyboardItem)) return;
+        }
+        if (!LinkedKeyboardItem.isLinkingMode(held)) return;
+
+        int ch = LinkedKeyboardItem.getActiveLinkingChannel(held);
+        java.util.Map<Integer, java.util.List<net.minecraft.core.BlockPos>> allTargets =
+                LinkedKeyboardItem.getAllChannelTargets(held);
+        int countOnChannel = allTargets.getOrDefault(ch, java.util.List.of()).size();
+        int totalChannels = (int) allTargets.values().stream().filter(l -> !l.isEmpty()).count();
+
+        String msg = "§bLinking §f| §eChannel " + ch + " §f(" + countOnChannel + " linked)";
+        if (totalChannels > 1) msg += " §7[" + totalChannels + " channels used]";
+        mc.player.displayClientMessage(
+                net.minecraft.network.chat.Component.literal(msg), true);
     }
 
     @SubscribeEvent

@@ -4,6 +4,9 @@ import dev.bennethogan.bennetsmod.UniversalKeyboardMod;
 import dev.bennethogan.bennetsmod.compat.CreateValueHelper;
 import dev.bennethogan.bennetsmod.compat.KeyboardMode;
 import dev.bennethogan.bennetsmod.compat.PeripheralHelper;
+import dev.bennethogan.bennetsmod.compat.SableCompat;
+import dev.bennethogan.bennetsmod.compat.wireless.CreateWirelessHelper;
+import dev.bennethogan.bennetsmod.compat.wireless.WirelessEntry;
 import dev.bennethogan.bennetsmod.config.ModConfig;
 import dev.bennethogan.bennetsmod.sequencer.SequencerStep;
 import net.minecraft.core.BlockPos;
@@ -12,6 +15,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -28,7 +32,7 @@ import java.util.Queue;
 
 public class LinkedKeyboardBlockEntity extends BlockEntity {
 
-    public static final int MAX_CHANNELS = 8;
+    public static final int MAX_CHANNELS = 16;
 
     // Per-channel mesh targets: key = channel number (1–8), value = list of positions
     private final Map<Integer, List<BlockPos>> channelTargets = new HashMap<>();
@@ -52,9 +56,15 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     private boolean sequencerRunning     = false;
     private int     sequencerCurrentStep = 0;
     private int     sequencerDelayTicker = 0;
+    private final double[] sequencerVars = new double[8]; // V1-V8, cleared on start
 
     // Redstone outputs — indexed by Direction.ordinal()
     private final int[] redstoneOutputs = new int[Direction.values().length];
+
+    // Wireless redstone outputs (Create RedstoneLink integration). Indexed 0-based;
+    // user-facing labels are W1..W{N}. Up to MAX_WIRELESS entries.
+    public static final int MAX_WIRELESS = 12;
+    private final List<WirelessEntry> wirelessEntries = new ArrayList<>();
 
     // Cached peripheral getter values for Create display source
     private final Map<String, String> cachedGetterValues = new LinkedHashMap<>();
@@ -81,6 +91,22 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     public void cycleActiveChannel() {
         setActiveChannel((activeChannel % MAX_CHANNELS) + 1);
+    }
+
+    /**
+     * Cycles to the next channel that has at least one linked target, wrapping around.
+     * If no channel has targets, falls back to simple cycling.
+     */
+    public void cycleActiveChannelSmart() {
+        for (int i = 1; i <= MAX_CHANNELS; i++) {
+            int next = (activeChannel - 1 + i) % MAX_CHANNELS + 1;
+            if (next != activeChannel && channelTargets.containsKey(next) && !channelTargets.get(next).isEmpty()) {
+                setActiveChannel(next);
+                return;
+            }
+        }
+        // No other channel has targets — fall back to simple cycle
+        cycleActiveChannel();
     }
 
     // ----- Linking / mesh -----
@@ -305,12 +331,14 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         sequencerRunning     = true;
         sequencerCurrentStep = 0;
         sequencerDelayTicker = 0;
+        java.util.Arrays.fill(sequencerVars, 0.0);
         setChanged();
     }
 
     public void stopSequencer() {
         sequencerRunning = false;
         clearRedstoneOutputs();
+        clearWirelessOutputs();
         setChanged();
     }
 
@@ -325,6 +353,105 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         setChanged();
         if (level != null && !level.isClientSide)
             level.updateNeighborsAt(worldPosition, getBlockState().getBlock());
+    }
+
+    // ── Wireless redstone outputs (Create RedstoneLink) ─────────────────────
+
+    public int getWirelessCount() { return wirelessEntries.size(); }
+
+    public List<WirelessEntry> getWirelessEntries() {
+        return Collections.unmodifiableList(wirelessEntries);
+    }
+
+    /** Adds an empty entry if room remains. Returns the new entry's index (0-based) or -1 on failure. */
+    public int addWirelessEntry() {
+        if (!CreateWirelessHelper.isPresent()) return -1;
+        if (wirelessEntries.size() >= MAX_WIRELESS) return -1;
+        wirelessEntries.add(CreateWirelessHelper.newEntry(worldPosition));
+        setChanged();
+        syncToClients();
+        return wirelessEntries.size() - 1;
+    }
+
+    public void removeWirelessEntry(int idx) {
+        if (idx < 0 || idx >= wirelessEntries.size()) return;
+        WirelessEntry e = wirelessEntries.remove(idx);
+        CreateWirelessHelper.removeFromNetwork(level, e);
+        setChanged();
+        syncToClients();
+    }
+
+    public void setWirelessFrequencyItem(int idx, boolean first, ItemStack stack) {
+        if (idx < 0 || idx >= wirelessEntries.size()) return;
+        CreateWirelessHelper.updateFrequency(level, wirelessEntries.get(idx), first, stack);
+        setChanged();
+        syncToClients();
+    }
+
+    /** Sequencer / external callers: drive the W{idx+1} output to the given power. */
+    public void setWirelessOutput(int idx, int power) {
+        if (idx < 0 || idx >= wirelessEntries.size()) return;
+        CreateWirelessHelper.setEntryPower(level, wirelessEntries.get(idx), power);
+    }
+
+    public int getWirelessOutput(int idx) {
+        if (idx < 0 || idx >= wirelessEntries.size()) return 0;
+        return wirelessEntries.get(idx).getPower();
+    }
+
+    private void clearWirelessOutputs() {
+        for (WirelessEntry e : wirelessEntries)
+            CreateWirelessHelper.setEntryPower(level, e, 0);
+    }
+
+    /**
+     * Resolves a sequencer value source string to a double.
+     * Formats: number literal | "V1"-"V8" (variable) | "RS:N/S/E/W" (redstone in) | getter name (uses channel)
+     */
+    double resolveSource(String src, int channel) {
+        if (src == null || src.isBlank()) return 0;
+        src = src.trim();
+        if (src.matches("V[1-8]")) return sequencerVars[src.charAt(1) - '1'];
+        if (src.startsWith("RS:")) {
+            String d = src.substring(3).toUpperCase();
+            Direction dir = switch (d) {
+                case "N", "NORTH" -> Direction.NORTH;
+                case "S", "SOUTH" -> Direction.SOUTH;
+                case "E", "EAST"  -> Direction.EAST;
+                case "W", "WEST"  -> Direction.WEST;
+                default -> null;
+            };
+            if (dir != null && level != null)
+                return level.getSignal(worldPosition.relative(dir), dir);
+            return 0;
+        }
+        try { return Double.parseDouble(src); } catch (NumberFormatException ignored) {}
+        if (level == null) return 0;
+        // Sable sublevel getter
+        if (SableCompat.isPresent() && SableCompat.isSableGetter(src) && SableCompat.isOnSublevel(level, worldPosition))
+            return SableCompat.getValue(level, worldPosition, src);
+        List<BlockPos> targets = getLinkedTargetPositions(channel);
+        if (targets.isEmpty()) return 0;
+        Object p = PeripheralHelper.getPeripheral(level, targets.get(0));
+        return p == null ? 0 : PeripheralHelper.getDoubleGetter(p, src);
+    }
+
+    private static double applyMathOp(String op, double a, double b) {
+        return switch (op) {
+            case "+"     -> a + b;
+            case "-"     -> a - b;
+            case "*"     -> a * b;
+            case "/"     -> b != 0 ? a / b : 0;
+            case "%"     -> b != 0 ? a % b : 0;
+            case "min"   -> Math.min(a, b);
+            case "max"   -> Math.max(a, b);
+            case "abs"   -> Math.abs(a);
+            case "neg"   -> -a;
+            case "round" -> (double) Math.round(a);
+            case "floor" -> Math.floor(a);
+            case "ceil"  -> Math.ceil(a);
+            default      -> a;
+        };
     }
 
     private void clearRedstoneOutputs() {
@@ -353,8 +480,16 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                 if (--sequencerDelayTicker <= 0) advanceSequencer();
             }
             case IF -> {
-                if (evaluateIfCondition(step))
-                    sequencerCurrentStep += step.ifSkipCount;
+                if (evaluateIfCondition(step)) {
+                    if (step.ifGoTo) {
+                        sequencerCurrentStep = Math.max(0, Math.min(step.jumpTarget - 1, sequencerSteps.size() - 1));
+                        sequencerDelayTicker = 0;
+                        setChanged();
+                        return;
+                    } else {
+                        sequencerCurrentStep += step.ifSkipCount;
+                    }
+                }
                 advanceSequencer();
             }
             case CONDITION -> {
@@ -370,6 +505,20 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             }
             case TYPE_TEXT -> {
                 applySequencerTypeText(step);
+                advanceSequencer();
+            }
+            case JUMP -> {
+                int target = Math.max(0, Math.min(step.jumpTarget - 1, sequencerSteps.size() - 1));
+                sequencerCurrentStep = target;
+                sequencerDelayTicker = 0;
+                setChanged();
+            }
+            case MATH -> {
+                double a = resolveSource(step.mathA, step.mathACh);
+                double b = resolveSource(step.mathB, step.mathBCh);
+                double result = applyMathOp(step.mathOp, a, b);
+                String dest = step.mathDest != null ? step.mathDest.trim() : "V1";
+                if (dest.matches("V[1-8]")) sequencerVars[dest.charAt(1) - '1'] = result;
                 advanceSequencer();
             }
             case CYCLE -> {
@@ -400,6 +549,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         if (rsIdx >= 0) {
             Direction dir = SequencerStep.RS_INPUT_GETTER_DIRS[rsIdx];
             actual = level.getSignal(worldPosition.relative(dir), dir);
+        } else if (SableCompat.isPresent() && SableCompat.isSableGetter(step.ifGetter) && SableCompat.isOnSublevel(level, worldPosition)) {
+            actual = SableCompat.getValue(level, worldPosition, step.ifGetter);
         } else {
             List<BlockPos> ch = getLinkedTargetPositions(step.channel);
             if (ch.isEmpty()) return false;
@@ -407,9 +558,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             if (p == null) return false;
             actual = PeripheralHelper.getDoubleGetter(p, step.ifGetter);
         }
-        double threshold;
-        try { threshold = Double.parseDouble(step.ifValueStr); }
-        catch (NumberFormatException e) { threshold = 0; }
+        double threshold = resolveSource(step.ifValueStr, step.channel);
         return switch (step.ifOp) {
             case ">"  -> actual > threshold;
             case ">=" -> actual >= threshold;
@@ -427,6 +576,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         Direction dir = step.conditionSource.direction;
         if (dir != null) {
             actual = level.getSignal(worldPosition.relative(dir), dir);
+        } else if (SableCompat.isPresent() && SableCompat.isSableGetter(step.conditionGetter) && SableCompat.isOnSublevel(level, worldPosition)) {
+            actual = SableCompat.getValue(level, worldPosition, step.conditionGetter);
         } else {
             List<BlockPos> ch = getLinkedTargetPositions(step.channel);
             if (ch.isEmpty()) return false;
@@ -434,9 +585,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             if (p == null) return false;
             actual = PeripheralHelper.getDoubleGetter(p, step.conditionGetter);
         }
-        double threshold;
-        try   { threshold = Double.parseDouble(step.conditionThresholdStr); }
-        catch (NumberFormatException e) { threshold = 0; }
+        double threshold = resolveSource(step.conditionThresholdStr, step.channel);
         return switch (step.conditionOp) {
             case ">" -> actual > threshold;
             case "<" -> actual < threshold;
@@ -448,9 +597,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     private void applySequencerSetValue(SequencerStep step) {
         List<BlockPos> targets = getLinkedTargetPositions(step.channel);
         if (targets.isEmpty() || level == null || step.setMethod.isEmpty()) return;
-        double value;
-        try   { value = Double.parseDouble(step.setValueStr); }
-        catch (NumberFormatException e) { return; }
+        double value = resolveSource(step.setValueStr, step.channel);
         double range   = ModConfig.COMMON.keyboardRange.get();
         double rangeSq = range * range;
         for (BlockPos targetPos : targets) {
@@ -466,10 +613,11 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     }
 
     private void applySequencerSetRedstone(SequencerStep step) {
-        int signal;
-        try   { signal = Integer.parseInt(step.redstoneOutSignalStr.trim()); }
-        catch (NumberFormatException e) { signal = 0; }
-        setRedstoneOutput(step.redstoneOutDir, signal);
+        int signal = (int) Math.round(resolveSource(step.redstoneOutSignalStr, 1));
+        if (step.wirelessOutIdx > 0)
+            setWirelessOutput(step.wirelessOutIdx - 1, signal);
+        else
+            setRedstoneOutput(step.redstoneOutDir, signal);
     }
 
     // ----- Display source data (Create integration) -----
@@ -620,6 +768,17 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         tag.putBoolean("sequencer_running",      sequencerRunning);
         tag.putInt("sequencer_current_step",     sequencerCurrentStep);
         tag.putIntArray("redstone_outputs",      redstoneOutputs);
+
+        if (!wirelessEntries.isEmpty()) {
+            ListTag wl = new ListTag();
+            for (WirelessEntry e : wirelessEntries) {
+                CompoundTag c = new CompoundTag();
+                c.put("first",  e.getFirstStack().saveOptional(registries));
+                c.put("second", e.getSecondStack().saveOptional(registries));
+                wl.add(c);
+            }
+            tag.put("wireless_entries", wl);
+        }
     }
 
     @Override
@@ -680,5 +839,51 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             int[] saved = tag.getIntArray("redstone_outputs");
             System.arraycopy(saved, 0, redstoneOutputs, 0, Math.min(saved.length, redstoneOutputs.length));
         }
+
+        wirelessEntries.clear();
+        if (tag.contains("wireless_entries", Tag.TAG_LIST) && CreateWirelessHelper.isPresent()) {
+            ListTag wl = tag.getList("wireless_entries", Tag.TAG_COMPOUND);
+            for (int i = 0; i < wl.size() && wirelessEntries.size() < MAX_WIRELESS; i++) {
+                CompoundTag c = wl.getCompound(i);
+                WirelessEntry e = CreateWirelessHelper.newEntry(worldPosition);
+                e.setFirstStack(ItemStack.parseOptional(registries, c.getCompound("first")));
+                e.setSecondStack(ItemStack.parseOptional(registries, c.getCompound("second")));
+                wirelessEntries.add(e);
+            }
+        }
+    }
+
+    @Override
+    public void setRemoved() {
+        for (WirelessEntry e : wirelessEntries)
+            CreateWirelessHelper.removeFromNetwork(level, e);
+        super.setRemoved();
+    }
+
+    @Override
+    public void onChunkUnloaded() {
+        for (WirelessEntry e : wirelessEntries)
+            CreateWirelessHelper.removeFromNetwork(level, e);
+        super.onChunkUnloaded();
+    }
+
+    // ── BlockEntity client sync ──────────────────────────────────────────────
+
+    @Override
+    public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
+        CompoundTag tag = new CompoundTag();
+        saveAdditional(tag, registries);
+        return tag;
+    }
+
+    @Override
+    public net.minecraft.network.protocol.Packet<net.minecraft.network.protocol.game.ClientGamePacketListener> getUpdatePacket() {
+        return net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket.create(this);
+    }
+
+    /** Force a sync of this BE to all watching clients. Call after wireless config changes. */
+    public void syncToClients() {
+        if (level != null && !level.isClientSide)
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
     }
 }

@@ -77,7 +77,7 @@ public class ClientPacketHandlers {
                         packet.currentThrustPn(), packet.displayedThrustPn(),
                         packet.airflowMs(), packet.obstruction(),
                         packet.fuelAmountMb(), packet.fuelCapacityMb(),
-                        packet.channel());
+                        packet.channel(), packet.sublevelSnapshot());
             } else {
                 mc.setScreen(new ThrusterControlScreen(
                         packet.keyboardPos(), packet.peripheralType(),
@@ -87,7 +87,7 @@ public class ClientPacketHandlers {
                         packet.currentThrustPn(), packet.displayedThrustPn(),
                         packet.airflowMs(), packet.obstruction(),
                         packet.fuelAmountMb(), packet.fuelCapacityMb(),
-                        packet.channel()));
+                        packet.channel(), packet.sublevelSnapshot()));
             }
         });
     }
