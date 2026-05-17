@@ -27,10 +27,14 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DirectionProperty;
+import net.minecraft.world.level.storage.loot.LootParams;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 public class LinkedKeyboardBlock extends BaseEntityBlock {
 
@@ -97,7 +101,7 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
     @Override
     public int getSignal(BlockState state, BlockGetter level, BlockPos pos, Direction dir) {
         if (level.getBlockEntity(pos) instanceof LinkedKeyboardBlockEntity be)
-            return be.getRedstoneOutput(dir);
+            return be.getRedstoneOutput(dir.getOpposite());
         return 0;
     }
 
@@ -153,5 +157,33 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
                 be.onRemoved();
         }
         super.onRemove(state, level, pos, newState, movedByPiston);
+    }
+
+    // Creative mode: drop the item if the block has stored data, so configured
+    // keyboards aren't lost to accidental creative breaks (matches Create typewriter).
+    @Override
+    public BlockState playerWillDestroy(Level level, BlockPos pos, BlockState state, Player player) {
+        if (!level.isClientSide && player.isCreative()
+                && level.getBlockEntity(pos) instanceof LinkedKeyboardBlockEntity lkbe
+                && lkbe.hasData()) {
+            ItemStack stack = new ItemStack(this.asItem());
+            lkbe.saveToItem(stack, level.registryAccess());
+            net.minecraft.world.Containers.dropItemStack(level, pos.getX(), pos.getY(), pos.getZ(), stack);
+        }
+        return super.playerWillDestroy(level, pos, state, player);
+    }
+
+    // Survival player breaks + non-player destruction (explosions, etc.).
+    // Read the block entity directly from the Builder — calling builder.create()
+    // first can silently fail and produce no drops.
+    @Override
+    public List<ItemStack> getDrops(BlockState state, LootParams.Builder builder) {
+        BlockEntity be = builder.getOptionalParameter(LootContextParams.BLOCK_ENTITY);
+        if (be instanceof LinkedKeyboardBlockEntity lkbe) {
+            ItemStack stack = new ItemStack(this.asItem());
+            lkbe.saveToItem(stack, builder.getLevel().registryAccess());
+            return List.of(stack);
+        }
+        return super.getDrops(state, builder);
     }
 }

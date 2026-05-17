@@ -25,7 +25,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 public class SequencerScreen extends Screen {
@@ -50,7 +52,6 @@ public class SequencerScreen extends Screen {
     private static final boolean[] MATH_UNARY = {false, false, false, false, false, false, false, true, true, true, true, true};
     private static final String[]   IF_OPS    = {">", ">=", "=", "<=", "<", "!="};
     private static final Direction[] RS_DIRS  = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST};
-    private static final Type[]      ALL_TYPES = Type.values();
 
     // ── State ─────────────────────────────────────────────────────────────────
     final BlockPos keyboardPos;
@@ -59,8 +60,14 @@ public class SequencerScreen extends Screen {
     private int     currentStep;
     private List<String>   availableGetters;
     private List<String[]> availableSetters;
+    // per-channel getters/setters sent from server; fall back to channel-1 lists for legacy steps
+    private Map<Integer, List<String>>   gettersByChannel = new java.util.HashMap<>();
+    private Map<Integer, List<String[]>> settersByChannel = new java.util.HashMap<>();
 
     private int scrollOffset = 0;
+
+    // Insert-between hover: gap index 0 = before first visible row, 1 = between rows 0&1, etc.
+    private int insertHoverGap = -1;
 
     // Type dropdown
     private int typeDropdownRow    = -1;
@@ -77,14 +84,16 @@ public class SequencerScreen extends Screen {
     private int          loadDropdownScroll = 0;
 
     // Overwrite confirmation
-    private String confirmOverwriteName = null;
+    private String  confirmOverwriteName = null;
+    // No-name dialog
+    private boolean showNoNameDialog = false;
 
     // Layout cache (set in init)
     private int panelX, panelY, panelH, rowAreaY;
     private int bottomBtnW, bottomBtnY, loadBtnX;
 
     private final List<RowWidgets> rows = new ArrayList<>();
-    private Button  runStopBtn, addBtn;
+    private Button  runStopBtn;
     private EditBox saveName;
 
     boolean refreshing = false;
@@ -92,25 +101,39 @@ public class SequencerScreen extends Screen {
     // ── Construction ──────────────────────────────────────────────────────────
 
     public SequencerScreen(BlockPos keyboardPos, List<SequencerStep> steps,
-            boolean running, int currentStep, String peripheralType,
-            List<String> availableGetters, List<String[]> availableSetters) {
+            boolean running, int currentStep,
+            List<String> availableGetters, List<String[]> availableSetters,
+            Map<Integer, List<String>> gettersByChannel,
+            Map<Integer, List<String[]>> settersByChannel) {
         super(Component.empty());
-        this.keyboardPos      = keyboardPos;
-        this.steps            = new ArrayList<>(steps);
-        this.running          = running;
-        this.currentStep      = currentStep;
-        this.availableGetters = new ArrayList<>(availableGetters);
-        this.availableSetters = new ArrayList<>(availableSetters);
+        this.keyboardPos       = keyboardPos;
+        this.steps             = new ArrayList<>(steps);
+        this.running           = running;
+        this.currentStep       = currentStep;
+        this.availableGetters  = new ArrayList<>(availableGetters);
+        this.availableSetters  = new ArrayList<>(availableSetters);
+        this.gettersByChannel  = new java.util.HashMap<>(gettersByChannel);
+        this.settersByChannel  = new java.util.HashMap<>(settersByChannel);
     }
 
     public BlockPos getKeyboardPos() { return keyboardPos; }
 
+    public void updateProgress(boolean running, int currentStep) {
+        this.running     = running;
+        this.currentStep = currentStep;
+        updateRunStopLabel();
+    }
+
     public void updateState(List<SequencerStep> newSteps, boolean running, int currentStep,
-                            List<String> getters, List<String[]> setters) {
-        this.running          = running;
-        this.currentStep      = currentStep;
-        this.availableGetters = new ArrayList<>(getters);
-        this.availableSetters = new ArrayList<>(setters);
+                            List<String> getters, List<String[]> setters,
+                            Map<Integer, List<String>> gettersByChannel,
+                            Map<Integer, List<String[]>> settersByChannel) {
+        this.running           = running;
+        this.currentStep       = currentStep;
+        this.availableGetters  = new ArrayList<>(getters);
+        this.availableSetters  = new ArrayList<>(setters);
+        this.gettersByChannel  = new java.util.HashMap<>(gettersByChannel);
+        this.settersByChannel  = new java.util.HashMap<>(settersByChannel);
         updateRunStopLabel();
     }
 
@@ -122,10 +145,9 @@ public class SequencerScreen extends Screen {
 
         int titleH  = PAD + 12 + 4 + BTN_H + PAD; // 42 — extra row for save-name input
         int rowsH   = VISIBLE * (ROW_H + ROW_GAP);
-        int addH    = PAD + BTN_H;
         int statusH = PAD + 8;
         int btnRowH = PAD + BTN_H + PAD;
-        panelH = titleH + rowsH + addH + statusH + btnRowH;
+        panelH = titleH + rowsH + statusH + btnRowH;
 
         panelX   = (width  - PANEL_W) / 2;
         panelY   = (height - panelH)  / 2;
@@ -140,11 +162,6 @@ public class SequencerScreen extends Screen {
         addRenderableWidget(saveName);
 
         for (int r = 0; r < VISIBLE; r++) rows.add(new RowWidgets(r));
-
-        int addY = rowAreaY + VISIBLE * (ROW_H + ROW_GAP) + PAD;
-        addBtn = Button.builder(Component.literal("+ Add Step"), b -> addStep())
-                .pos(panelX + PAD + COL_TYPE, addY).size(80, BTN_H).build();
-        addRenderableWidget(addBtn);
 
         // Five-button bottom row: Run/Stop | Save | Save File | Load File | Close
         bottomBtnW = (PANEL_W - PAD * 2 - 4 * 4) / 5; // ~78 px each
@@ -169,6 +186,13 @@ public class SequencerScreen extends Screen {
                 .pos(panelX + PAD + (bottomBtnW + gap) * 4, bottomBtnY).size(bottomBtnW, BTN_H).build());
 
         refreshAllRows();
+        ModPackets.sendSequencerWatch(keyboardPos, true);
+    }
+
+    @Override
+    public void onClose() {
+        ModPackets.sendSequencerWatch(keyboardPos, false);
+        super.onClose();
     }
 
     // ── render ────────────────────────────────────────────────────────────────
@@ -186,20 +210,33 @@ public class SequencerScreen extends Screen {
         g.drawCenteredString(font, "§bPeripheral Sequencer",
                 panelX + PANEL_W / 2, panelY + PAD, 0xFFFFFF);
 
-        int cx  = panelX + PAD;
-        int ctx = cx + COL_CTX;
+        int cx   = panelX + PAD;
+        int ctx  = cx + COL_CTX;
+        int rowW = PANEL_W - PAD * 2;
 
         for (int r = 0; r < VISIBLE; r++) {
             int si = scrollOffset + r;
             if (si >= steps.size()) break;
             int rowY = rowAreaY + r * (ROW_H + ROW_GAP);
 
+            SequencerStep step   = steps.get(si);
+            int           accent = stepAccentColor(step.type);
+
+            // Colored row background + 2px left accent bar
+            g.fill(cx,     rowY, cx + rowW,  rowY + ROW_H, stepRowBg(step.type));
+            g.fill(cx,     rowY, cx + 2,     rowY + ROW_H, accent);
+
+            // Faint top/bottom border matching the accent hue
+            int borderClr = (accent & 0x00FFFFFF) | 0x44000000;
+            g.fill(cx, rowY,              cx + rowW, rowY + 1,          borderClr);
+            g.fill(cx, rowY + ROW_H - 1, cx + rowW, rowY + ROW_H,      borderClr);
+
+            // Extra white overlay for the running step
             if (running && si == currentStep)
-                g.fill(cx, rowY, cx + PANEL_W - PAD * 2, rowY + ROW_H, 0x331E6040);
+                g.fill(cx + 2, rowY + 1, cx + rowW, rowY + ROW_H - 1, 0x33FFFFFF);
 
             g.drawString(font, "§8" + (si + 1), cx + COL_NUM, rowY + (ROW_H - 8) / 2, 0xAAAAAA, false);
 
-            SequencerStep step = steps.get(si);
             int ly = rowY + (ROW_H - 8) / 2;
             switch (step.type) {
                 case DELAY -> g.drawString(font, "§7s",       ctx + 83, ly, 0xAAAAAA, false);
@@ -209,7 +246,47 @@ public class SequencerScreen extends Screen {
             }
         }
 
-        int statusY = rowAreaY + VISIBLE * (ROW_H + ROW_GAP) + PAD + BTN_H + PAD;
+        // Empty-list hint
+        if (steps.isEmpty()) {
+            g.drawCenteredString(font, "§8Hover anywhere to insert a step",
+                    panelX + PANEL_W / 2,
+                    rowAreaY + (VISIBLE * (ROW_H + ROW_GAP)) / 2 - 4,
+                    0x666666);
+        }
+
+        // Compute insert-hover gap (which inter-row gap the mouse is near)
+        insertHoverGap = -1;
+        if (typeDropdownRow < 0 && mathDropdownRow < 0 && !loadDropdownOpen
+                && confirmOverwriteName == null && !showNoNameDialog) {
+            int count = Math.min(VISIBLE, steps.size() - scrollOffset);
+            if (mx >= cx && mx < cx + rowW) {
+                if (count == 0) {
+                    // Empty list: any hover in the row area inserts at position 0
+                    if (my >= rowAreaY && my < rowAreaY + VISIBLE * (ROW_H + ROW_GAP))
+                        insertHoverGap = 0;
+                } else {
+                    for (int g2 = 0; g2 <= count; g2++) {
+                        int gapY = rowAreaY + g2 * (ROW_H + ROW_GAP);
+                        if (my >= gapY - 4 && my < gapY + 4) { insertHoverGap = g2; break; }
+                    }
+                }
+            }
+        }
+
+        // Draw insert-between indicator
+        if (insertHoverGap >= 0) {
+            if (steps.isEmpty()) {
+                int midY = rowAreaY + (VISIBLE * (ROW_H + ROW_GAP)) / 2;
+                g.fill(cx, midY - 1, cx + rowW, midY + 1, 0xFF44BB44);
+                g.drawCenteredString(font, "§a+", panelX + PANEL_W / 2, midY - 4, 0x44BB44);
+            } else {
+                int lineY = rowAreaY + insertHoverGap * (ROW_H + ROW_GAP) - 1;
+                g.fill(cx, lineY, cx + rowW, lineY + 2, 0xFF44BB44);
+                g.drawString(font, "§a+", cx + 4, lineY - 4, 0x44BB44, false);
+            }
+        }
+
+        int statusY = rowAreaY + VISIBLE * (ROW_H + ROW_GAP) + PAD;
         if (running)
             g.drawString(font, "§a● Running  §7step §f" + (currentStep + 1) + "§7/§f" + steps.size(),
                     cx, statusY, 0xFFFFFF, false);
@@ -228,6 +305,7 @@ public class SequencerScreen extends Screen {
         renderMathSourceDropdown(g, mx, my);
         renderLoadDropdown(g, mx, my);
         if (confirmOverwriteName != null) renderConfirmDialog(g, mx, my);
+        if (showNoNameDialog) renderNoNameDialog(g, mx, my);
         g.pose().popPose();
     }
 
@@ -235,28 +313,31 @@ public class SequencerScreen extends Screen {
 
     private void renderTypeDropdown(GuiGraphics g, int mx, int my) {
         if (typeDropdownRow < 0 || typeDropdownRow >= VISIBLE) return;
+        Type[] available = buildAvailableTypes();
         int rowY  = rowAreaY + typeDropdownRow * (ROW_H + ROW_GAP);
         int ddX   = panelX + PAD + COL_TYPE;
         int ddW   = 82;
         int itemH = 12;
-        int vis   = Math.min(DD_VIS, ALL_TYPES.length);
+        int vis   = Math.min(DD_VIS, available.length);
         int ddH   = vis * itemH + 4;
         int ddY   = ddPos(rowY, ddH);
 
         drawDdBox(g, ddX, ddW, ddY, ddH);
         for (int i = 0; i < vis; i++) {
             int idx = typeDropdownScroll + i;
-            if (idx >= ALL_TYPES.length) break;
-            drawDdItem(g, mx, my, ddX, ddW, ddY, itemH, i, ALL_TYPES[idx].label);
+            if (idx >= available.length) break;
+            drawDdItem(g, mx, my, ddX, ddW, ddY, itemH, i, available[idx].coloredLabel());
         }
-        drawScrollArrows(g, ddX, ddW, ddY, ddH, typeDropdownScroll, ALL_TYPES.length);
+        drawScrollArrows(g, ddX, ddW, ddY, ddH, typeDropdownScroll, available.length);
     }
 
     private void renderMathSourceDropdown(GuiGraphics g, int mx, int my) {
         if (mathDropdownRow < 0 || mathDropdownRow >= VISIBLE) return;
         int si = scrollOffset + mathDropdownRow;
         if (si >= steps.size()) return;
-        List<String> opts = buildMathSrcOptions();
+        SequencerStep mStep = steps.get(si);
+        int mCh = mathDropdownIsA ? mStep.mathACh : mStep.mathBCh;
+        List<String> opts = buildMathSrcOptions(mCh);
 
         int rowY  = rowAreaY + mathDropdownRow * (ROW_H + ROW_GAP);
         int ddX   = mathDropdownIsA ? (panelX + PAD + COL_CTX + 48) : (panelX + PAD + COL_CTX + 180);
@@ -316,7 +397,54 @@ public class SequencerScreen extends Screen {
         g.drawCenteredString(font, "No",  dx + 180, dy + 33, nh ? 0xFF8888 : 0xCC6666);
     }
 
+    private void renderNoNameDialog(GuiGraphics g, int mx, int my) {
+        g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, 0xAA000000);
+        int dw = 240, dh = 46;
+        int dx = panelX + (PANEL_W - dw) / 2;
+        int dy = panelY + (panelH  - dh) / 2;
+
+        g.fill(dx - 1, dy - 1, dx + dw + 1, dy + dh + 1, 0xFF666666);
+        g.fill(dx, dy, dx + dw, dy + dh, 0xFF1A1A1A);
+        g.drawCenteredString(font, "Enter a save name first.", dx + dw / 2, dy + 10, 0xFFFFFF);
+
+        boolean hov = mx >= dx + 80 && mx < dx + 160 && my >= dy + 26 && my < dy + 40;
+        g.fill(dx + 80, dy + 26, dx + 160, dy + 40, hov ? 0xFF3A3A3A : 0xFF2A2A2A);
+        g.drawCenteredString(font, "OK", dx + 120, dy + 29, hov ? 0xFFFFFF : 0xAAAAAA);
+    }
+
     // ── Dropdown drawing helpers ───────────────────────────────────────────────
+
+    private static int stepAccentColor(Type type) {
+        return switch (type) {
+            case SET_VALUE              -> 0xFF2299BB;
+            case SET_REDSTONE           -> 0xFFBB2222;
+            case TYPE_TEXT,
+                 TYPE_VARIABLE          -> 0xFFBB22BB;
+            case IF                     -> 0xFFBBAA00;
+            case CONDITION              -> 0xFFBB7700;
+            case DELAY                  -> 0xFF777777;
+            case JUMP                   -> 0xFFAAAAAA;
+            case MATH                   -> 0xFF22BB22;
+            case CYCLE                  -> 0xFF8822BB;
+            case END                    -> 0xFF444444;
+        };
+    }
+
+    private static int stepRowBg(Type type) {
+        return switch (type) {
+            case SET_VALUE              -> 0x66003344;
+            case SET_REDSTONE           -> 0x66330000;
+            case TYPE_TEXT,
+                 TYPE_VARIABLE          -> 0x66330033;
+            case IF                     -> 0x66332200;
+            case CONDITION              -> 0x66221100;
+            case DELAY                  -> 0x66111111;
+            case JUMP                   -> 0x66222222;
+            case MATH                   -> 0x66003300;
+            case CYCLE                  -> 0x66110033;
+            case END                    -> 0x660D0D0D;
+        };
+    }
 
     private int ddPos(int rowY, int ddH) {
         return (rowY + ROW_H + ddH <= panelY + panelH - BTN_H - PAD)
@@ -348,7 +476,6 @@ public class SequencerScreen extends Screen {
 
     private void refreshAllRows() {
         for (RowWidgets row : rows) row.refresh();
-        if (addBtn != null) addBtn.visible = steps.size() < MAX_STEPS;
         updateRunStopLabel();
     }
 
@@ -358,10 +485,12 @@ public class SequencerScreen extends Screen {
 
     private Component runStopLabel() { return Component.literal(running ? "■ Stop" : "▶ Run"); }
 
-    private void addStep() {
+    private void insertStep(int beforeIdx) {
         if (steps.size() >= MAX_STEPS) return;
-        steps.add(SequencerStep.ofType(Type.END));
-        scrollOffset = Math.max(0, steps.size() - VISIBLE);
+        int idx = Math.max(0, Math.min(beforeIdx, steps.size()));
+        steps.add(idx, SequencerStep.ofType(Type.END));
+        // Keep the inserted step visible without changing scroll if already in view
+        scrollOffset = Math.max(0, Math.min(scrollOffset, idx));
         refreshAllRows();
     }
 
@@ -372,12 +501,48 @@ public class SequencerScreen extends Screen {
         refreshAllRows();
     }
 
-    private List<String> buildMathSrcOptions() {
+    /** Types always present in the dropdown. TYPE_TEXT/TYPE_VARIABLE appended only when a CC computer is linked. */
+    private Type[] buildAvailableTypes() {
+        List<Type> list = new ArrayList<>();
+        for (Type t : Type.values()) {
+            if (t != Type.TYPE_TEXT && t != Type.TYPE_VARIABLE) list.add(t);
+        }
+        if (hasLinkedComputer()) {
+            list.add(Type.TYPE_TEXT);
+            list.add(Type.TYPE_VARIABLE);
+        }
+        return list.toArray(new Type[0]);
+    }
+
+    private boolean hasLinkedComputer() {
+        var mc = Minecraft.getInstance();
+        if (mc.level == null) return false;
+        var be = mc.level.getBlockEntity(keyboardPos);
+        if (!(be instanceof dev.bennethogan.bennetsmod.blockentity.LinkedKeyboardBlockEntity kb)) return false;
+        for (var positions : kb.getAllChannelTargets().values()) {
+            for (BlockPos pos : positions) {
+                var target = mc.level.getBlockEntity(pos);
+                if (target != null && dev.bennethogan.bennetsmod.compat.KeyboardMode.isCCComputer(target))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    private List<String> gettersFor(int channel) {
+        return gettersByChannel.getOrDefault(channel, availableGetters);
+    }
+
+    private List<String[]> settersFor(int channel) {
+        return settersByChannel.getOrDefault(channel, availableSetters);
+    }
+
+    private List<String> buildMathSrcOptions(int channel) {
         List<String> opts = new ArrayList<>();
         opts.add("[Manual Input]");
         for (int v = 1; v <= 8; v++) opts.add("V" + v);
         opts.add("RS:N"); opts.add("RS:S"); opts.add("RS:E"); opts.add("RS:W");
-        opts.addAll(availableGetters);
+        opts.addAll(gettersFor(channel));
         return opts;
     }
 
@@ -385,6 +550,8 @@ public class SequencerScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mx, double my, int btn) {
+        if (showNoNameDialog) { showNoNameDialog = false; return true; }
+
         // Confirm dialog blocks everything else
         if (confirmOverwriteName != null) {
             int dw = 240, dh = 58;
@@ -397,6 +564,11 @@ public class SequencerScreen extends Screen {
             return true;
         }
 
+        if (insertHoverGap >= 0 && btn == 0) {
+            insertStep(scrollOffset + insertHoverGap);
+            return true;
+        }
+
         if (loadDropdownOpen) {
             if (handleLoadDropdownClick(mx, my)) return true;
         }
@@ -406,11 +578,12 @@ public class SequencerScreen extends Screen {
         }
 
         if (typeDropdownRow >= 0) {
+            Type[] available = buildAvailableTypes();
             int rowY  = rowAreaY + typeDropdownRow * (ROW_H + ROW_GAP);
             int ddX   = panelX + PAD + COL_TYPE;
             int ddW   = 82;
             int itemH = 12;
-            int vis   = Math.min(DD_VIS, ALL_TYPES.length);
+            int vis   = Math.min(DD_VIS, available.length);
             int ddH   = vis * itemH + 4;
             int ddY   = ddPos(rowY, ddH);
             int savedScroll = typeDropdownScroll;
@@ -421,9 +594,9 @@ public class SequencerScreen extends Screen {
             if (mx >= ddX && mx < ddX + ddW && my >= ddY && my < ddY + ddH) {
                 int rel = ((int) my - ddY - 2) / itemH;
                 int idx = savedScroll + rel;
-                if (rel >= 0 && rel < vis && idx < ALL_TYPES.length) {
+                if (rel >= 0 && rel < vis && idx < available.length) {
                     int si = scrollOffset + savedRow;
-                    if (si < steps.size()) steps.get(si).type = ALL_TYPES[idx];
+                    if (si < steps.size()) steps.get(si).type = available[idx];
                 }
                 refreshAllRows();
                 return true;
@@ -438,7 +611,8 @@ public class SequencerScreen extends Screen {
         boolean savedIsA    = mathDropdownIsA;
         int     savedScroll = mathDropdownScroll;
         int     si          = scrollOffset + savedRow;
-        List<String> opts   = buildMathSrcOptions();
+        int     ch          = (si < steps.size()) ? (savedIsA ? steps.get(si).mathACh : steps.get(si).mathBCh) : 1;
+        List<String> opts   = buildMathSrcOptions(ch);
 
         int ddX   = savedIsA ? (panelX + PAD + COL_CTX + 48) : (panelX + PAD + COL_CTX + 180);
         int ddW   = 90;
@@ -511,13 +685,15 @@ public class SequencerScreen extends Screen {
             return true;
         }
         if (mathDropdownRow >= 0) {
-            List<String> opts = buildMathSrcOptions();
+            int msi = scrollOffset + mathDropdownRow;
+            int mch = (msi < steps.size()) ? (mathDropdownIsA ? steps.get(msi).mathACh : steps.get(msi).mathBCh) : 1;
+            List<String> opts = buildMathSrcOptions(mch);
             int max = Math.max(0, opts.size() - DD_VIS);
             mathDropdownScroll = Math.max(0, Math.min(max, mathDropdownScroll + dir));
             return true;
         }
         if (typeDropdownRow >= 0) {
-            int max = Math.max(0, ALL_TYPES.length - DD_VIS);
+            int max = Math.max(0, buildAvailableTypes().length - DD_VIS);
             typeDropdownScroll = Math.max(0, Math.min(max, typeDropdownScroll + dir));
             return true;
         }
@@ -531,6 +707,7 @@ public class SequencerScreen extends Screen {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            if (showNoNameDialog) { showNoNameDialog = false; return true; }
             if (confirmOverwriteName != null) { confirmOverwriteName = null; return true; }
             if (loadDropdownOpen)  { loadDropdownOpen  = false; return true; }
             if (mathDropdownRow >= 0) { mathDropdownRow = -1; return true; }
@@ -552,7 +729,7 @@ public class SequencerScreen extends Screen {
 
     private void onSaveFile() {
         String name = sanitizeName(saveName.getValue());
-        if (name.isEmpty()) return;
+        if (name.isEmpty()) { showNoNameDialog = true; return; }
         Path file = getSaveDir().resolve(name + ".seq");
         if (Files.exists(file)) {
             confirmOverwriteName = name;
@@ -774,10 +951,18 @@ public class SequencerScreen extends Screen {
         }
 
         private void cycleMethod() {
-            int si = scrollOffset + rowIdx; if (si >= steps.size() || availableSetters.isEmpty()) return;
+            int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
-            int idx = indexOfSetter(step.setMethod);
-            step.setMethod = availableSetters.get((idx + 1) % availableSetters.size())[0];
+            if (step.type == Type.TYPE_VARIABLE) {
+                String v = step.setValueStr.matches("V[1-8]") ? step.setValueStr : "V1";
+                step.setValueStr = "V" + ((v.charAt(1) - '0') % 8 + 1);
+                methodBtn.setMessage(Component.literal(step.setValueStr));
+                return;
+            }
+            List<String[]> setters = settersFor(step.channel);
+            if (setters.isEmpty()) return;
+            int idx = indexOfSetter(step.setMethod, setters);
+            step.setMethod = setters.get((idx + 1) % setters.size())[0];
             methodBtn.setMessage(Component.literal(step.setMethod));
         }
 
@@ -832,7 +1017,7 @@ public class SequencerScreen extends Screen {
         private void cycleIfGetter() {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
-            List<String> list = buildIfGetterList();
+            List<String> list = buildIfGetterList(step.channel);
             if (list.isEmpty()) return;
             int idx = list.indexOf(step.ifGetter);
             step.ifGetter = list.get((idx + 1) % list.size());
@@ -869,9 +1054,10 @@ public class SequencerScreen extends Screen {
             mathDropdownScroll = 0;
         }
 
-        private List<String> buildIfGetterList() {
+        private List<String> buildIfGetterList(int channel) {
             List<String> list = new ArrayList<>(Arrays.asList(SequencerStep.RS_INPUT_GETTER_NAMES));
-            list.addAll(availableGetters);
+            for (int i = 1; i <= 8; i++) list.add("V" + i);
+            list.addAll(gettersFor(channel));
             return list;
         }
 
@@ -884,10 +1070,12 @@ public class SequencerScreen extends Screen {
         }
 
         private void cycleGetter() {
-            int si = scrollOffset + rowIdx; if (si >= steps.size() || availableGetters.isEmpty()) return;
+            int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
-            int idx = availableGetters.indexOf(step.conditionGetter);
-            step.conditionGetter = availableGetters.get((idx + 1) % availableGetters.size());
+            List<String> getters = gettersFor(step.channel);
+            if (getters.isEmpty()) return;
+            int idx = getters.indexOf(step.conditionGetter);
+            step.conditionGetter = getters.get((idx + 1) % getters.size());
             getterBtn.setMessage(Component.literal(step.conditionGetter));
         }
 
@@ -946,7 +1134,7 @@ public class SequencerScreen extends Screen {
             if (!has) return;
 
             SequencerStep step = steps.get(si);
-            typeBtn.setMessage(Component.literal(step.type.label));
+            typeBtn.setMessage(Component.literal(step.type.coloredLabel()));
             boolean usesChannel = stepUsesChannel(step.type);
             channelBtn.active = usesChannel;
             channelBtn.setMessage(Component.literal(usesChannel ? String.valueOf(step.channel) : "-"));
@@ -955,8 +1143,9 @@ public class SequencerScreen extends Screen {
             switch (step.type) {
                 case SET_VALUE -> {
                     methodBtn.visible = valueInput.visible = true;
-                    if (step.setMethod.isEmpty() && !availableSetters.isEmpty())
-                        step.setMethod = availableSetters.get(0)[0];
+                    List<String[]> stepSetters = settersFor(step.channel);
+                    if (step.setMethod.isEmpty() && !stepSetters.isEmpty())
+                        step.setMethod = stepSetters.get(0)[0];
                     methodBtn.setMessage(Component.literal(
                             step.setMethod.isEmpty() ? "(no setters)" : step.setMethod));
                     valueInput.setValue(step.setValueStr);
@@ -976,7 +1165,7 @@ public class SequencerScreen extends Screen {
                     boolean goTo = step.ifGoTo;
                     ifSkipBtn.visible  = !goTo;
                     ifJumpInput.visible = goTo;
-                    List<String> list = buildIfGetterList();
+                    List<String> list = buildIfGetterList(step.channel);
                     if (step.ifGetter.isEmpty() && !list.isEmpty()) step.ifGetter = list.get(0);
                     ifGetterBtn.setMessage(Component.literal(step.ifGetter.isEmpty() ? "(none)" : step.ifGetter));
                     ifOpBtn.setMessage(Component.literal(step.ifOp));
@@ -992,8 +1181,9 @@ public class SequencerScreen extends Screen {
                     int cx = panelX + PAD;
                     if (periph) {
                         getterBtn.visible = true;
-                        if (step.conditionGetter.isEmpty() && !availableGetters.isEmpty())
-                            step.conditionGetter = availableGetters.get(0);
+                        List<String> stepGetters = gettersFor(step.channel);
+                        if (step.conditionGetter.isEmpty() && !stepGetters.isEmpty())
+                            step.conditionGetter = stepGetters.get(0);
                         getterBtn.setMessage(Component.literal(
                                 step.conditionGetter.isEmpty() ? "(no getters)" : step.conditionGetter));
                         opInput.setX(cx + COL_CTX + 154); opInput.setWidth(124);
@@ -1028,14 +1218,20 @@ public class SequencerScreen extends Screen {
                         mathBChBtn.setMessage(Component.literal(String.valueOf(step.mathBCh)));
                     }
                 }
+                case TYPE_VARIABLE -> {
+                    methodBtn.visible = typeEnterBtn.visible = true;
+                    if (!step.setValueStr.matches("V[1-8]")) step.setValueStr = "V1";
+                    methodBtn.setMessage(Component.literal(step.setValueStr));
+                    typeEnterBtn.setMessage(Component.literal(step.typeTextEnter ? "↵ on" : "↵ off"));
+                }
                 case CYCLE, END -> {}
             }
             refreshing = false;
         }
 
-        private int indexOfSetter(String name) {
-            for (int i = 0; i < availableSetters.size(); i++)
-                if (availableSetters.get(i)[0].equals(name)) return i;
+        private int indexOfSetter(String name, List<String[]> setters) {
+            for (int i = 0; i < setters.size(); i++)
+                if (setters.get(i)[0].equals(name)) return i;
             return -1;
         }
     }

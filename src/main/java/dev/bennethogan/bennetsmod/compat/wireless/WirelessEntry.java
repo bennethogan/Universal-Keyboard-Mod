@@ -25,6 +25,8 @@ public class WirelessEntry implements IRedstoneLinkable {
     private Frequency secondFreq  = Frequency.EMPTY;
 
     private int      transmittedPower = 0;
+    private int      receivedPower    = 0;
+    private boolean  inNetwork        = false;
     private BlockPos location;
 
     public WirelessEntry(BlockPos location) {
@@ -56,6 +58,10 @@ public class WirelessEntry implements IRedstoneLinkable {
     public int  getPower() { return transmittedPower; }
     public void setPower(int p) { transmittedPower = Math.max(0, Math.min(15, p)); }
 
+    public int  getReceivedPower()          { return receivedPower; }
+    public boolean isInNetwork()            { return inNetwork; }
+    public void setInNetwork(boolean v)     { inNetwork = v; }
+
     /** True if at least one of the two frequency slots has been configured. */
     public boolean hasFrequency() {
         return !firstStack.isEmpty() || !secondStack.isEmpty();
@@ -64,8 +70,8 @@ public class WirelessEntry implements IRedstoneLinkable {
     // ── IRedstoneLinkable ─────────────────────────────────────────────────────
 
     @Override public int  getTransmittedStrength()       { return transmittedPower; }
-    @Override public void setReceivedStrength(int power) { /* transmit-only */ }
-    @Override public boolean isListening()               { return false; }
+    @Override public void setReceivedStrength(int power) { receivedPower = Math.max(0, Math.min(15, power)); }
+    @Override public boolean isListening()               { return true; }
     @Override public boolean isAlive()                   { return location != null; }
     @Override public BlockPos getLocation()              { return location; }
     @Override public Couple<Frequency> getNetworkKey()   { return Couple.create(firstFreq, secondFreq); }

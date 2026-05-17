@@ -7,7 +7,9 @@ import dev.bennethogan.bennetsmod.compat.PeripheralHelper;
 import dev.bennethogan.bennetsmod.compat.SableCompat;
 import dev.bennethogan.bennetsmod.compat.wireless.CreateWirelessHelper;
 import dev.bennethogan.bennetsmod.compat.wireless.WirelessEntry;
+import dev.bennethogan.bennetsmod.compat.wireless.WirelessPresence;
 import dev.bennethogan.bennetsmod.config.ModConfig;
+import dev.bennethogan.bennetsmod.livecontrol.LiveControlBinding;
 import dev.bennethogan.bennetsmod.sequencer.SequencerStep;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -50,6 +52,90 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     private @Nullable String inlineCaptureBuffer = null;
 
+    // ----- Live Control -----
+
+    public static final int MAX_LIVE_BINDINGS = 20;
+    private final List<LiveControlBinding> liveControlBindings = new ArrayList<>();
+
+    public List<LiveControlBinding> getLiveControlBindings() { return Collections.unmodifiableList(liveControlBindings); }
+
+    public void setLiveControlBindings(List<LiveControlBinding> bindings) {
+        liveControlBindings.clear();
+        for (int i = 0; i < Math.min(bindings.size(), MAX_LIVE_BINDINGS); i++)
+            liveControlBindings.add(bindings.get(i));
+        setChanged();
+    }
+
+    /**
+     * Imports key-frequency bindings from a typewriter, replacing wireless entries and
+     * live-control bindings while preserving all channel target links (thrusters etc.).
+     * @return null on success, or a human-readable error message.
+     */
+    public String applyTypewriterImport(
+            List<dev.bennethogan.bennetsmod.compat.TypewriterHelper.Binding> bindings,
+            net.minecraft.core.HolderLookup.Provider registries) {
+
+        if (bindings.isEmpty()) return "No bindings found in the typewriter.";
+
+        // Collect unique (first, second) frequency pairs in the order they appear
+        List<net.minecraft.world.item.ItemStack[]> freqs = new ArrayList<>();
+        for (var b : bindings) {
+            boolean dup = false;
+            for (var f : freqs) {
+                if (net.minecraft.world.item.ItemStack.isSameItemSameComponents(f[0], b.firstItem())
+                        && net.minecraft.world.item.ItemStack.isSameItemSameComponents(f[1], b.secondItem())) {
+                    dup = true; break;
+                }
+            }
+            if (!dup) freqs.add(new net.minecraft.world.item.ItemStack[]{
+                    b.firstItem().copy(), b.secondItem().copy()});
+        }
+
+        if (freqs.size() > MAX_WIRELESS)
+            return "Too many unique wireless frequencies (" + freqs.size() + "). " +
+                   "Maximum is " + MAX_WIRELESS + ". Reduce bindings in the typewriter first.";
+
+        // Remove existing wireless entries from the network
+        if (WirelessPresence.isPresent() && level != null)
+            for (WirelessEntry e : wirelessEntries) CreateWirelessHelper.removeFromNetwork(level, e);
+        wirelessEntries.clear();
+        liveControlBindings.clear();
+
+        // Recreate wireless entries
+        for (var freq : freqs) {
+            WirelessEntry e = new WirelessEntry(worldPosition);
+            e.setFirstStack(freq[0]);
+            e.setSecondStack(freq[1]);
+            wirelessEntries.add(e);
+            if (WirelessPresence.isPresent() && level != null)
+                CreateWirelessHelper.ensureRegistered(level, e);
+        }
+
+        // Create live-control bindings (HLD, wireless RS, signal 15 — exactly what a typewriter emits)
+        for (var b : bindings) {
+            int wIdx = -1;
+            for (int i = 0; i < freqs.size(); i++) {
+                if (net.minecraft.world.item.ItemStack.isSameItemSameComponents(freqs.get(i)[0], b.firstItem())
+                        && net.minecraft.world.item.ItemStack.isSameItemSameComponents(freqs.get(i)[1], b.secondItem())) {
+                    wIdx = i; break;
+                }
+            }
+            if (wIdx < 0) continue;
+
+            LiveControlBinding lcb = new LiveControlBinding();
+            lcb.keyCode        = b.keyCode();
+            lcb.actionType     = LiveControlBinding.ActionType.REDSTONE;
+            lcb.mode           = LiveControlBinding.Mode.HLD;
+            lcb.wirelessIdx    = wIdx + 1; // 1-based (W1..W12)
+            lcb.signalStrength = 15;
+            lcb.rsSide         = Direction.NORTH; // unused for wireless
+            liveControlBindings.add(lcb);
+        }
+
+        setChanged();
+        return null; // null = success
+    }
+
     // ----- Peripheral Sequencer -----
 
     private final List<SequencerStep> sequencerSteps    = new ArrayList<>();
@@ -57,6 +143,9 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     private int     sequencerCurrentStep = 0;
     private int     sequencerDelayTicker = 0;
     private final double[] sequencerVars = new double[8]; // V1-V8, cleared on start
+    private final java.util.Set<java.util.UUID> sequencerViewers = new java.util.HashSet<>();
+    private int     lastBroadcastStep    = -1;
+    private boolean lastBroadcastRunning = false;
 
     // Redstone outputs — indexed by Direction.ordinal()
     private final int[] redstoneOutputs = new int[Direction.values().length];
@@ -174,6 +263,33 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         channelTargets.clear();
         stopSequencer();
         setChanged();
+    }
+
+    /** Wipes all stored data — links, sequencer, live bindings, wireless, RS outputs, scripts. */
+    public void resetData() {
+        if (level != null && !level.isClientSide) {
+            for (List<BlockPos> list : channelTargets.values())
+                for (BlockPos pos : list)
+                    PeripheralHelper.releaseThrusterControl(level, pos);
+            if (WirelessPresence.isPresent())
+                for (var e : wirelessEntries)
+                    CreateWirelessHelper.removeFromNetwork(level, e);
+        }
+        channelTargets.clear();
+        sequencerViewers.clear();
+        stopSequencer();
+        sequencerSteps.clear();
+        liveControlBindings.clear();
+        wirelessEntries.clear();
+        autoTypeScript  = "";
+        scriptLineIndex = 0;
+        java.util.Arrays.fill(redstoneOutputs, 0);
+        setChanged();
+    }
+
+    public boolean hasData() {
+        return !channelTargets.isEmpty() || !sequencerSteps.isEmpty()
+                || !liveControlBindings.isEmpty() || !wirelessEntries.isEmpty();
     }
 
     public boolean isTargetInRange() {
@@ -319,6 +435,9 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     public List<SequencerStep> getSequencerSteps()  { return Collections.unmodifiableList(sequencerSteps); }
     public boolean isSequencerRunning()             { return sequencerRunning; }
     public int     getSequencerCurrentStep()        { return sequencerCurrentStep; }
+    public java.util.Set<java.util.UUID> getSequencerViewers() { return sequencerViewers; }
+    public void addSequencerViewer(java.util.UUID uuid)    { sequencerViewers.add(uuid); }
+    public void removeSequencerViewer(java.util.UUID uuid) { sequencerViewers.remove(uuid); }
 
     public void setSequencerSteps(List<SequencerStep> steps) {
         sequencerSteps.clear();
@@ -331,6 +450,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         sequencerRunning     = true;
         sequencerCurrentStep = 0;
         sequencerDelayTicker = 0;
+        typeQueue.clear();
+        typeTimer = 0;
         java.util.Arrays.fill(sequencerVars, 0.0);
         setChanged();
     }
@@ -340,13 +461,14 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         clearRedstoneOutputs();
         clearWirelessOutputs();
         setChanged();
+        mayBroadcastProgress();
     }
 
     public int getRedstoneOutput(Direction dir) {
         return redstoneOutputs[dir.ordinal()];
     }
 
-    private void setRedstoneOutput(Direction dir, int power) {
+    public void setRedstoneOutput(Direction dir, int power) {
         int clamped = Math.max(0, Math.min(15, power));
         if (redstoneOutputs[dir.ordinal()] == clamped) return;
         redstoneOutputs[dir.ordinal()] = clamped;
@@ -365,7 +487,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     /** Adds an empty entry if room remains. Returns the new entry's index (0-based) or -1 on failure. */
     public int addWirelessEntry() {
-        if (!CreateWirelessHelper.isPresent()) return -1;
+        if (!WirelessPresence.isPresent()) return -1;
         if (wirelessEntries.size() >= MAX_WIRELESS) return -1;
         wirelessEntries.add(CreateWirelessHelper.newEntry(worldPosition));
         setChanged();
@@ -400,6 +522,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     }
 
     private void clearWirelessOutputs() {
+        if (!WirelessPresence.isPresent()) return;
         for (WirelessEntry e : wirelessEntries)
             CreateWirelessHelper.setEntryPower(level, e, 0);
     }
@@ -423,6 +546,12 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             };
             if (dir != null && level != null)
                 return level.getSignal(worldPosition.relative(dir), dir);
+            return 0;
+        }
+        if (src.matches("W([1-9]|1[0-2])")) {
+            int idx = Integer.parseInt(src.substring(1)) - 1;
+            if (WirelessPresence.isPresent() && idx < wirelessEntries.size())
+                return wirelessEntries.get(idx).getReceivedPower();
             return 0;
         }
         try { return Double.parseDouble(src); } catch (NumberFormatException ignored) {}
@@ -467,6 +596,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         if (sequencerCurrentStep >= sequencerSteps.size()) {
             sequencerRunning = false;
             setChanged();
+            mayBroadcastProgress();
             return;
         }
         SequencerStep step = sequencerSteps.get(sequencerCurrentStep);
@@ -485,6 +615,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                         sequencerCurrentStep = Math.max(0, Math.min(step.jumpTarget - 1, sequencerSteps.size() - 1));
                         sequencerDelayTicker = 0;
                         setChanged();
+                        mayBroadcastProgress();
                         return;
                     } else {
                         sequencerCurrentStep += step.ifSkipCount;
@@ -504,7 +635,16 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                 advanceSequencer();
             }
             case TYPE_TEXT -> {
+                if (!typeQueue.isEmpty()) break;
                 applySequencerTypeText(step);
+                advanceSequencer();
+            }
+            case TYPE_VARIABLE -> {
+                if (!typeQueue.isEmpty()) break;
+                double val = resolveSource(step.setValueStr.matches("V[1-8]") ? step.setValueStr : "V1", 1);
+                String formatted = formatVar(val);
+                for (char c : formatted.toCharArray()) typeQueue.add(c);
+                if (step.typeTextEnter) typeQueue.add('\n');
                 advanceSequencer();
             }
             case JUMP -> {
@@ -531,12 +671,20 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                 setChanged();
             }
         }
+        mayBroadcastProgress();
     }
 
     private void advanceSequencer() {
         sequencerCurrentStep++;
         sequencerDelayTicker = 0;
         setChanged();
+    }
+
+    private void mayBroadcastProgress() {
+        if (sequencerCurrentStep == lastBroadcastStep && sequencerRunning == lastBroadcastRunning) return;
+        lastBroadcastStep    = sequencerCurrentStep;
+        lastBroadcastRunning = sequencerRunning;
+        dev.bennethogan.bennetsmod.network.ModPackets.broadcastSequencerProgress(this);
     }
 
     private boolean evaluateIfCondition(SequencerStep step) {
@@ -549,6 +697,12 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         if (rsIdx >= 0) {
             Direction dir = SequencerStep.RS_INPUT_GETTER_DIRS[rsIdx];
             actual = level.getSignal(worldPosition.relative(dir), dir);
+        } else if (step.ifGetter.matches("V[1-8]")) {
+            actual = sequencerVars[step.ifGetter.charAt(1) - '1'];
+        } else if (step.ifGetter.matches("W([1-9]|1[0-2])")) {
+            int idx = Integer.parseInt(step.ifGetter.substring(1)) - 1;
+            actual = (WirelessPresence.isPresent() && idx < wirelessEntries.size())
+                    ? wirelessEntries.get(idx).getReceivedPower() : 0;
         } else if (SableCompat.isPresent() && SableCompat.isSableGetter(step.ifGetter) && SableCompat.isOnSublevel(level, worldPosition)) {
             actual = SableCompat.getValue(level, worldPosition, step.ifGetter);
         } else {
@@ -576,6 +730,10 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         Direction dir = step.conditionSource.direction;
         if (dir != null) {
             actual = level.getSignal(worldPosition.relative(dir), dir);
+        } else if (step.conditionGetter.matches("W([1-9]|1[0-2])")) {
+            int idx = Integer.parseInt(step.conditionGetter.substring(1)) - 1;
+            actual = (WirelessPresence.isPresent() && idx < wirelessEntries.size())
+                    ? wirelessEntries.get(idx).getReceivedPower() : 0;
         } else if (SableCompat.isPresent() && SableCompat.isSableGetter(step.conditionGetter) && SableCompat.isOnSublevel(level, worldPosition)) {
             actual = SableCompat.getValue(level, worldPosition, step.conditionGetter);
         } else {
@@ -595,9 +753,14 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     }
 
     private void applySequencerSetValue(SequencerStep step) {
-        List<BlockPos> targets = getLinkedTargetPositions(step.channel);
-        if (targets.isEmpty() || level == null || step.setMethod.isEmpty()) return;
+        if (step.setMethod.isEmpty()) return;
         double value = resolveSource(step.setValueStr, step.channel);
+        if (step.setMethod.matches("V[1-8]")) {
+            sequencerVars[step.setMethod.charAt(1) - '1'] = value;
+            return;
+        }
+        List<BlockPos> targets = getLinkedTargetPositions(step.channel);
+        if (targets.isEmpty() || level == null) return;
         double range   = ModConfig.COMMON.keyboardRange.get();
         double rangeSq = range * range;
         for (BlockPos targetPos : targets) {
@@ -610,6 +773,16 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     private void applySequencerTypeText(SequencerStep step) {
         for (char c : step.typeTextStr.toCharArray()) typeQueue.add(c);
         if (step.typeTextEnter) typeQueue.add('\n');
+    }
+
+    private static String formatVar(double val) {
+        String s;
+        if (val == Math.floor(val) && !Double.isInfinite(val) && Math.abs(val) < 1e15) {
+            s = Long.toString((long) val);
+        } else {
+            s = String.format("%.8f", val).replaceAll("0+$", "").replaceAll("\\.$", "");
+        }
+        return s.length() > 16 ? s.substring(0, 16) : s;
     }
 
     private void applySequencerSetRedstone(SequencerStep step) {
@@ -779,6 +952,15 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             }
             tag.put("wireless_entries", wl);
         }
+        if (!liveControlBindings.isEmpty()) {
+            net.minecraft.nbt.ListTag lcl = new net.minecraft.nbt.ListTag();
+            for (LiveControlBinding b : liveControlBindings) {
+                CompoundTag bt = new CompoundTag();
+                b.saveToTag(bt);
+                lcl.add(bt);
+            }
+            tag.put("live_control_bindings", lcl);
+        }
     }
 
     @Override
@@ -841,7 +1023,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         }
 
         wirelessEntries.clear();
-        if (tag.contains("wireless_entries", Tag.TAG_LIST) && CreateWirelessHelper.isPresent()) {
+        if (tag.contains("wireless_entries", Tag.TAG_LIST) && WirelessPresence.isPresent()) {
             ListTag wl = tag.getList("wireless_entries", Tag.TAG_COMPOUND);
             for (int i = 0; i < wl.size() && wirelessEntries.size() < MAX_WIRELESS; i++) {
                 CompoundTag c = wl.getCompound(i);
@@ -851,19 +1033,39 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                 wirelessEntries.add(e);
             }
         }
+
+        liveControlBindings.clear();
+        if (tag.contains("live_control_bindings", Tag.TAG_LIST)) {
+            net.minecraft.nbt.ListTag lcl = tag.getList("live_control_bindings", Tag.TAG_COMPOUND);
+            for (int i = 0; i < lcl.size() && liveControlBindings.size() < MAX_LIVE_BINDINGS; i++)
+                liveControlBindings.add(LiveControlBinding.fromTag(lcl.getCompound(i)));
+        }
+    }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (level != null && !level.isClientSide && WirelessPresence.isPresent()) {
+            for (WirelessEntry e : wirelessEntries)
+                CreateWirelessHelper.ensureRegistered(level, e);
+        }
     }
 
     @Override
     public void setRemoved() {
-        for (WirelessEntry e : wirelessEntries)
-            CreateWirelessHelper.removeFromNetwork(level, e);
+        if (WirelessPresence.isPresent()) {
+            for (WirelessEntry e : wirelessEntries)
+                CreateWirelessHelper.removeFromNetwork(level, e);
+        }
         super.setRemoved();
     }
 
     @Override
     public void onChunkUnloaded() {
-        for (WirelessEntry e : wirelessEntries)
-            CreateWirelessHelper.removeFromNetwork(level, e);
+        if (WirelessPresence.isPresent()) {
+            for (WirelessEntry e : wirelessEntries)
+                CreateWirelessHelper.removeFromNetwork(level, e);
+        }
         super.onChunkUnloaded();
     }
 

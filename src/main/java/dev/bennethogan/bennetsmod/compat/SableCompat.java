@@ -76,12 +76,19 @@ public class SableCompat {
             instanceField.setAccessible(true);
             sableHelper = instanceField.get(null);
 
-            // Find all getContaining(Level, X) overloads — Vec3i, ChunkPos, Vec3
+            // Find all getContaining(LevelLike, X) overloads — Vec3i, ChunkPos, Vec3.
+            // The first param must accept Level (or a Level subclass that we'll pass at runtime).
             if (sableHelper != null) {
                 for (Method m : sableHelper.getClass().getMethods()) {
                     if (!"getContaining".equals(m.getName()) || m.getParameterCount() != 2) continue;
+                    Class<?> p0 = m.getParameterTypes()[0];
                     Class<?> p1 = m.getParameterTypes()[1];
-                    LOGGER.debug("SableCompat: found getContaining overload with [1]={}", p1.getName());
+                    LOGGER.debug("SableCompat: found getContaining overload with [0]={} [1]={}",
+                            p0.getName(), p1.getName());
+                    // Skip overloads whose first param isn't compatible with Level.
+                    // (Level is the most-derived type we always have at the call site.)
+                    if (!p0.isAssignableFrom(Level.class)
+                            && !Level.class.isAssignableFrom(p0)) continue;
                     if (Vec3i.class.isAssignableFrom(p1))         getContainingVec3i = m;
                     else if (ChunkPos.class.isAssignableFrom(p1)) getContainingChunk = m;
                     else if (Vec3.class.isAssignableFrom(p1))     getContainingVec3  = m;
@@ -111,24 +118,34 @@ public class SableCompat {
     public static Object getSublevel(Level level, BlockPos pos) {
         init();
         if (!present || level == null) return null;
-        Object result = tryOverload(getContainingVec3i, level, pos);
+        Object result = tryOverload(0, level, pos);
         if (result != null) return result;
-        result = tryOverload(getContainingChunk, level, new ChunkPos(pos));
+        result = tryOverload(1, level, new ChunkPos(pos));
         if (result != null) return result;
-        result = tryOverload(getContainingVec3,  level, new Vec3(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5));
+        result = tryOverload(2, level, new Vec3(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5));
         return result;
     }
 
-    private static Object tryOverload(Method m, Level level, Object arg) {
+    /** Disable any overload that has failed once — prevents per-tick log spam. */
+    private static Object tryOverload(int slot, Level level, Object arg) {
+        Method m = switch (slot) {
+            case 0 -> getContainingVec3i;
+            case 1 -> getContainingChunk;
+            default -> getContainingVec3;
+        };
         if (m == null) return null;
         try {
             return m.invoke(sableHelper, level, arg);
-        } catch (java.lang.reflect.InvocationTargetException ite) {
-            LOGGER.warn("SableCompat: getContaining({}) threw: {}", arg.getClass().getSimpleName(),
-                    ite.getCause() != null ? ite.getCause() : ite);
-            return null;
-        } catch (Exception e) {
-            LOGGER.warn("SableCompat: getContaining({}) failed: {}", arg.getClass().getSimpleName(), e.getMessage());
+        } catch (Throwable t) {
+            Throwable cause = (t instanceof java.lang.reflect.InvocationTargetException ite && ite.getCause() != null)
+                    ? ite.getCause() : t;
+            LOGGER.warn("SableCompat: getContaining({}) failed: {} — disabling this overload.",
+                    arg.getClass().getSimpleName(), cause.getMessage());
+            switch (slot) {
+                case 0 -> getContainingVec3i = null;
+                case 1 -> getContainingChunk = null;
+                default -> getContainingVec3  = null;
+            }
             return null;
         }
     }

@@ -1,10 +1,12 @@
 package dev.bennethogan.bennetsmod.client;
 
 import dev.bennethogan.bennetsmod.client.screen.AutoTypeScreen;
+import dev.bennethogan.bennetsmod.client.screen.LiveControlScreen;
 import dev.bennethogan.bennetsmod.client.screen.ModeSelectionScreen;
 import dev.bennethogan.bennetsmod.client.screen.PeripheralMethodScreen;
 import dev.bennethogan.bennetsmod.client.screen.SequencerScreen;
 import dev.bennethogan.bennetsmod.client.screen.ThrusterControlScreen;
+import dev.bennethogan.bennetsmod.livecontrol.LiveControlManager;
 import dev.bennethogan.bennetsmod.network.ModPackets;
 import dev.bennethogan.bennetsmod.network.ModPackets.*;
 import net.minecraft.client.Minecraft;
@@ -26,8 +28,11 @@ public class ClientPacketHandlers {
         registrar.playToClient(OpenPeripheralMenuPacket.TYPE,   OpenPeripheralMenuPacket.CODEC,   ClientPacketHandlers::handleOpenPeripheralMenu);
         registrar.playToClient(OpenModeSelectionPacket.TYPE,    OpenModeSelectionPacket.CODEC,    ClientPacketHandlers::handleOpenModeSelection);
         registrar.playToClient(OpenThrusterControlPacket.TYPE,  OpenThrusterControlPacket.CODEC,  ClientPacketHandlers::handleOpenThrusterControl);
-        registrar.playToClient(OpenSequencerPacket.TYPE,        OpenSequencerPacket.CODEC,        ClientPacketHandlers::handleOpenSequencer);
-        registrar.playToClient(ChannelChangedPacket.TYPE,       ChannelChangedPacket.CODEC,       ClientPacketHandlers::handleChannelChanged);
+        registrar.playToClient(OpenSequencerPacket.TYPE,           OpenSequencerPacket.CODEC,           ClientPacketHandlers::handleOpenSequencer);
+        registrar.playToClient(ModPackets.SequencerProgressPacket.TYPE,       ModPackets.SequencerProgressPacket.CODEC,       ClientPacketHandlers::handleSequencerProgress);
+        registrar.playToClient(ModPackets.TypewriterImportOfferPacket.TYPE,   ModPackets.TypewriterImportOfferPacket.CODEC,   ClientPacketHandlers::handleTypewriterOffer);
+        registrar.playToClient(ChannelChangedPacket.TYPE,          ChannelChangedPacket.CODEC,          ClientPacketHandlers::handleChannelChanged);
+        registrar.playToClient(OpenLiveControlScreenPacket.TYPE, OpenLiveControlScreenPacket.CODEC, ClientPacketHandlers::handleOpenLiveControlScreen);
     }
 
     private static void handleKeyboardCapture(KeyboardCapturePacket packet, IPayloadContext ctx) {
@@ -98,17 +103,47 @@ public class ClientPacketHandlers {
             if (mc.screen instanceof SequencerScreen existing
                     && existing.getKeyboardPos().equals(packet.keyboardPos())) {
                 existing.updateState(packet.steps(), packet.running(), packet.currentStep(),
-                        packet.availableGetterNames(), packet.availableSetters());
+                        packet.availableGetterNames(), packet.availableSetters(),
+                        packet.gettersByChannel(), packet.settersByChannel());
             } else {
                 mc.setScreen(new SequencerScreen(
                         packet.keyboardPos(), packet.steps(), packet.running(), packet.currentStep(),
-                        packet.peripheralType(), packet.availableGetterNames(), packet.availableSetters()));
+                        packet.availableGetterNames(), packet.availableSetters(),
+                        packet.gettersByChannel(), packet.settersByChannel()));
             }
+        });
+    }
+
+    private static void handleTypewriterOffer(ModPackets.TypewriterImportOfferPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.screen instanceof LiveControlScreen screen
+                    && screen.getKeyboardPos().equals(packet.keyboardPos()))
+                screen.handleTypewriterOffer(packet.typewriterPos(), packet.bindingCount(),
+                        packet.freqCount(), packet.error());
+        });
+    }
+
+    private static void handleSequencerProgress(ModPackets.SequencerProgressPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.screen instanceof SequencerScreen screen
+                    && screen.getKeyboardPos().equals(packet.keyboardPos()))
+                screen.updateProgress(packet.running(), packet.currentStep());
         });
     }
 
     private static void handleChannelChanged(ChannelChangedPacket packet, IPayloadContext ctx) {
         ctx.enqueueWork(() ->
                 KeyboardCaptureManager.setCapturedChannel(packet.channel()));
+    }
+
+    private static void handleOpenLiveControlScreen(OpenLiveControlScreenPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() ->
+                Minecraft.getInstance().setScreen(
+                        new LiveControlScreen(
+                                packet.keyboardPos(), packet.bindings(), packet.wirelessCount(),
+                                packet.hasThrusters(), packet.hasVectorThrusters(),
+                                packet.localRsOutputs(), packet.wirelessPowers(), packet.thrusterPowers())));
     }
 }

@@ -391,6 +391,19 @@ public class PeripheralHelper {
         return "method not found";
     }
 
+    /** Returns the current thruster power as a 0-15 signal, or 0 if not a thruster. */
+    public static int getThrusterPower(Level level, BlockPos pos) {
+        init();
+        if (!ccPresent) return 0;
+        Object p = getPeripheral(level, pos);
+        if (p == null) return 0;
+        String type = getPeripheralType(p);
+        if (!isThrusterType(type)) return 0;
+        if (type.contains("vector"))
+            return getIntVal(p, "getThrust");
+        return (int) Math.round(getDoubleVal(p, "getPower") * 15);
+    }
+
     public static @Nullable ThrusterState scanThruster(Level level, BlockPos pos) {
         init();
         if (!ccPresent) return null;

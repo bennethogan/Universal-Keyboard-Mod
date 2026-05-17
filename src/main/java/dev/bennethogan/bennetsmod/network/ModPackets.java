@@ -10,6 +10,7 @@ import net.minecraft.world.level.Level;
 import dev.bennethogan.bennetsmod.item.LinkedKeyboardItem;
 import dev.bennethogan.bennetsmod.sequencer.SequencerStep;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -25,7 +26,10 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 public class ModPackets {
 
@@ -370,10 +374,16 @@ public class ModPackets {
         registrar.playToServer(SetThrusterVectorPacket.TYPE,      SetThrusterVectorPacket.CODEC,      ModPackets::handleSetThrusterVector);
         registrar.playToServer(SaveAndRunSequencerPacket.TYPE,    SaveAndRunSequencerPacket.CODEC,    ModPackets::handleSaveAndRunSequencer);
         registrar.playToServer(StopSequencerPacket.TYPE,          StopSequencerPacket.CODEC,          ModPackets::handleStopSequencer);
-        registrar.playToServer(UnlinkKeyboardPacket.TYPE,         UnlinkKeyboardPacket.CODEC,         ModPackets::handleUnlinkKeyboard);
+        registrar.playToServer(SequencerWatchPacket.TYPE,             SequencerWatchPacket.CODEC,             ModPackets::handleSequencerWatch);
+        registrar.playToServer(TypewriterScanPacket.TYPE,            TypewriterScanPacket.CODEC,            ModPackets::handleTypewriterScan);
+        registrar.playToServer(TypewriterImportConfirmPacket.TYPE,   TypewriterImportConfirmPacket.CODEC,   ModPackets::handleTypewriterConfirm);
+        registrar.playToServer(UnlinkKeyboardPacket.TYPE,            UnlinkKeyboardPacket.CODEC,            ModPackets::handleUnlinkKeyboard);
         registrar.playToServer(SetActiveChannelPacket.TYPE,       SetActiveChannelPacket.CODEC,       ModPackets::handleSetActiveChannel);
         registrar.playToServer(SetLinkingChannelPacket.TYPE,      SetLinkingChannelPacket.CODEC,      ModPackets::handleSetLinkingChannel);
         registrar.playToServer(CycleChannelAndReopenPacket.TYPE,    CycleChannelAndReopenPacket.CODEC,    ModPackets::handleCycleChannelAndReopen);
+        registrar.playToServer(OpenLiveControlPacket.TYPE,          OpenLiveControlPacket.CODEC,          ModPackets::handleOpenLiveControl);
+        registrar.playToServer(SaveLiveBindingsPacket.TYPE,         SaveLiveBindingsPacket.CODEC,         ModPackets::handleSaveLiveBindings);
+        registrar.playToServer(LiveActionPacket.TYPE,               LiveActionPacket.CODEC,               ModPackets::handleLiveAction);
         registrar.optional().playToServer(RequestThrusterRefreshPacket.TYPE,   RequestThrusterRefreshPacket.CODEC,   ModPackets::handleRequestThrusterRefresh);
         registrar.optional().playToServer(OpenWirelessConfigPacket.TYPE,       OpenWirelessConfigPacket.CODEC,       ModPackets::handleOpenWirelessConfig);
         registrar.optional().playToServer(WirelessAddRemovePacket.TYPE,        WirelessAddRemovePacket.CODEC,        ModPackets::handleWirelessAddRemove);
@@ -389,7 +399,10 @@ public class ModPackets {
             registrar.playToClient(OpenModeSelectionPacket.TYPE,   OpenModeSelectionPacket.CODEC,   (p, c) -> {});
             registrar.playToClient(OpenThrusterControlPacket.TYPE, OpenThrusterControlPacket.CODEC, (p, c) -> {});
             registrar.playToClient(OpenSequencerPacket.TYPE,       OpenSequencerPacket.CODEC,       (p, c) -> {});
-            registrar.playToClient(ChannelChangedPacket.TYPE,      ChannelChangedPacket.CODEC,      (p, c) -> {});
+            registrar.playToClient(SequencerProgressPacket.TYPE,        SequencerProgressPacket.CODEC,        (p, c) -> {});
+            registrar.playToClient(TypewriterImportOfferPacket.TYPE,  TypewriterImportOfferPacket.CODEC,  (p, c) -> {});
+            registrar.playToClient(ChannelChangedPacket.TYPE,          ChannelChangedPacket.CODEC,          (p, c) -> {});
+            registrar.playToClient(OpenLiveControlScreenPacket.TYPE, OpenLiveControlScreenPacket.CODEC, (p, c) -> {});
         }
     }
 
@@ -691,9 +704,12 @@ public class ModPackets {
             List<SequencerStep> steps,
             boolean running,
             int currentStep,
-            String peripheralType,
+            // channel 1 lists kept for backward-compat / fallback
             List<String> availableGetterNames,
-            List<String[]> availableSetters
+            List<String[]> availableSetters,
+            // per-channel maps (key = channel 1-16)
+            Map<Integer, List<String>>   gettersByChannel,
+            Map<Integer, List<String[]>> settersByChannel
     ) implements CustomPacketPayload {
         public static final Type<OpenSequencerPacket> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "open_sequencer"));
@@ -704,27 +720,56 @@ public class ModPackets {
                     for (SequencerStep s : pkt.steps()) s.encode(buf);
                     buf.writeBoolean(pkt.running());
                     buf.writeInt(pkt.currentStep());
-                    buf.writeUtf(pkt.peripheralType());
                     buf.writeInt(pkt.availableGetterNames().size());
                     for (String g : pkt.availableGetterNames()) buf.writeUtf(g);
                     buf.writeInt(pkt.availableSetters().size());
                     for (String[] s : pkt.availableSetters()) { buf.writeUtf(s[0]); buf.writeUtf(s[1]); }
+                    buf.writeInt(pkt.gettersByChannel().size());
+                    for (Map.Entry<Integer, List<String>> e : pkt.gettersByChannel().entrySet()) {
+                        buf.writeInt(e.getKey());
+                        buf.writeInt(e.getValue().size());
+                        for (String g : e.getValue()) buf.writeUtf(g);
+                    }
+                    buf.writeInt(pkt.settersByChannel().size());
+                    for (Map.Entry<Integer, List<String[]>> e : pkt.settersByChannel().entrySet()) {
+                        buf.writeInt(e.getKey());
+                        buf.writeInt(e.getValue().size());
+                        for (String[] s : e.getValue()) { buf.writeUtf(s[0]); buf.writeUtf(s[1]); }
+                    }
                 },
                 buf -> {
                     BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
                     int sc = buf.readInt();
                     List<SequencerStep> steps = new ArrayList<>(sc);
                     for (int i = 0; i < sc; i++) steps.add(SequencerStep.decode(buf));
-                    boolean running    = buf.readBoolean();
-                    int currentStep    = buf.readInt();
-                    String pType       = buf.readUtf();
+                    boolean running   = buf.readBoolean();
+                    int currentStep   = buf.readInt();
                     int gc = buf.readInt();
                     List<String> getters = new ArrayList<>(gc);
                     for (int i = 0; i < gc; i++) getters.add(buf.readUtf());
                     int stc = buf.readInt();
                     List<String[]> setters = new ArrayList<>(stc);
                     for (int i = 0; i < stc; i++) setters.add(new String[]{ buf.readUtf(), buf.readUtf() });
-                    return new OpenSequencerPacket(pos, steps, running, currentStep, pType, getters, setters);
+                    int chgc = buf.readInt();
+                    Map<Integer, List<String>> gettersByChannel = new HashMap<>(chgc);
+                    for (int i = 0; i < chgc; i++) {
+                        int ch = buf.readInt();
+                        int cnt = buf.readInt();
+                        List<String> gl = new ArrayList<>(cnt);
+                        for (int j = 0; j < cnt; j++) gl.add(buf.readUtf());
+                        gettersByChannel.put(ch, gl);
+                    }
+                    int chsc = buf.readInt();
+                    Map<Integer, List<String[]>> settersByChannel = new HashMap<>(chsc);
+                    for (int i = 0; i < chsc; i++) {
+                        int ch = buf.readInt();
+                        int cnt = buf.readInt();
+                        List<String[]> sl = new ArrayList<>(cnt);
+                        for (int j = 0; j < cnt; j++) sl.add(new String[]{ buf.readUtf(), buf.readUtf() });
+                        settersByChannel.put(ch, sl);
+                    }
+                    return new OpenSequencerPacket(pos, steps, running, currentStep,
+                            getters, setters, gettersByChannel, settersByChannel);
                 });
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
@@ -766,6 +811,29 @@ public class ModPackets {
         public static final StreamCodec<FriendlyByteBuf, StopSequencerPacket> CODEC = StreamCodec.of(
                 (buf, pkt) -> BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos()),
                 buf -> new StopSequencerPacket(BlockPos.STREAM_CODEC.decode(buf)));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public record SequencerWatchPacket(BlockPos keyboardPos, boolean subscribe) implements CustomPacketPayload {
+        public static final Type<SequencerWatchPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "sequencer_watch"));
+        public static final StreamCodec<FriendlyByteBuf, SequencerWatchPacket> CODEC = StreamCodec.of(
+                (buf, pkt) -> { BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos()); buf.writeBoolean(pkt.subscribe()); },
+                buf -> new SequencerWatchPacket(BlockPos.STREAM_CODEC.decode(buf), buf.readBoolean()));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public record SequencerProgressPacket(BlockPos keyboardPos, boolean running, int currentStep)
+            implements CustomPacketPayload {
+        public static final Type<SequencerProgressPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "sequencer_progress"));
+        public static final StreamCodec<FriendlyByteBuf, SequencerProgressPacket> CODEC = StreamCodec.of(
+                (buf, pkt) -> {
+                    BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos());
+                    buf.writeBoolean(pkt.running());
+                    buf.writeInt(pkt.currentStep());
+                },
+                buf -> new SequencerProgressPacket(BlockPos.STREAM_CODEC.decode(buf), buf.readBoolean(), buf.readInt()));
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
@@ -865,7 +933,7 @@ public class ModPackets {
         ctx.enqueueWork(() -> {
             if (!(ctx.player() instanceof ServerPlayer sp)) return;
             if (sp.serverLevel().getBlockEntity(packet.keyboardPos()) instanceof LinkedKeyboardBlockEntity be)
-                be.unlink();
+                be.resetData();
         });
     }
 
@@ -880,39 +948,227 @@ public class ModPackets {
         });
     }
 
+    private static void handleSequencerWatch(SequencerWatchPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            if (packet.subscribe()) kb.addSequencerViewer(sp.getUUID());
+            else                    kb.removeSequencerViewer(sp.getUUID());
+        });
+    }
+
+    public static void broadcastSequencerProgress(LinkedKeyboardBlockEntity kb) {
+        if (kb.getSequencerViewers().isEmpty()) return;
+        Level level = kb.getLevel();
+        if (!(level instanceof net.minecraft.server.level.ServerLevel svl)) return;
+        SequencerProgressPacket pkt = new SequencerProgressPacket(
+                kb.getBlockPos(), kb.isSequencerRunning(), kb.getSequencerCurrentStep());
+        for (UUID uuid : kb.getSequencerViewers()) {
+            ServerPlayer sp = svl.getServer().getPlayerList().getPlayer(uuid);
+            if (sp != null) PacketDistributor.sendToPlayer(sp, pkt);
+        }
+    }
+
+    public static void sendSequencerWatch(BlockPos keyboardPos, boolean subscribe) {
+        PacketDistributor.sendToServer(new SequencerWatchPacket(keyboardPos, subscribe));
+    }
+
+    // ── Typewriter import packets ─────────────────────────────────────────────
+
+    /** Client requests a typewriter scan near the placed keyboard. */
+    public record TypewriterScanPacket(BlockPos keyboardPos) implements CustomPacketPayload {
+        public static final Type<TypewriterScanPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "typewriter_scan"));
+        public static final StreamCodec<FriendlyByteBuf, TypewriterScanPacket> CODEC = StreamCodec.of(
+                (buf, pkt) -> BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos()),
+                buf -> new TypewriterScanPacket(BlockPos.STREAM_CODEC.decode(buf)));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    /**
+     * Server's reply to the scan.
+     * error != "" means failure (show the string). Otherwise bindingCount/freqCount are valid
+     * and typewriterPos holds the found typewriter position (for the confirm step).
+     */
+    public record TypewriterImportOfferPacket(
+            BlockPos keyboardPos, BlockPos typewriterPos,
+            int bindingCount, int freqCount, String error)
+            implements CustomPacketPayload {
+        public static final Type<TypewriterImportOfferPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "typewriter_offer"));
+        public static final StreamCodec<FriendlyByteBuf, TypewriterImportOfferPacket> CODEC = StreamCodec.of(
+                (buf, pkt) -> {
+                    BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos());
+                    BlockPos.STREAM_CODEC.encode(buf, pkt.typewriterPos());
+                    buf.writeInt(pkt.bindingCount()); buf.writeInt(pkt.freqCount()); buf.writeUtf(pkt.error());
+                },
+                buf -> new TypewriterImportOfferPacket(
+                        BlockPos.STREAM_CODEC.decode(buf), BlockPos.STREAM_CODEC.decode(buf),
+                        buf.readInt(), buf.readInt(), buf.readUtf()));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    /** Client confirmed the import. */
+    public record TypewriterImportConfirmPacket(BlockPos keyboardPos, BlockPos typewriterPos)
+            implements CustomPacketPayload {
+        public static final Type<TypewriterImportConfirmPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "typewriter_confirm"));
+        public static final StreamCodec<FriendlyByteBuf, TypewriterImportConfirmPacket> CODEC = StreamCodec.of(
+                (buf, pkt) -> {
+                    BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos());
+                    BlockPos.STREAM_CODEC.encode(buf, pkt.typewriterPos());
+                },
+                buf -> new TypewriterImportConfirmPacket(
+                        BlockPos.STREAM_CODEC.decode(buf), BlockPos.STREAM_CODEC.decode(buf)));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public static void sendTypewriterScan(BlockPos keyboardPos) {
+        PacketDistributor.sendToServer(new TypewriterScanPacket(keyboardPos));
+    }
+
+    public static void sendTypewriterConfirm(BlockPos keyboardPos, BlockPos typewriterPos) {
+        PacketDistributor.sendToServer(new TypewriterImportConfirmPacket(keyboardPos, typewriterPos));
+    }
+
+    private static void handleTypewriterScan(TypewriterScanPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            net.minecraft.server.level.ServerLevel level = sp.serverLevel();
+            net.minecraft.world.level.block.entity.BlockEntity be = level.getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+
+            // Scan a 20-block cube around the keyboard for a typewriter
+            BlockPos twPos = findNearbyTypewriter(level, packet.keyboardPos());
+            if (twPos == null) {
+                PacketDistributor.sendToPlayer(sp, new TypewriterImportOfferPacket(
+                        packet.keyboardPos(), BlockPos.ZERO, 0, 0, "No typewriter found within 20 blocks."));
+                return;
+            }
+
+            // Read bindings and validate
+            List<dev.bennethogan.bennetsmod.compat.TypewriterHelper.Binding> bindings =
+                    dev.bennethogan.bennetsmod.compat.TypewriterHelper.readBindings(level, twPos, level.registryAccess());
+            if (bindings.isEmpty()) {
+                PacketDistributor.sendToPlayer(sp, new TypewriterImportOfferPacket(
+                        packet.keyboardPos(), twPos, 0, 0,
+                        "Typewriter found but no bindings could be read. Check the log for details."));
+                return;
+            }
+
+            // Count unique frequencies
+            List<net.minecraft.world.item.ItemStack[]> freqs = new ArrayList<>();
+            for (var b : bindings) {
+                boolean dup = false;
+                for (var f : freqs)
+                    if (net.minecraft.world.item.ItemStack.isSameItemSameComponents(f[0], b.firstItem())
+                            && net.minecraft.world.item.ItemStack.isSameItemSameComponents(f[1], b.secondItem())) {
+                        dup = true; break;
+                    }
+                if (!dup) freqs.add(new net.minecraft.world.item.ItemStack[]{b.firstItem(), b.secondItem()});
+            }
+
+            if (freqs.size() > LinkedKeyboardBlockEntity.MAX_WIRELESS) {
+                PacketDistributor.sendToPlayer(sp, new TypewriterImportOfferPacket(
+                        packet.keyboardPos(), twPos, bindings.size(), freqs.size(),
+                        "Too many unique wireless frequencies (" + freqs.size() + "). Max is " +
+                        LinkedKeyboardBlockEntity.MAX_WIRELESS + ". Reduce bindings in the typewriter first."));
+                return;
+            }
+
+            // Everything looks good — offer the import
+            PacketDistributor.sendToPlayer(sp, new TypewriterImportOfferPacket(
+                    packet.keyboardPos(), twPos, bindings.size(), freqs.size(), ""));
+        });
+    }
+
+    private static void handleTypewriterConfirm(TypewriterImportConfirmPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            net.minecraft.server.level.ServerLevel level = sp.serverLevel();
+            net.minecraft.world.level.block.entity.BlockEntity be = level.getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+
+            if (!dev.bennethogan.bennetsmod.compat.TypewriterHelper.isTypewriter(level, packet.typewriterPos())) {
+                sp.displayClientMessage(
+                        net.minecraft.network.chat.Component.literal("§c[Keyboard] Typewriter no longer found at that position."), true);
+                return;
+            }
+
+            List<dev.bennethogan.bennetsmod.compat.TypewriterHelper.Binding> bindings =
+                    dev.bennethogan.bennetsmod.compat.TypewriterHelper.readBindings(level, packet.typewriterPos(), level.registryAccess());
+
+            String err = kb.applyTypewriterImport(bindings, level.registryAccess());
+            if (err != null) {
+                sp.displayClientMessage(net.minecraft.network.chat.Component.literal("§c[Keyboard] " + err), true);
+                return;
+            }
+
+            sp.displayClientMessage(
+                    net.minecraft.network.chat.Component.literal(
+                            "§a[Keyboard] Imported " + bindings.size() + " binding(s) from typewriter."), true);
+            // Re-send the live control screen so the client sees the updated bindings
+            handleOpenLiveControl(new OpenLiveControlPacket(packet.keyboardPos()), ctx);
+        });
+    }
+
+    /** Searches a 20-block cube around keyboardPos for any typewriter peripheral. */
+    private static BlockPos findNearbyTypewriter(net.minecraft.server.level.ServerLevel level, BlockPos center) {
+        int radius = 20;
+        for (int dx = -radius; dx <= radius; dx++)
+            for (int dy = -radius; dy <= radius; dy++)
+                for (int dz = -radius; dz <= radius; dz++) {
+                    BlockPos p = center.offset(dx, dy, dz);
+                    if (level.getBlockEntity(p) == null) continue; // fast-skip empty positions
+                    if (dev.bennethogan.bennetsmod.compat.TypewriterHelper.isTypewriter(level, p)) return p;
+                }
+        return null;
+    }
+
     public static void sendOpenSequencer(ServerPlayer player, BlockPos keyboardPos,
                                           LinkedKeyboardBlockEntity keyboard) {
-        BlockPos primary = keyboard.getLinkedTargetPos();
-        String pType = "";
-        List<String> getterNames = new ArrayList<>();
-        List<String[]> setters   = List.of();
-        if (primary != null && !keyboard.isLinkedAsComputer()) {
-            PeripheralHelper.ScanResult result = PeripheralHelper.scanAndCall(
-                    player.serverLevel(), primary, "", "");
-            if (result != null) {
-                pType       = result.type();
-                getterNames = new ArrayList<>(result.getters().stream().map(g -> g[0]).toList());
-                setters     = result.setters();
-            }
-        } else if (primary != null) {
-            pType = "CC Computer";
-        }
-        // Append Sable sublevel getters when the keyboard is on a sublevel
+        boolean isComputer = keyboard.isLinkedAsComputer();
         Level kLevel = keyboard.getLevel();
+
+        // Sable sublevel getters are not channel-specific
+        List<String> sableGetters = new ArrayList<>();
         if (SableCompat.isPresent() && kLevel != null) {
             BlockPos kPos = keyboard.getBlockPos();
             boolean onSub = SableCompat.isOnSublevel(kLevel, kPos);
             UniversalKeyboardMod.LOGGER.debug("SableCompat check: keyboard @ {} onSublevel={} level={}",
                     kPos, onSub, kLevel.getClass().getSimpleName());
-            if (onSub) {
-                for (String g : SableCompat.GETTER_NAMES) getterNames.add(g);
-                if (pType.isEmpty()) pType = "Sable Sublevel";
-            }
+            if (onSub) java.util.Collections.addAll(sableGetters, SableCompat.GETTER_NAMES);
         }
+
+        // Scan every populated channel for its peripheral getters/setters
+        Map<Integer, List<String>>   gettersByChannel = new HashMap<>();
+        Map<Integer, List<String[]>> settersByChannel = new HashMap<>();
+        for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS; ch++) {
+            List<net.minecraft.core.BlockPos> targets = keyboard.getLinkedTargetPositions(ch);
+            if (targets.isEmpty()) continue;
+            List<String> chGetters = new ArrayList<>(sableGetters);
+            List<String[]> chSetters = new ArrayList<>();
+            if (!isComputer) {
+                PeripheralHelper.ScanResult result = PeripheralHelper.scanAndCall(
+                        player.serverLevel(), targets.get(0), "", "");
+                if (result != null) {
+                    result.getters().stream().map(g -> g[0]).forEach(chGetters::add);
+                    chSetters.addAll(result.setters());
+                }
+            }
+            gettersByChannel.put(ch, chGetters);
+            settersByChannel.put(ch, chSetters);
+        }
+
+        // Channel-1 lists kept as the screen's top-level fallback
+        List<String>   ch1Getters = gettersByChannel.getOrDefault(1, sableGetters);
+        List<String[]> ch1Setters = settersByChannel.getOrDefault(1, List.of());
+
         PacketDistributor.sendToPlayer(player, new OpenSequencerPacket(
                 keyboardPos, keyboard.getSequencerSteps(),
                 keyboard.isSequencerRunning(), keyboard.getSequencerCurrentStep(),
-                pType, getterNames, setters));
+                ch1Getters, ch1Setters, gettersByChannel, settersByChannel));
     }
 
     public static void sendSaveAndRunSequencer(BlockPos keyboardPos, List<SequencerStep> steps, boolean run) {
@@ -956,7 +1212,7 @@ public class ModPackets {
     private static void handleOpenWirelessConfig(OpenWirelessConfigPacket packet, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
             if (!(ctx.player() instanceof ServerPlayer sp)) return;
-            if (!dev.bennethogan.bennetsmod.compat.wireless.CreateWirelessHelper.isPresent()) return;
+            if (!dev.bennethogan.bennetsmod.compat.wireless.WirelessPresence.isPresent()) return;
             BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
             if (!(be instanceof LinkedKeyboardBlockEntity)) return;
             sp.openMenu(new net.minecraft.world.MenuProvider() {
@@ -982,6 +1238,225 @@ public class ModPackets {
             } else {
                 int n = kb.getWirelessCount();
                 if (n > 0) kb.removeWirelessEntry(n - 1);
+            }
+        });
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Live Control packets
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /** Client → Server: open the live control screen for this keyboard. */
+    public record OpenLiveControlPacket(BlockPos keyboardPos) implements CustomPacketPayload {
+        public static final Type<OpenLiveControlPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "open_live_control"));
+        public static final StreamCodec<FriendlyByteBuf, OpenLiveControlPacket> CODEC = StreamCodec.of(
+                (buf, p) -> BlockPos.STREAM_CODEC.encode(buf, p.keyboardPos()),
+                buf -> new OpenLiveControlPacket(BlockPos.STREAM_CODEC.decode(buf)));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    /** Server → Client: open the live control screen with current bindings. */
+    public record OpenLiveControlScreenPacket(
+            BlockPos keyboardPos,
+            List<dev.bennethogan.bennetsmod.livecontrol.LiveControlBinding> bindings,
+            int wirelessCount,
+            boolean hasThrusters,
+            boolean hasVectorThrusters,
+            int[] localRsOutputs,      // current redstone output per Direction ordinal (len 6)
+            int[] wirelessPowers,      // current wireless power per slot index (len = wirelessCount)
+            int[] thrusterPowers       // current thruster power 0-15 per channel; index = channel (1-16)
+    ) implements CustomPacketPayload {
+        public static final Type<OpenLiveControlScreenPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "open_live_control_screen"));
+        public static final StreamCodec<FriendlyByteBuf, OpenLiveControlScreenPacket> CODEC = StreamCodec.of(
+                (buf, p) -> {
+                    BlockPos.STREAM_CODEC.encode(buf, p.keyboardPos());
+                    buf.writeInt(p.bindings().size());
+                    for (var b : p.bindings()) b.encode(buf);
+                    buf.writeInt(p.wirelessCount());
+                    buf.writeBoolean(p.hasThrusters());
+                    buf.writeBoolean(p.hasVectorThrusters());
+                    buf.writeByteArray(toByteArray(p.localRsOutputs()));
+                    buf.writeByteArray(toByteArray(p.wirelessPowers()));
+                    buf.writeByteArray(toByteArray(p.thrusterPowers()));
+                },
+                buf -> {
+                    BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
+                    int cnt = buf.readInt();
+                    List<dev.bennethogan.bennetsmod.livecontrol.LiveControlBinding> binds = new ArrayList<>(cnt);
+                    for (int i = 0; i < cnt; i++)
+                        binds.add(dev.bennethogan.bennetsmod.livecontrol.LiveControlBinding.decode(buf));
+                    int wc = buf.readInt();
+                    boolean ht = buf.readBoolean();
+                    boolean hvt = buf.readBoolean();
+                    int[] lrs = fromByteArray(buf.readByteArray());
+                    int[] wp  = fromByteArray(buf.readByteArray());
+                    int[] tp  = fromByteArray(buf.readByteArray());
+                    return new OpenLiveControlScreenPacket(pos, binds, wc, ht, hvt, lrs, wp, tp);
+                });
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+
+        private static byte[] toByteArray(int[] arr) {
+            byte[] b = new byte[arr.length]; for (int i = 0; i < arr.length; i++) b[i] = (byte) arr[i]; return b;
+        }
+        private static int[] fromByteArray(byte[] b) {
+            int[] a = new int[b.length]; for (int i = 0; i < b.length; i++) a[i] = b[i] & 0xFF; return a;
+        }
+    }
+
+    /** Client → Server: save updated bindings. */
+    public record SaveLiveBindingsPacket(
+            BlockPos keyboardPos,
+            List<dev.bennethogan.bennetsmod.livecontrol.LiveControlBinding> bindings
+    ) implements CustomPacketPayload {
+        public static final Type<SaveLiveBindingsPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "save_live_bindings"));
+        public static final StreamCodec<FriendlyByteBuf, SaveLiveBindingsPacket> CODEC = StreamCodec.of(
+                (buf, p) -> {
+                    BlockPos.STREAM_CODEC.encode(buf, p.keyboardPos());
+                    buf.writeInt(p.bindings().size());
+                    for (var b : p.bindings()) b.encode(buf);
+                },
+                buf -> {
+                    BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
+                    int cnt = buf.readInt();
+                    List<dev.bennethogan.bennetsmod.livecontrol.LiveControlBinding> binds = new ArrayList<>(cnt);
+                    for (int i = 0; i < cnt; i++)
+                        binds.add(dev.bennethogan.bennetsmod.livecontrol.LiveControlBinding.decode(buf));
+                    return new SaveLiveBindingsPacket(pos, binds);
+                });
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    /** A single live-control action to apply on the server. */
+    public record LiveAction(byte type, int target, double v1, double v2) {}
+
+    /** Client → Server: apply one or more live control actions. */
+    public record LiveActionPacket(
+            BlockPos keyboardPos,
+            List<LiveAction> actions
+    ) implements CustomPacketPayload {
+        public static final Type<LiveActionPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "live_action"));
+        public static final StreamCodec<FriendlyByteBuf, LiveActionPacket> CODEC = StreamCodec.of(
+                (buf, p) -> {
+                    BlockPos.STREAM_CODEC.encode(buf, p.keyboardPos());
+                    buf.writeInt(p.actions().size());
+                    for (LiveAction a : p.actions()) {
+                        buf.writeByte(a.type());
+                        buf.writeInt(a.target());
+                        buf.writeDouble(a.v1());
+                        buf.writeDouble(a.v2());
+                    }
+                },
+                buf -> {
+                    BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
+                    int cnt = buf.readInt();
+                    List<LiveAction> acts = new ArrayList<>(cnt);
+                    for (int i = 0; i < cnt; i++)
+                        acts.add(new LiveAction(buf.readByte(), buf.readInt(), buf.readDouble(), buf.readDouble()));
+                    return new LiveActionPacket(pos, acts);
+                });
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public static void sendOpenLiveControl(BlockPos keyboardPos) {
+        PacketDistributor.sendToServer(new OpenLiveControlPacket(keyboardPos));
+    }
+
+    public static void sendSaveLiveBindings(BlockPos keyboardPos,
+            List<dev.bennethogan.bennetsmod.livecontrol.LiveControlBinding> bindings) {
+        PacketDistributor.sendToServer(new SaveLiveBindingsPacket(keyboardPos, bindings));
+    }
+
+    public static void sendLiveAction(BlockPos keyboardPos, List<LiveAction> actions) {
+        if (!actions.isEmpty())
+            PacketDistributor.sendToServer(new LiveActionPacket(keyboardPos, actions));
+    }
+
+    private static void handleOpenLiveControl(OpenLiveControlPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            var level = sp.serverLevel();
+            boolean hasThrusters = false, hasVector = false;
+
+            // Current thruster power by channel (1-16); index 0 unused
+            int[] thrusterPowers = new int[17];
+            for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS; ch++) {
+                for (BlockPos tp : kb.getLinkedTargetPositions(ch)) {
+                    Object p = PeripheralHelper.getPeripheral(level, tp);
+                    if (p == null) continue;
+                    String type = PeripheralHelper.getPeripheralType(p);
+                    if (PeripheralHelper.isThrusterType(type)) {
+                        hasThrusters = true;
+                        if (type.contains("vector")) hasVector = true;
+                        if (thrusterPowers[ch] == 0)
+                            thrusterPowers[ch] = PeripheralHelper.getThrusterPower(level, tp);
+                    }
+                }
+            }
+
+            // Current local RS outputs (by Direction ordinal)
+            Direction[] dirs = Direction.values();
+            int[] localRs = new int[dirs.length];
+            for (Direction d : dirs) localRs[d.ordinal()] = kb.getRedstoneOutput(d);
+
+            // Current wireless powers (by slot index 0-based)
+            int wc = kb.getWirelessCount();
+            int[] wirelessPowers = new int[wc];
+            for (int i = 0; i < wc; i++) wirelessPowers[i] = kb.getWirelessOutput(i);
+
+            PacketDistributor.sendToPlayer(sp, new OpenLiveControlScreenPacket(
+                    packet.keyboardPos(), kb.getLiveControlBindings(),
+                    wc, hasThrusters, hasVector, localRs, wirelessPowers, thrusterPowers));
+        });
+    }
+
+    private static void handleSaveLiveBindings(SaveLiveBindingsPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (be instanceof LinkedKeyboardBlockEntity kb) {
+                // Only stop (and clear outputs) if the sequencer was actually running.
+                // If live control set the outputs, we must not wipe them here.
+                if (kb.isSequencerRunning()) kb.stopSequencer();
+                kb.setLiveControlBindings(packet.bindings());
+            }
+        });
+    }
+
+    private static void handleLiveAction(LiveActionPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            var level = sp.serverLevel();
+            for (LiveAction a : packet.actions()) {
+                switch (a.type()) {
+                    case 0 -> { // local RS side
+                        Direction[] dirs = Direction.values();
+                        if (a.target() >= 0 && a.target() < dirs.length)
+                            kb.setRedstoneOutput(dirs[a.target()], (int) Math.round(a.v1()));
+                    }
+                    case 1 -> // wireless RS
+                        kb.setWirelessOutput(a.target(), (int) Math.round(a.v1()));
+                    case 2 -> { // thruster power (channel = target) — apply to all targets on channel
+                        for (BlockPos tp : kb.getLinkedTargetPositions(a.target())) {
+                            Object p = PeripheralHelper.getPeripheral(level, tp);
+                            if (p != null)
+                                PeripheralHelper.callMethodWithDouble(p, "setPower", Math.round(a.v1() * 15));
+                        }
+                    }
+                    case 3 -> { // thruster vector (channel = target) — apply to all targets on channel
+                        for (BlockPos tp : kb.getLinkedTargetPositions(a.target())) {
+                            Object p = PeripheralHelper.getPeripheral(level, tp);
+                            if (p != null) PeripheralHelper.callVectorSetter(p, a.v1(), a.v2());
+                        }
+                    }
+                }
             }
         });
     }

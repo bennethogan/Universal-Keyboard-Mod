@@ -18,10 +18,31 @@ public class SequencerStep {
         JUMP("Jump To"),
         MATH("Math / Var"),
         CYCLE("Loop"),
-        END("End");
+        END("End"),
+        TYPE_VARIABLE("Type Var");
 
         public final String label;
         Type(String label) { this.label = label; }
+
+        /** Minecraft formatting code for this step type (without the §). */
+        public String colorCode() {
+            return switch (this) {
+                case SET_VALUE      -> "§b"; // cyan      — peripheral setter
+                case SET_REDSTONE   -> "§c"; // red       — redstone output
+                case TYPE_TEXT,
+                     TYPE_VARIABLE  -> "§d"; // pink      — keyboard typing
+                case IF             -> "§e"; // yellow    — branch
+                case CONDITION      -> "§6"; // gold      — wait/condition
+                case DELAY          -> "§7"; // gray      — time
+                case JUMP           -> "§f"; // white     — goto
+                case MATH           -> "§a"; // green     — math/var
+                case CYCLE          -> "§5"; // purple    — loop
+                case END            -> "§8"; // dark gray — end
+            };
+        }
+
+        /** Colored label for use in buttons and dropdowns. */
+        public String coloredLabel() { return colorCode() + label; }
     }
 
     // ── Condition input sources ───────────────────────────────────────────────

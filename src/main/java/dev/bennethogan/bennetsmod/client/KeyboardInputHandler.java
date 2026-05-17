@@ -2,6 +2,7 @@ package dev.bennethogan.bennetsmod.client;
 
 import dev.bennethogan.bennetsmod.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.bennetsmod.item.LinkedKeyboardItem;
+import dev.bennethogan.bennetsmod.livecontrol.LiveControlManager;
 import dev.bennethogan.bennetsmod.network.ModPackets;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.ItemStack;
@@ -18,6 +19,9 @@ public class KeyboardInputHandler {
 
         if (KeyboardCaptureManager.isCapturing()) {
             KeyboardCaptureManager.tickHud();
+        }
+        if (LiveControlManager.isActive()) {
+            LiveControlManager.tick();
         }
 
         // Persistent linking-mode action bar
@@ -43,6 +47,14 @@ public class KeyboardInputHandler {
 
     @SubscribeEvent
     public static void onKeyInput(InputEvent.Key event) {
+        // Live control mode intercepts all keys (including before CC capture)
+        if (LiveControlManager.isActive()) {
+            LiveControlManager.handleKey(event.getKey(), event.getAction());
+            if (event.getAction() != GLFW.GLFW_RELEASE && !isSafePassthroughKey(event.getKey())) {
+                suppressMovementKey(event.getKey(), event.getScanCode());
+            }
+            return;
+        }
         if (!KeyboardCaptureManager.isCapturing()) return;
 
         int key    = event.getKey();
@@ -124,6 +136,10 @@ public class KeyboardInputHandler {
         // Confirm with server (server will sync item back)
         ModPackets.sendSetLinkingChannel(next);
         event.setCanceled(true);
+    }
+
+    private static boolean isSafePassthroughKey(int keyCode) {
+        return keyCode >= GLFW.GLFW_KEY_F1 && keyCode <= GLFW.GLFW_KEY_F12;
     }
 
     private static void suppressMovementKey(int keyCode, int scanCode) {
