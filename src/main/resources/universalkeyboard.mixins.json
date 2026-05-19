@@ -1,6 +1,6 @@
 {
   "required": true,
-  "package": "dev.bennethogan.bennetsmod.mixin",
+  "package": "dev.bennethogan.universalkeyboard.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [],
   "injectors": {

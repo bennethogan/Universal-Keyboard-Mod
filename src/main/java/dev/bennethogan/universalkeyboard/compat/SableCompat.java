@@ -1,5 +1,6 @@
 package dev.bennethogan.universalkeyboard.compat;
 
+import dev.bennethogan.universalkeyboard.UniversalKeyboardMod;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.world.level.ChunkPos;

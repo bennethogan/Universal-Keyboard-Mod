@@ -1,6 +1,7 @@
 package dev.bennethogan.universalkeyboard.block;
 
 import dev.bennethogan.universalkeyboard.UniversalKeyboardMod;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.neoforged.neoforge.registries.DeferredBlock;

@@ -10,6 +10,7 @@ import dev.bennethogan.universalkeyboard.compat.wireless.WirelessEntry;
 import dev.bennethogan.universalkeyboard.compat.wireless.WirelessPresence;
 import dev.bennethogan.universalkeyboard.config.ModConfig;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding;
+import dev.bennethogan.universalkeyboard.network.ModPackets;
 import dev.bennethogan.universalkeyboard.sequencer.SequencerStep;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -137,14 +138,9 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     // ----- Peripheral Sequencer -----
 
-    private final List<SequencerStep> sequencerSteps    = new ArrayList<>();
-    private boolean sequencerRunning     = false;
-    private int     sequencerCurrentStep = 0;
-    private int     sequencerDelayTicker = 0;
-    private final double[] sequencerVars = new double[8]; // V1-V8, cleared on start
+    private final List<SequencerStep> sequencerSteps = new ArrayList<>();
+    private final SequencerEngine engine = new SequencerEngine(this);
     private final java.util.Set<java.util.UUID> sequencerViewers = new java.util.HashSet<>();
-    private int     lastBroadcastStep    = -1;
-    private boolean lastBroadcastRunning = false;
 
     // Redstone outputs — indexed by Direction.ordinal()
     private final int[] redstoneOutputs = new int[Direction.values().length];
@@ -418,6 +414,13 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         }
     }
 
+    // Package-private for SequencerEngine
+    boolean isTypeQueueEmpty() { return typeQueue.isEmpty(); }
+    void enqueueChars(String text, boolean addEnter) {
+        for (char c : text.toCharArray()) typeQueue.add(c);
+        if (addEnter) typeQueue.add('\n');
+    }
+
     public void onRedstoneChanged(boolean powered) {
         if (powered && !wasPowered) {
             turnOnLinkedComputer();
@@ -432,8 +435,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     // ----- Sequencer API -----
 
     public List<SequencerStep> getSequencerSteps()  { return Collections.unmodifiableList(sequencerSteps); }
-    public boolean isSequencerRunning()             { return sequencerRunning; }
-    public int     getSequencerCurrentStep()        { return sequencerCurrentStep; }
+    public boolean isSequencerRunning()             { return engine.isRunning(); }
+    public int     getSequencerCurrentStep()        { return engine.getCurrentStep(); }
     public java.util.Set<java.util.UUID> getSequencerViewers() { return sequencerViewers; }
     public void addSequencerViewer(java.util.UUID uuid)    { sequencerViewers.add(uuid); }
     public void removeSequencerViewer(java.util.UUID uuid) { sequencerViewers.remove(uuid); }
@@ -446,21 +449,18 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     public void startSequencer() {
         if (sequencerSteps.isEmpty()) return;
-        sequencerRunning     = true;
-        sequencerCurrentStep = 0;
-        sequencerDelayTicker = 0;
         typeQueue.clear();
         typeTimer = 0;
-        java.util.Arrays.fill(sequencerVars, 0.0);
+        engine.start();
         setChanged();
     }
 
     public void stopSequencer() {
-        sequencerRunning = false;
+        engine.stop();
         clearRedstoneOutputs();
         clearWirelessOutputs();
         setChanged();
-        mayBroadcastProgress();
+        ModPackets.broadcastSequencerProgress(this);
     }
 
     public int getRedstoneOutput(Direction dir) {
@@ -526,62 +526,6 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             CreateWirelessHelper.setEntryPower(level, e, 0);
     }
 
-    /**
-     * Resolves a sequencer value source string to a double.
-     * Formats: number literal | "V1"-"V8" (variable) | "RS:N/S/E/W" (redstone in) | getter name (uses channel)
-     */
-    double resolveSource(String src, int channel) {
-        if (src == null || src.isBlank()) return 0;
-        src = src.trim();
-        if (src.matches("V[1-8]")) return sequencerVars[src.charAt(1) - '1'];
-        if (src.startsWith("RS:")) {
-            String d = src.substring(3).toUpperCase();
-            Direction dir = switch (d) {
-                case "N", "NORTH" -> Direction.NORTH;
-                case "S", "SOUTH" -> Direction.SOUTH;
-                case "E", "EAST"  -> Direction.EAST;
-                case "W", "WEST"  -> Direction.WEST;
-                default -> null;
-            };
-            if (dir != null && level != null)
-                return level.getSignal(worldPosition.relative(dir), dir);
-            return 0;
-        }
-        if (src.matches("W([1-9]|1[0-2])")) {
-            int idx = Integer.parseInt(src.substring(1)) - 1;
-            if (WirelessPresence.isPresent() && idx < wirelessEntries.size())
-                return wirelessEntries.get(idx).getReceivedPower();
-            return 0;
-        }
-        try { return Double.parseDouble(src); } catch (NumberFormatException ignored) {}
-        if (level == null) return 0;
-        // Sable sublevel getter
-        if (SableCompat.isPresent() && SableCompat.isSableGetter(src) && SableCompat.isOnSublevel(level, worldPosition))
-            return SableCompat.getValue(level, worldPosition, src);
-        List<BlockPos> targets = getLinkedTargetPositions(channel);
-        if (targets.isEmpty()) return 0;
-        Object p = PeripheralHelper.getPeripheral(level, targets.get(0));
-        return p == null ? 0 : PeripheralHelper.getDoubleGetter(p, src);
-    }
-
-    private static double applyMathOp(String op, double a, double b) {
-        return switch (op) {
-            case "+"     -> a + b;
-            case "-"     -> a - b;
-            case "*"     -> a * b;
-            case "/"     -> b != 0 ? a / b : 0;
-            case "%"     -> b != 0 ? a % b : 0;
-            case "min"   -> Math.min(a, b);
-            case "max"   -> Math.max(a, b);
-            case "abs"   -> Math.abs(a);
-            case "neg"   -> -a;
-            case "round" -> (double) Math.round(a);
-            case "floor" -> Math.floor(a);
-            case "ceil"  -> Math.ceil(a);
-            default      -> a;
-        };
-    }
-
     private void clearRedstoneOutputs() {
         boolean changed = false;
         for (int i = 0; i < redstoneOutputs.length; i++) {
@@ -589,207 +533,6 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         }
         if (changed && level != null && !level.isClientSide)
             level.updateNeighborsAt(worldPosition, getBlockState().getBlock());
-    }
-
-    void tickSequencer() {
-        if (sequencerCurrentStep >= sequencerSteps.size()) {
-            sequencerRunning = false;
-            setChanged();
-            mayBroadcastProgress();
-            return;
-        }
-        SequencerStep step = sequencerSteps.get(sequencerCurrentStep);
-        switch (step.type) {
-            case DELAY -> {
-                if (sequencerDelayTicker <= 0) {
-                    float secs = 1.0f;
-                    try { secs = Float.parseFloat(step.delaySecondsStr); } catch (NumberFormatException ignored) {}
-                    sequencerDelayTicker = Math.max(1, Math.round(secs * 20));
-                }
-                if (--sequencerDelayTicker <= 0) advanceSequencer();
-            }
-            case IF -> {
-                if (evaluateIfCondition(step)) {
-                    if (step.ifGoTo) {
-                        sequencerCurrentStep = Math.max(0, Math.min(step.jumpTarget - 1, sequencerSteps.size() - 1));
-                        sequencerDelayTicker = 0;
-                        setChanged();
-                        mayBroadcastProgress();
-                        return;
-                    } else {
-                        sequencerCurrentStep += step.ifSkipCount;
-                    }
-                }
-                advanceSequencer();
-            }
-            case CONDITION -> {
-                if (evaluateCondition(step)) advanceSequencer();
-            }
-            case SET_VALUE -> {
-                applySequencerSetValue(step);
-                advanceSequencer();
-            }
-            case SET_REDSTONE -> {
-                applySequencerSetRedstone(step);
-                advanceSequencer();
-            }
-            case TYPE_TEXT -> {
-                if (!typeQueue.isEmpty()) break;
-                applySequencerTypeText(step);
-                advanceSequencer();
-            }
-            case TYPE_VARIABLE -> {
-                if (!typeQueue.isEmpty()) break;
-                double val = resolveSource(step.setValueStr.matches("V[1-8]") ? step.setValueStr : "V1", 1);
-                String formatted = formatVar(val);
-                for (char c : formatted.toCharArray()) typeQueue.add(c);
-                if (step.typeTextEnter) typeQueue.add('\n');
-                advanceSequencer();
-            }
-            case JUMP -> {
-                int target = Math.max(0, Math.min(step.jumpTarget - 1, sequencerSteps.size() - 1));
-                sequencerCurrentStep = target;
-                sequencerDelayTicker = 0;
-                setChanged();
-            }
-            case MATH -> {
-                double a = resolveSource(step.mathA, step.mathACh);
-                double b = resolveSource(step.mathB, step.mathBCh);
-                double result = applyMathOp(step.mathOp, a, b);
-                String dest = step.mathDest != null ? step.mathDest.trim() : "V1";
-                if (dest.matches("V[1-8]")) sequencerVars[dest.charAt(1) - '1'] = result;
-                advanceSequencer();
-            }
-            case CYCLE -> {
-                sequencerCurrentStep = 0;
-                sequencerDelayTicker = 0;
-                setChanged();
-            }
-            case END -> {
-                sequencerRunning = false;
-                setChanged();
-            }
-        }
-        mayBroadcastProgress();
-    }
-
-    private void advanceSequencer() {
-        sequencerCurrentStep++;
-        sequencerDelayTicker = 0;
-        setChanged();
-    }
-
-    private void mayBroadcastProgress() {
-        if (sequencerCurrentStep == lastBroadcastStep && sequencerRunning == lastBroadcastRunning) return;
-        lastBroadcastStep    = sequencerCurrentStep;
-        lastBroadcastRunning = sequencerRunning;
-        dev.bennethogan.universalkeyboard.network.ModPackets.broadcastSequencerProgress(this);
-    }
-
-    private boolean evaluateIfCondition(SequencerStep step) {
-        if (level == null || step.ifGetter.isEmpty()) return false;
-        double actual;
-        int rsIdx = -1;
-        for (int i = 0; i < SequencerStep.RS_INPUT_GETTER_NAMES.length; i++) {
-            if (SequencerStep.RS_INPUT_GETTER_NAMES[i].equals(step.ifGetter)) { rsIdx = i; break; }
-        }
-        if (rsIdx >= 0) {
-            Direction dir = SequencerStep.RS_INPUT_GETTER_DIRS[rsIdx];
-            actual = level.getSignal(worldPosition.relative(dir), dir);
-        } else if (step.ifGetter.matches("V[1-8]")) {
-            actual = sequencerVars[step.ifGetter.charAt(1) - '1'];
-        } else if (step.ifGetter.matches("W([1-9]|1[0-2])")) {
-            int idx = Integer.parseInt(step.ifGetter.substring(1)) - 1;
-            actual = (WirelessPresence.isPresent() && idx < wirelessEntries.size())
-                    ? wirelessEntries.get(idx).getReceivedPower() : 0;
-        } else if (SableCompat.isPresent() && SableCompat.isSableGetter(step.ifGetter) && SableCompat.isOnSublevel(level, worldPosition)) {
-            actual = SableCompat.getValue(level, worldPosition, step.ifGetter);
-        } else {
-            List<BlockPos> ch = getLinkedTargetPositions(step.channel);
-            if (ch.isEmpty()) return false;
-            Object p = PeripheralHelper.getPeripheral(level, ch.get(0));
-            if (p == null) return false;
-            actual = PeripheralHelper.getDoubleGetter(p, step.ifGetter);
-        }
-        double threshold = resolveSource(step.ifValueStr, step.channel);
-        return switch (step.ifOp) {
-            case ">"  -> actual > threshold;
-            case ">=" -> actual >= threshold;
-            case "="  -> Math.abs(actual - threshold) < 0.001;
-            case "<=" -> actual <= threshold;
-            case "<"  -> actual < threshold;
-            case "!=" -> Math.abs(actual - threshold) >= 0.001;
-            default   -> false;
-        };
-    }
-
-    private boolean evaluateCondition(SequencerStep step) {
-        if (level == null) return false;
-        double actual;
-        Direction dir = step.conditionSource.direction;
-        if (dir != null) {
-            actual = level.getSignal(worldPosition.relative(dir), dir);
-        } else if (step.conditionGetter.matches("W([1-9]|1[0-2])")) {
-            int idx = Integer.parseInt(step.conditionGetter.substring(1)) - 1;
-            actual = (WirelessPresence.isPresent() && idx < wirelessEntries.size())
-                    ? wirelessEntries.get(idx).getReceivedPower() : 0;
-        } else if (SableCompat.isPresent() && SableCompat.isSableGetter(step.conditionGetter) && SableCompat.isOnSublevel(level, worldPosition)) {
-            actual = SableCompat.getValue(level, worldPosition, step.conditionGetter);
-        } else {
-            List<BlockPos> ch = getLinkedTargetPositions(step.channel);
-            if (ch.isEmpty()) return false;
-            Object p = PeripheralHelper.getPeripheral(level, ch.get(0));
-            if (p == null) return false;
-            actual = PeripheralHelper.getDoubleGetter(p, step.conditionGetter);
-        }
-        double threshold = resolveSource(step.conditionThresholdStr, step.channel);
-        return switch (step.conditionOp) {
-            case ">" -> actual > threshold;
-            case "<" -> actual < threshold;
-            case "=" -> Math.abs(actual - threshold) < 0.001;
-            default  -> false;
-        };
-    }
-
-    private void applySequencerSetValue(SequencerStep step) {
-        if (step.setMethod.isEmpty()) return;
-        double value = resolveSource(step.setValueStr, step.channel);
-        if (step.setMethod.matches("V[1-8]")) {
-            sequencerVars[step.setMethod.charAt(1) - '1'] = value;
-            return;
-        }
-        List<BlockPos> targets = getLinkedTargetPositions(step.channel);
-        if (targets.isEmpty() || level == null) return;
-        double range   = ModConfig.COMMON.keyboardRange.get();
-        double rangeSq = range * range;
-        for (BlockPos targetPos : targets) {
-            if (worldPosition.distSqr(targetPos) > rangeSq) continue;
-            Object p = PeripheralHelper.getPeripheral(level, targetPos);
-            if (p != null) PeripheralHelper.callMethodWithDouble(p, step.setMethod, value);
-        }
-    }
-
-    private void applySequencerTypeText(SequencerStep step) {
-        for (char c : step.typeTextStr.toCharArray()) typeQueue.add(c);
-        if (step.typeTextEnter) typeQueue.add('\n');
-    }
-
-    private static String formatVar(double val) {
-        String s;
-        if (val == Math.floor(val) && !Double.isInfinite(val) && Math.abs(val) < 1e15) {
-            s = Long.toString((long) val);
-        } else {
-            s = String.format("%.8f", val).replaceAll("0+$", "").replaceAll("\\.$", "");
-        }
-        return s.length() > 16 ? s.substring(0, 16) : s;
-    }
-
-    private void applySequencerSetRedstone(SequencerStep step) {
-        int signal = (int) Math.round(resolveSource(step.redstoneOutSignalStr, 1));
-        if (step.wirelessOutIdx > 0)
-            setWirelessOutput(step.wirelessOutIdx - 1, signal);
-        else
-            setRedstoneOutput(step.redstoneOutDir, signal);
     }
 
     // ----- Display source data (Create integration) -----
@@ -857,7 +600,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             be.refreshPeripheralCache();
         }
 
-        if (be.sequencerRunning) be.tickSequencer();
+        if (be.engine.isRunning()) be.engine.tick(be.sequencerSteps);
 
         // Remove broken targets across all channels (only when loaded)
         if (level.getGameTime() % 100 == 0 && be.isLinked()) {
@@ -937,8 +680,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             for (SequencerStep step : sequencerSteps) seqList.add(step.save());
             tag.put("sequencer_steps", seqList);
         }
-        tag.putBoolean("sequencer_running",      sequencerRunning);
-        tag.putInt("sequencer_current_step",     sequencerCurrentStep);
+        engine.saveToTag(tag);
         tag.putIntArray("redstone_outputs",      redstoneOutputs);
 
         if (!wirelessEntries.isEmpty()) {
@@ -1014,8 +756,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             for (int i = 0; i < seqList.size(); i++)
                 sequencerSteps.add(SequencerStep.load(seqList.getCompound(i)));
         }
-        sequencerRunning     = tag.getBoolean("sequencer_running");
-        sequencerCurrentStep = tag.getInt("sequencer_current_step");
+        engine.loadFromTag(tag);
         if (tag.contains("redstone_outputs")) {
             int[] saved = tag.getIntArray("redstone_outputs");
             System.arraycopy(saved, 0, redstoneOutputs, 0, Math.min(saved.length, redstoneOutputs.length));

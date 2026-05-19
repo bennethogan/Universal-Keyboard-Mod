@@ -2,6 +2,7 @@ package dev.bennethogan.universalkeyboard.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.universalkeyboard.item.LinkedKeyboardItem;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;

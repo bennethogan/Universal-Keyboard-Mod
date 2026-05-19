@@ -6,6 +6,7 @@ import dev.bennethogan.universalkeyboard.client.screen.ModeSelectionScreen;
 import dev.bennethogan.universalkeyboard.client.screen.PeripheralMethodScreen;
 import dev.bennethogan.universalkeyboard.client.screen.SequencerScreen;
 import dev.bennethogan.universalkeyboard.client.screen.ThrusterControlScreen;
+import dev.bennethogan.universalkeyboard.livecontrol.LiveControlManager;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
 import dev.bennethogan.universalkeyboard.network.ModPackets.*;
 import net.minecraft.client.Minecraft;
