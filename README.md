@@ -17,20 +17,22 @@
 
 | Feature | Keyboard Mod Only | +CC:Tweaked | +Create | +CC+Create | +Create+Aero/Propulsion | +CC+Create+Aero/Propulsion |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Live Controller — local RS outputs** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Live Controller — Wireless RS links** | x | x | ✓ | ✓ | ✓ | ✓ |
+| **Live Controller — Thruster power/vector** | x | x | x | x | x | ✓ |
+| **Typewriter import** | x | x | x | x | ✓ | ✓ |
 | **CC Computer mode** | x | ✓ | x | ✓ | x | ✓ |
 | **CC Peripheral mode** | x | ✓ | x | ✓ | x | ✓ |
 | **Value Panel** | x | x | ✓ | ✓ | ✓ | ✓ |
 | **Thruster Control** | x | x | x | x | x | ✓ |
+||
 | **Sequencer — Set RS Out / Delay / Jump / Math / Loop / End** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | **Sequencer — If / Skip** (RS inputs only, without CC) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | **Sequencer — Wait For** (RS inputs only, without CC) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | **Sequencer — Set Value** (CC peripheral setter) | x | ✓ | x | ✓ | x | ✓ |
 | **Sequencer — Type Text / Type Var** | x | ✓* | x | ✓* | x | ✓* |
 | **Sequencer — Sublevel stats as condition/getter** | x | x | x | x | ✓ | ✓ |
-| **Live Controller — local RS outputs** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **Live Controller — Wireless RS links** | x | x | ✓ | ✓ | ✓ | ✓ |
-| **Live Controller — Thruster power/vector** | x | x | x | x | x | ✓ |
-| **Typewriter import** | x | x | x | x | ✓ | ✓ |
+
 
 *Type Text/Var additionally require a CC computer to be linked on that channel.
 
