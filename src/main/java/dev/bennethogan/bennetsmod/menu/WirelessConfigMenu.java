@@ -13,18 +13,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
-/**
- * Container menu for configuring up to 12 wireless redstone outputs. Uses a
- * 24-slot SimpleContainer for the ghost frequency items so the standard
- * container sync keeps the client in step with the server. Click handling is
- * overridden so the carried stack is never consumed — we just stamp the item
- * type into the slot. REI drag-drop works because the targets are real Slot
- * instances backed by a real container.
- *
- * Server-side, slot changes write through to the backing
- * LinkedKeyboardBlockEntity via {@link #onGhostChanged(int)}, which triggers
- * the BE-side rejoin-network logic in {@link LinkedKeyboardBlockEntity#setWirelessFrequencyItem}.
- */
 public class WirelessConfigMenu extends AbstractContainerMenu {
 
     public static final int ROWS        = LinkedKeyboardBlockEntity.MAX_WIRELESS;
@@ -35,7 +23,6 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
     private final BlockPos keyboardPos;
     private final Level    level;
     private final SimpleContainer ghosts;
-    /** Server-only: bypass write-through during initial population from the BE. */
     private boolean suppressWriteThrough = false;
 
     public WirelessConfigMenu(int id, Inventory inv, BlockPos pos) {
@@ -51,8 +38,7 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
                 if (!suppressWriteThrough && !level.isClientSide) {
                     LinkedKeyboardBlockEntity be = currentBe();
                     if (be == null) return;
-                    // Reflect ALL slots back to the BE (one click only changes one slot;
-                    // this is cheap and avoids tracking which index changed).
+                    // Reflect ALL slots back to the BE 
                     for (int i = 0; i < GHOST_COUNT; i++) {
                         int entryIdx = i / GHOST_COLS;
                         if (entryIdx >= be.getWirelessCount()) continue;
@@ -63,7 +49,7 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
             }
         };
 
-        // Populate ghost slots from BE state (server only; clients receive via container sync).
+        // Populate ghost slots from BE state
         LinkedKeyboardBlockEntity be = currentBe();
         if (be != null && !level.isClientSide) {
             suppressWriteThrough = true;
