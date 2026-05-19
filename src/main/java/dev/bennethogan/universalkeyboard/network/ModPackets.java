@@ -441,7 +441,6 @@ public class ModPackets {
     static void handleSaveAutoTypeScript(SaveAutoTypeScriptPacket packet, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
             if (!(ctx.player() instanceof ServerPlayer sp)) return;
-            if (sp.blockPosition().distSqr(packet.keyboardPos()) > 64) return;
             BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
             if (!(be instanceof LinkedKeyboardBlockEntity keyboard)) return;
             keyboard.setAutoTypeScript(packet.script());

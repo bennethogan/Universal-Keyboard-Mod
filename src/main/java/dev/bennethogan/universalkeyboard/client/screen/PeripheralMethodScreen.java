@@ -94,10 +94,8 @@ public class PeripheralMethodScreen extends Screen {
             setterAreaY1 = y;
             for (int i = 0; i < visS; i++) {
                 int slot = i;
-                Button btn = Button.builder(Component.literal(""), b -> selectSetterSlot(slot))
-                        .pos(panelX + PAD, y)
-                        .size(PANEL_W - PAD * 2, BTN_H)
-                        .build();
+                Button btn = DarkButton.make(Component.literal(""), b -> selectSetterSlot(slot),
+                        panelX + PAD, y, PANEL_W - PAD * 2, BTN_H);
                 addRenderableWidget(btn);
                 setterBtns.add(btn);
                 y += BTN_H;

@@ -817,32 +817,32 @@ public class SequencerScreen extends Screen {
             int cx   = panelX + PAD;
             int ctx  = cx + COL_CTX;
 
-            channelBtn = Button.builder(Component.literal("-"), b -> cycleChannel())
-                    .pos(cx + COL_CH, rowY + 1).size(16, BTN_H).build();
+            channelBtn = DarkButton.make(Component.literal("-"), b -> cycleChannel(),
+                    cx + COL_CH, rowY + 1, 16, BTN_H);
             addRenderableWidget(channelBtn);
 
-            typeBtn = Button.builder(Component.literal(""), b -> {
+            typeBtn = DarkButton.make(Component.literal(""), b -> {
                 mathDropdownRow = -1;
                 loadDropdownOpen = false;
                 typeDropdownRow    = (typeDropdownRow == rowIdx) ? -1 : rowIdx;
                 typeDropdownScroll = 0;
-            }).pos(cx + COL_TYPE, rowY + 1).size(72, BTN_H).build();
+            }, cx + COL_TYPE, rowY + 1, 72, BTN_H);
             addRenderableWidget(typeBtn);
 
-            deleteBtn = Button.builder(Component.literal("×"), b -> deleteStep(scrollOffset + rowIdx))
-                    .pos(cx + COL_DEL, rowY + 1).size(14, BTN_H).build();
+            deleteBtn = DarkButton.make(Component.literal("×"), b -> deleteStep(scrollOffset + rowIdx),
+                    cx + COL_DEL, rowY + 1, 14, BTN_H);
             addRenderableWidget(deleteBtn);
 
             // SET_VALUE
-            methodBtn = Button.builder(Component.literal(""), b -> cycleMethod())
-                    .pos(ctx, rowY + 1).size(120, BTN_H).build();
+            methodBtn = DarkButton.make(Component.literal(""), b -> cycleMethod(),
+                    ctx, rowY + 1, 120, BTN_H);
             addRenderableWidget(methodBtn);
             valueInput = makeBox(ctx + 124, rowY, 156, "value or V1-V8",
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).setValueStr = str; });
 
             // SET_REDSTONE
-            rsDirBtn = Button.builder(Component.literal(""), b -> cycleRedstoneDir())
-                    .pos(ctx, rowY + 1).size(90, BTN_H).build();
+            rsDirBtn = DarkButton.make(Component.literal(""), b -> cycleRedstoneDir(),
+                    ctx, rowY + 1, 90, BTN_H);
             addRenderableWidget(rsDirBtn);
             rsSignalInput = makeBox(ctx + 94, rowY, 80, "0-15 or V1-V8",
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).redstoneOutSignalStr = str; });
@@ -851,24 +851,24 @@ public class SequencerScreen extends Screen {
             typeTextInput = makeBox(ctx, rowY, 210, "text to type...",
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).typeTextStr = str; });
             typeTextInput.setMaxLength(200);
-            typeEnterBtn = Button.builder(Component.literal("↵"), b -> toggleTypeEnter())
-                    .pos(ctx + 214, rowY + 1).size(66, BTN_H).build();
+            typeEnterBtn = DarkButton.make(Component.literal("↵"), b -> toggleTypeEnter(),
+                    ctx + 214, rowY + 1, 66, BTN_H);
             addRenderableWidget(typeEnterBtn);
 
             // IF
-            ifGetterBtn = Button.builder(Component.literal(""), b -> cycleIfGetter())
-                    .pos(ctx, rowY + 1).size(80, BTN_H).build();
+            ifGetterBtn = DarkButton.make(Component.literal(""), b -> cycleIfGetter(),
+                    ctx, rowY + 1, 80, BTN_H);
             addRenderableWidget(ifGetterBtn);
-            ifOpBtn = Button.builder(Component.literal(">"), b -> cycleIfOp())
-                    .pos(ctx + 84, rowY + 1).size(28, BTN_H).build();
+            ifOpBtn = DarkButton.make(Component.literal(">"), b -> cycleIfOp(),
+                    ctx + 84, rowY + 1, 28, BTN_H);
             addRenderableWidget(ifOpBtn);
             ifValueInput = makeBox(ctx + 116, rowY, 64, "# or V1-V8 or RS:N",
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).ifValueStr = str; });
-            ifModeBtn = Button.builder(Component.literal("skip"), b -> toggleIfMode())
-                    .pos(ctx + 184, rowY + 1).size(34, BTN_H).build();
+            ifModeBtn = DarkButton.make(Component.literal("skip"), b -> toggleIfMode(),
+                    ctx + 184, rowY + 1, 34, BTN_H);
             addRenderableWidget(ifModeBtn);
-            ifSkipBtn = Button.builder(Component.literal("×1"), b -> cycleIfSkip())
-                    .pos(ctx + 222, rowY + 1).size(60, BTN_H).build();
+            ifSkipBtn = DarkButton.make(Component.literal("×1"), b -> cycleIfSkip(),
+                    ctx + 222, rowY + 1, 60, BTN_H);
             addRenderableWidget(ifSkipBtn);
             ifJumpInput = makeBox(ctx + 222, rowY, 60, "step#",
                     str -> {
@@ -879,11 +879,11 @@ public class SequencerScreen extends Screen {
             ifJumpInput.setMaxLength(3);
 
             // CONDITION
-            sourceBtn = Button.builder(Component.literal(""), b -> cycleSource())
-                    .pos(ctx, rowY + 1).size(66, BTN_H).build();
+            sourceBtn = DarkButton.make(Component.literal(""), b -> cycleSource(),
+                    ctx, rowY + 1, 66, BTN_H);
             addRenderableWidget(sourceBtn);
-            getterBtn = Button.builder(Component.literal(""), b -> cycleGetter())
-                    .pos(ctx + 70, rowY + 1).size(80, BTN_H).build();
+            getterBtn = DarkButton.make(Component.literal(""), b -> cycleGetter(),
+                    ctx + 70, rowY + 1, 80, BTN_H);
             addRenderableWidget(getterBtn);
             opInput = makeBox(ctx + 154, rowY, 124, ">0",
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) parseOpInput(steps.get(si), str); });
@@ -902,27 +902,27 @@ public class SequencerScreen extends Screen {
             jumpInput.setMaxLength(3);
 
             // MATH
-            mathDestBtn = Button.builder(Component.literal("V1"), b -> cycleMathDest())
-                    .pos(ctx, rowY + 1).size(36, BTN_H).build();
+            mathDestBtn = DarkButton.make(Component.literal("V1"), b -> cycleMathDest(),
+                    ctx, rowY + 1, 36, BTN_H);
             addRenderableWidget(mathDestBtn);
-            mathASourceBtn = Button.builder(Component.literal("src A..."), b -> openMathDropdown(true))
-                    .pos(ctx + 48, rowY + 1).size(64, BTN_H).build();
+            mathASourceBtn = DarkButton.make(Component.literal("src A..."), b -> openMathDropdown(true),
+                    ctx + 48, rowY + 1, 64, BTN_H);
             addRenderableWidget(mathASourceBtn);
             mathAInput = makeBox(ctx + 48, rowY, 64, "A (# V1 RS:N getter)",
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).mathA = str; });
-            mathAChBtn = Button.builder(Component.literal("1"), b -> cycleMathACh())
-                    .pos(ctx + 114, rowY + 1).size(22, BTN_H).build();
+            mathAChBtn = DarkButton.make(Component.literal("1"), b -> cycleMathACh(),
+                    ctx + 114, rowY + 1, 22, BTN_H);
             addRenderableWidget(mathAChBtn);
-            mathOpBtn = Button.builder(Component.literal("+"), b -> cycleMathOp())
-                    .pos(ctx + 140, rowY + 1).size(36, BTN_H).build();
+            mathOpBtn = DarkButton.make(Component.literal("+"), b -> cycleMathOp(),
+                    ctx + 140, rowY + 1, 36, BTN_H);
             addRenderableWidget(mathOpBtn);
-            mathBSourceBtn = Button.builder(Component.literal("src B..."), b -> openMathDropdown(false))
-                    .pos(ctx + 180, rowY + 1).size(64, BTN_H).build();
+            mathBSourceBtn = DarkButton.make(Component.literal("src B..."), b -> openMathDropdown(false),
+                    ctx + 180, rowY + 1, 64, BTN_H);
             addRenderableWidget(mathBSourceBtn);
             mathBInput = makeBox(ctx + 180, rowY, 64, "B",
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).mathB = str; });
-            mathBChBtn = Button.builder(Component.literal("1"), b -> cycleMathBCh())
-                    .pos(ctx + 246, rowY + 1).size(22, BTN_H).build();
+            mathBChBtn = DarkButton.make(Component.literal("1"), b -> cycleMathBCh(),
+                    ctx + 246, rowY + 1, 22, BTN_H);
             addRenderableWidget(mathBChBtn);
         }
 
