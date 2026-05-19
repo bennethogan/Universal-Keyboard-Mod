@@ -24,7 +24,7 @@
 | **Sequencer — Set RS Out / Delay / Jump / Math / Loop / End** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | **Sequencer — If / Skip** (RS inputs only, without CC) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | **Sequencer — Wait For** (RS inputs only, without CC) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **Sequencer — Set Value** (peripheral setter) | x | ✓ | x | ✓ | x | ✓ |
+| **Sequencer — Set Value** (CC peripheral setter) | x | ✓ | x | ✓ | x | ✓ |
 | **Sequencer — Type Text / Type Var** | x | ✓* | x | ✓* | x | ✓* |
 | **Sequencer — Sublevel stats as condition/getter** | x | x | x | x | ✓ | ✓ |
 | **Live Controller — local RS outputs** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
