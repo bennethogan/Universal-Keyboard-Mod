@@ -77,7 +77,7 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
         for (int row = HALF_ROWS; row < ROWS; row++) {
             int y = 18 + (row - HALF_ROWS) * 18;
             for (int col = 0; col < GHOST_COLS; col++) {
-                addSlot(new Slot(ghosts, row * GHOST_COLS + col, 114 + col * 20, y) {
+                addSlot(new Slot(ghosts, row * GHOST_COLS + col, 120 + col * 20, y) {
                     @Override public int getMaxStackSize()       { return 1; }
                     @Override public boolean mayPickup(Player p) { return false; }
                     @Override public boolean mayPlace(ItemStack stack) { return true; }

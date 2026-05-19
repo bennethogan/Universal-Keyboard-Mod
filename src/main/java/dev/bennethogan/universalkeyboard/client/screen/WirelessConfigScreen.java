@@ -20,15 +20,15 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
     // Slot x positions (menu-relative, used to draw slot backgrounds in renderBg)
     private static final int LEFT_SLOT1_X  = 26;
     private static final int LEFT_SLOT2_X  = 46;
-    private static final int RIGHT_SLOT1_X = 114;
-    private static final int RIGHT_SLOT2_X = 134;
+    private static final int RIGHT_SLOT1_X = 120;
+    private static final int RIGHT_SLOT2_X = 140;
 
     private Button addBtn;
     private Button removeBtn;
 
     public WirelessConfigScreen(WirelessConfigMenu menu, Inventory inv, Component title) {
         super(menu, inv, title);
-        this.imageWidth      = 176;
+        this.imageWidth      = 190;
         this.imageHeight     = 18 + WirelessConfigMenu.HALF_ROWS * 18 + 28 + 76;
         // Place "Inventory" label just above the first inventory row (invStart - 10).
         // invStart = 18 + HALF_ROWS*18 + 28, so label sits at 18 + HALF_ROWS*18 + 18.
@@ -43,10 +43,10 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
         int btnY = topPos + 18 + WirelessConfigMenu.HALF_ROWS * 18 + 6;
         addBtn = Button.builder(Component.literal("Add"),
                         b -> ModPackets.sendWirelessAddRemove(menu.getKeyboardPos(), true))
-                .pos(leftPos + 68, btnY).size(28, 12).build();
+                .pos(leftPos + 57, btnY).size(28, 12).build();
         removeBtn = Button.builder(Component.literal("Remove"),
                         b -> ModPackets.sendWirelessAddRemove(menu.getKeyboardPos(), false))
-                .pos(leftPos + 98, btnY).size(44, 12).build();
+                .pos(leftPos + 89, btnY).size(44, 12).build();
         addRenderableWidget(addBtn);
         addRenderableWidget(removeBtn);
     }
@@ -88,7 +88,7 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
             int entryIdx = r + WirelessConfigMenu.HALF_ROWS;
             int y = topPos + 18 + r * 18;
             boolean active = entryIdx < count;
-            g.fill(leftPos + 96, y, leftPos + 161, y + 17, active ? 0xFF2A2A2A : 0xFF181818);
+            g.fill(leftPos + 96, y, leftPos + 168, y + 17, active ? 0xFF2A2A2A : 0xFF181818);
             g.drawString(font, "W" + (entryIdx + 1), leftPos + 97, y + 5, active ? 0xFFFFFF : 0x555555, false);
             drawSlotBg(g, leftPos + RIGHT_SLOT1_X, y);
             drawSlotBg(g, leftPos + RIGHT_SLOT2_X, y);

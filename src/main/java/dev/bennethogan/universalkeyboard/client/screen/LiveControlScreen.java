@@ -27,15 +27,15 @@ public class LiveControlScreen extends Screen {
     private static final int ROW_GAP    = 2;
     private static final int BTN_H      = 16;
     private static final int PANEL_W    = 400;
-    // per-column: [num:10][key:38][gap:2][type:46][gap:2][cfg:92] = 190px
+    // per-column: [num:12][key:38][gap:2][type:46][gap:2][cfg:90] = 190px
     private static final int COL_W      = 190;
     private static final int COL_GAP    = 4;
     private static final int COL_OFFSET = COL_W + COL_GAP;
-    private static final int NUM_W      = 10;
+    private static final int NUM_W      = 12;
     private static final int KEY_W      = 38;
     private static final int TYPE_W     = 46;
-    private static final int CFG_OFF    = NUM_W + KEY_W + 2 + TYPE_W + 2; // 98
-    private static final int CFG_W      = COL_W - CFG_OFF;                // 92
+    private static final int CFG_OFF    = NUM_W + KEY_W + 2 + TYPE_W + 2; // 100
+    private static final int CFG_W      = COL_W - CFG_OFF;                // 90
     // vector overlay
     private static final int VEC_OV_W   = 110;
     private static final int VEC_OV_H   = 140;
@@ -156,10 +156,7 @@ public class LiveControlScreen extends Screen {
         drawBorder(g, panelX, panelY, PANEL_W, panelH, 0xFF666666);
         g.drawCenteredString(font, "§bLive Controller", panelX + PANEL_W / 2, panelY + PAD, 0xFFFFFF);
 
-        int lblY = panelY + PAD + TITLE_H;
         if (vectorOverlaySlot < 0) {
-            g.drawString(font, "§7A (1-10)",   panelX + PAD,             lblY, 0x888888, false);
-            g.drawString(font, "§7B (11-20)",  panelX + PAD + COL_OFFSET, lblY, 0x888888, false);
             for (int i = 0; i < MAX_SLOTS; i++) {
                 int col = i / ROWS, row = i % ROWS;
                 int rx = panelX + PAD + col * COL_OFFSET;

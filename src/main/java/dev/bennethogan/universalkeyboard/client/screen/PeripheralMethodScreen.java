@@ -179,6 +179,7 @@ public class PeripheralMethodScreen extends Screen {
         if (dataIdx < 0 || dataIdx >= setters.size()) return;
         selectedIdx = dataIdx;
         inputBox.setValue("");
+        inputBox.setHint(Component.literal("§7" + setters.get(dataIdx)[0] + " (" + setters.get(dataIdx)[1] + ")"));
         setFocused(inputBox);
         inputBox.setFocused(true);
     }
@@ -202,10 +203,7 @@ public class PeripheralMethodScreen extends Screen {
         // Getter section
         if (!getters.isEmpty()) {
             int vis = Math.min(getters.size(), MAX_GETTERS);
-            String getterLabel = (getters.size() > MAX_GETTERS)
-                    ? "§7Values: §8(scroll, " + getterScroll + "/" + (getters.size() - MAX_GETTERS) + ")"
-                    : "§7Values:";
-            g.drawString(font, getterLabel, panelX + PAD, getterLabelY, 0xAAAAAA, true);
+            g.drawString(font, "§7Values:", panelX + PAD, getterLabelY, 0xAAAAAA, true);
 
             for (int i = 0; i < vis; i++) {
                 int di = getterScroll + i;
@@ -214,22 +212,32 @@ public class PeripheralMethodScreen extends Screen {
                 g.drawString(font, "§8" + e[0] + ": §f" + e[1],
                         panelX + PAD + 4, getterStartY + i * ROW_H, 0xFFFFFF, true);
             }
+
+            // Scroll arrows on right edge when overflowing
+            if (getters.size() > MAX_GETTERS) {
+                int arrowX = panelX + PANEL_W - PAD - 4;
+                if (getterScroll > 0)
+                    g.drawString(font, "▲", arrowX, getterAreaY1, 0x888888, false);
+                if (getterScroll < getters.size() - MAX_GETTERS)
+                    g.drawString(font, "▼", arrowX, getterAreaY2 - ROW_H, 0x888888, false);
+            }
         }
 
         // Setter section label
         if (!setters.isEmpty()) {
             String hint = selectedIdx >= 0
-                    ? "§7Controls: (§e" + setters.get(selectedIdx)[0] + "§7 selected)"
-                    : (setters.size() > MAX_SETTERS
-                            ? "§7Controls: §8(scroll, " + setterScroll + "/" + (setters.size() - MAX_SETTERS) + ")"
-                            : "§7Controls:");
+                    ? "§7Controls: §8(selected)"
+                    : "§7Controls:";
             g.drawString(font, hint, panelX + PAD, setterLabelY, 0xAAAAAA, true);
-        }
 
-        // Input row label
-        if (selectedIdx >= 0 && selectedIdx < setters.size()) {
-            String argType = setters.get(selectedIdx)[1];
-            g.drawString(font, "§7(" + argType + ")", panelX + PAD, inputY - 9, 0x888888, true);
+            // Scroll arrows on right edge when overflowing
+            if (setters.size() > MAX_SETTERS) {
+                int arrowX = panelX + PANEL_W - PAD - 4;
+                if (setterScroll > 0)
+                    g.drawString(font, "▲", arrowX, setterAreaY1, 0x888888, false);
+                if (setterScroll < setters.size() - MAX_SETTERS)
+                    g.drawString(font, "▼", arrowX, setterAreaY2 - BTN_H, 0x888888, false);
+            }
         }
 
         for (var renderable : this.renderables) {
