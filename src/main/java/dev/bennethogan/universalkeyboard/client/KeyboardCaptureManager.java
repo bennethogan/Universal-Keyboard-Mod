@@ -147,13 +147,13 @@ public class KeyboardCaptureManager {
             case CC -> mc.player.displayClientMessage(
                     Component.literal(
                             "§a[Keyboard] §fTyping — §bCh " + capturedChannel +
-                            " §7| scroll: change channel | ESC: stop"),
+                            " §7| scroll: switch channel | ESC: stop"),
                     true);
 
             case CREATE -> {
                 String buf = createInputBuffer.toString();
                 String typed = buf.isEmpty()
-                        ? "§7(type a value, Enter to apply)"
+                        ? "§7(type then press [enter])"
                         : "§e" + buf + "§7_";
                 mc.player.displayClientMessage(
                         Component.literal(
