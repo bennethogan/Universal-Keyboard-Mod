@@ -1,5 +1,5 @@
 
-<iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/y3kmv2i7s8A" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+[![Youtube Link to Example Video](https://img.youtube.com/vi/y3kmv2i7s8A/0.jpg)](https://www.youtube.com/watch?v=y3kmv2i7s8A)
 
 
 ## DEPENDENCIES NOTE -- I set this up so CC:Tweaked and Create are not required, but I do highly recommend them to take advantage of all the features of the keyboard. Most of the non -redstone features of the board are extensions of CC:Tweaked's peripherals. You will need to download the latest CC:Tweaked from modrinth, not Curseforge.
