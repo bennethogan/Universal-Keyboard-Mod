@@ -7,46 +7,36 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
 
-/**
- * Configure up to 12 wireless redstone outputs in a 2×6 grid.
- * Left column: W1–W6; right column: W7–W12.
- * Each row has two ghost item slots for the two Create frequency items.
- * Left-click while holding an item stamps the type; left-click empty-handed clears.
- * REI's drag-drop targets these slots because they're real Slot instances on the menu.
- */
 public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfigMenu> {
 
-    // Slot x positions (menu-relative, used to draw slot backgrounds in renderBg)
-    private static final int LEFT_SLOT1_X  = 26;
-    private static final int LEFT_SLOT2_X  = 46;
-    private static final int RIGHT_SLOT1_X = 120;
-    private static final int RIGHT_SLOT2_X = 140;
+
+    private static final int FREQ1_TINT = 0x55FF3333; // transparent red  (freq 1 / left slot)
+    private static final int FREQ2_TINT = 0x553333FF; // transparent blue (freq 2 / right slot)
 
     private Button addBtn;
     private Button removeBtn;
 
     public WirelessConfigScreen(WirelessConfigMenu menu, Inventory inv, Component title) {
         super(menu, inv, title);
-        this.imageWidth      = 190;
-        this.imageHeight     = 18 + WirelessConfigMenu.HALF_ROWS * 18 + 28 + 76;
-        // Place "Inventory" label just above the first inventory row (invStart - 10).
-        // invStart = 18 + HALF_ROWS*18 + 28, so label sits at 18 + HALF_ROWS*18 + 18.
-        this.inventoryLabelY = 18 + WirelessConfigMenu.HALF_ROWS * 18 + 18;
+        this.imageWidth      = 222;
+        this.imageHeight     = 18 + WirelessConfigMenu.COL_ROWS * 18 + 28 + 76;
+        this.inventoryLabelY = 18 + WirelessConfigMenu.COL_ROWS * 18 + 18;
     }
 
     @Override
     protected void init() {
         super.init();
-        // Buttons sit in the gap below the rows, above the "Inventory" label.
-        // rows end at topPos + 18 + HALF_ROWS*18 = topPos + 126; gap is 28px.
-        int btnY = topPos + 18 + WirelessConfigMenu.HALF_ROWS * 18 + 6;
+        int btnY = topPos + 18 + WirelessConfigMenu.COL_ROWS * 18 + 6;
         addBtn = Button.builder(Component.literal("Add"),
                         b -> ModPackets.sendWirelessAddRemove(menu.getKeyboardPos(), true))
-                .pos(leftPos + 57, btnY).size(28, 12).build();
+                .pos(leftPos + 73, btnY).size(28, 12).build();
         removeBtn = Button.builder(Component.literal("Remove"),
                         b -> ModPackets.sendWirelessAddRemove(menu.getKeyboardPos(), false))
-                .pos(leftPos + 89, btnY).size(44, 12).build();
+                .pos(leftPos + 105, btnY).size(44, 12).build();
         addRenderableWidget(addBtn);
         addRenderableWidget(removeBtn);
     }
@@ -69,41 +59,75 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
         g.fill(leftPos + imageWidth - 1, topPos,                   leftPos + imageWidth, topPos + imageHeight,    0xFF555555);
 
         int count = menu.getWirelessCount();
+        int colRows = WirelessConfigMenu.COL_ROWS;
 
-        // Left group: W1–W6 (entries 0–5)
-        for (int r = 0; r < WirelessConfigMenu.HALF_ROWS; r++) {
-            int y = topPos + 18 + r * 18;
-            boolean active = r < count;
-            g.fill(leftPos + 8, y, leftPos + 73, y + 17, active ? 0xFF2A2A2A : 0xFF181818);
-            g.drawString(font, "W" + (r + 1), leftPos + 9, y + 5, active ? 0xFFFFFF : 0x555555, false);
-            drawSlotBg(g, leftPos + LEFT_SLOT1_X, y);
-            drawSlotBg(g, leftPos + LEFT_SLOT2_X, y);
+        // Column 1: entries 0–6
+        for (int r = 0; r < colRows; r++) {
+            int entry = r;
+            if (entry >= WirelessConfigMenu.ROWS) break;
+            renderRow(g, r, entry, count, leftPos + 8, leftPos + 73,
+                    WirelessConfigMenu.COL1_SLOT1, WirelessConfigMenu.COL1_SLOT2);
         }
 
-        // Thin vertical divider between the two groups
-        g.fill(leftPos + 87, topPos + 18, leftPos + 88, topPos + 18 + WirelessConfigMenu.HALF_ROWS * 18, 0xFF333333);
-
-        // Right group: W7–W12 (entries 6–11)
-        for (int r = 0; r < WirelessConfigMenu.HALF_ROWS; r++) {
-            int entryIdx = r + WirelessConfigMenu.HALF_ROWS;
-            int y = topPos + 18 + r * 18;
-            boolean active = entryIdx < count;
-            g.fill(leftPos + 96, y, leftPos + 168, y + 17, active ? 0xFF2A2A2A : 0xFF181818);
-            g.drawString(font, "W" + (entryIdx + 1), leftPos + 97, y + 5, active ? 0xFFFFFF : 0x555555, false);
-            drawSlotBg(g, leftPos + RIGHT_SLOT1_X, y);
-            drawSlotBg(g, leftPos + RIGHT_SLOT2_X, y);
+        // Column 2: entries 7–13
+        for (int r = 0; r < colRows; r++) {
+            int entry = colRows + r;
+            if (entry >= WirelessConfigMenu.ROWS) break;
+            renderRow(g, r, entry, count, leftPos + 78, leftPos + 143,
+                    WirelessConfigMenu.COL2_SLOT1, WirelessConfigMenu.COL2_SLOT2);
         }
 
-        // Player inventory area background
-        int invY = topPos + 18 + WirelessConfigMenu.HALF_ROWS * 18 + 28;
-        g.fill(leftPos + 6, invY - 2, leftPos + imageWidth - 6, invY + 76, 0xFF222222);
+        // Column 3: entries 14–19
+        for (int r = 0; r < colRows; r++) {
+            int entry = colRows * 2 + r;
+            if (entry >= WirelessConfigMenu.ROWS) break;
+            renderRow(g, r, entry, count, leftPos + 148, leftPos + 213,
+                    WirelessConfigMenu.COL3_SLOT1, WirelessConfigMenu.COL3_SLOT2);
+        }
+
+        // Vertical dividers between columns
+        int divTop = topPos + 18;
+        int divBot = topPos + 18 + colRows * 18;
+        g.fill(leftPos + 75, divTop, leftPos + 76, divBot, 0xFF333333);
+        g.fill(leftPos + 145, divTop, leftPos + 146, divBot, 0xFF333333);
+
+        // Player inventory area background — cap at imageHeight-2 so the bottom border stays visible
+        int invY = topPos + 18 + colRows * 18 + 28;
+        g.fill(leftPos + 6, invY - 2, leftPos + imageWidth - 6, topPos + imageHeight - 2, 0xFF222222);
     }
 
-    private void drawSlotBg(GuiGraphics g, int x, int y) {
+    private void renderRow(GuiGraphics g, int rowInCol, int entryIdx, int count,
+                           int rowFillX, int rowFillXEnd, int slot1x, int slot2x) {
+        int y = topPos + 18 + rowInCol * 18;
+        boolean active = entryIdx < count;
+        g.fill(rowFillX, y, rowFillXEnd, y + 17, active ? 0xFF2A2A2A : 0xFF181818);
+        g.drawString(font, "W" + (entryIdx + 1), rowFillX + 1, y + 5, active ? 0xFFFFFF : 0x555555, false);
+        drawSlotBg(g, leftPos + slot1x, y, FREQ1_TINT);
+        drawSlotBg(g, leftPos + slot2x, y, FREQ2_TINT);
+    }
+
+    private void drawSlotBg(GuiGraphics g, int x, int y, int tint) {
         g.fill(x - 1, y,     x + 17, y + 1,  0xFF3D3D3D);
         g.fill(x - 1, y + 1, x,      y + 17, 0xFF3D3D3D);
-        g.fill(x,     y + 1, x + 17, y + 17, 0xFF1F1F1F);
+        g.fill(x,     y + 1, x + 17, y + 17, 0xFF1F1F1F); // dark base
+        g.fill(x,     y + 1, x + 17, y + 17, tint);       // transparent color tint on top
         g.fill(x - 1, y + 17, x + 17, y + 18, 0xFF3D3D3D);
+    }
+
+    @Override
+    protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType type) {
+        if (slot != null && slotId >= 0 && slotId < WirelessConfigMenu.GHOST_COUNT
+                && (type == ClickType.PICKUP || type == ClickType.QUICK_MOVE)) {
+            int entryIdx = slotId / WirelessConfigMenu.GHOST_COLS;
+            if (entryIdx < menu.getWirelessCount()) {
+                ItemStack carried = menu.getCarried();
+                ItemStack toSet   = carried.isEmpty() ? ItemStack.EMPTY : carried.copyWithCount(1);
+                slot.set(toSet); // immediate client-side visual update
+                ModPackets.sendWirelessGhostSet(menu.getKeyboardPos(), slotId, toSet);
+            }
+            return; // never call super for ghost slots
+        }
+        super.slotClicked(slot, slotId, mouseButton, type);
     }
 
     @Override

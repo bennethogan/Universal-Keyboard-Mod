@@ -15,10 +15,18 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 
 public class WirelessConfigMenu extends AbstractContainerMenu {
 
-    public static final int ROWS        = LinkedKeyboardBlockEntity.MAX_WIRELESS;
-    public static final int HALF_ROWS   = ROWS / 2; // 6 rows per visual column
-    public static final int GHOST_COLS  = 2;
-    public static final int GHOST_COUNT = ROWS * GHOST_COLS;
+    public static final int ROWS       = LinkedKeyboardBlockEntity.MAX_WIRELESS; // 20
+    public static final int COL_ROWS   = (ROWS + 2) / 3;                        // 7 rows per column
+    public static final int GHOST_COLS = 2;
+    public static final int GHOST_COUNT = ROWS * GHOST_COLS;                    // 40
+
+    // Slot x positions (screen-relative) for each of the 3 columns
+    public static final int COL1_SLOT1 = 30;
+    public static final int COL1_SLOT2 = 50;
+    public static final int COL2_SLOT1 = 100;
+    public static final int COL2_SLOT2 = 120;
+    public static final int COL3_SLOT1 = 170;
+    public static final int COL3_SLOT2 = 190;
 
     private final BlockPos keyboardPos;
     private final Level    level;
@@ -38,7 +46,6 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
                 if (!suppressWriteThrough && !level.isClientSide) {
                     LinkedKeyboardBlockEntity be = currentBe();
                     if (be == null) return;
-                    // Reflect ALL slots back to the BE 
                     for (int i = 0; i < GHOST_COUNT; i++) {
                         int entryIdx = i / GHOST_COLS;
                         if (entryIdx >= be.getWirelessCount()) continue;
@@ -62,30 +69,30 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
             } finally { suppressWriteThrough = false; }
         }
 
-        // Left group (W1–W6): entries 0–5, visual rows 0–5
-        for (int row = 0; row < HALF_ROWS; row++) {
-            int y = 18 + row * 18;
-            for (int col = 0; col < GHOST_COLS; col++) {
-                addSlot(new Slot(ghosts, row * GHOST_COLS + col, 26 + col * 20, y) {
-                    @Override public int getMaxStackSize()       { return 1; }
-                    @Override public boolean mayPickup(Player p) { return false; }
-                    @Override public boolean mayPlace(ItemStack stack) { return true; }
-                });
-            }
-        }
-        // Right group (W7–W12): entries 6–11, visual rows 0–5 at x+88
-        for (int row = HALF_ROWS; row < ROWS; row++) {
-            int y = 18 + (row - HALF_ROWS) * 18;
-            for (int col = 0; col < GHOST_COLS; col++) {
-                addSlot(new Slot(ghosts, row * GHOST_COLS + col, 120 + col * 20, y) {
-                    @Override public int getMaxStackSize()       { return 1; }
-                    @Override public boolean mayPickup(Player p) { return false; }
-                    @Override public boolean mayPlace(ItemStack stack) { return true; }
-                });
-            }
+        // Register ghost slots across 3 columns, COL_ROWS entries each
+        for (int entry = 0; entry < ROWS; entry++) {
+            int col     = entry / COL_ROWS;           // 0, 1, or 2
+            int rowInCol = entry % COL_ROWS;
+            int y = 18 + rowInCol * 18;
+            int slot1x, slot2x;
+            if      (col == 0) { slot1x = COL1_SLOT1; slot2x = COL1_SLOT2; }
+            else if (col == 1) { slot1x = COL2_SLOT1; slot2x = COL2_SLOT2; }
+            else               { slot1x = COL3_SLOT1; slot2x = COL3_SLOT2; }
+
+            final int sx1 = slot1x, sx2 = slot2x;
+            addSlot(new Slot(ghosts, entry * GHOST_COLS,     sx1, y) {
+                @Override public int getMaxStackSize()       { return 1; }
+                @Override public boolean mayPickup(Player p) { return false; }
+                @Override public boolean mayPlace(ItemStack stack) { return true; }
+            });
+            addSlot(new Slot(ghosts, entry * GHOST_COLS + 1, sx2, y) {
+                @Override public int getMaxStackSize()       { return 1; }
+                @Override public boolean mayPickup(Player p) { return false; }
+                @Override public boolean mayPlace(ItemStack stack) { return true; }
+            });
         }
 
-        int invStart = 18 + HALF_ROWS * 18 + 28;
+        int invStart = 18 + COL_ROWS * 18 + 28;
         for (int r = 0; r < 3; r++)
             for (int c = 0; c < 9; c++)
                 addSlot(new Slot(inv, c + r * 9 + 9, 8 + c * 18, invStart + r * 18));
@@ -107,8 +114,6 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
 
     @Override
     public void broadcastChanges() {
-        // Pull authoritative state from the BE before container sync runs so any
-        // add/remove that happened between ticks is reflected to the client.
         if (!level.isClientSide) {
             LinkedKeyboardBlockEntity be = currentBe();
             if (be != null) {
@@ -137,7 +142,7 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
     public void clicked(int slotId, int button, ClickType type, Player player) {
         if (slotId >= 0 && slotId < GHOST_COUNT) {
             int entryIdx = slotId / GHOST_COLS;
-            if (entryIdx >= getWirelessCount()) return; // row not "added" yet
+            if (entryIdx >= getWirelessCount()) return;
 
             Slot s = slots.get(slotId);
             ItemStack carried = getCarried();
@@ -148,7 +153,9 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
                 } else {
                     s.set(ItemStack.EMPTY);
                 }
-                broadcastChanges();
+                // Do NOT call broadcastChanges() here — the server's post-click broadcast
+                // handles sync. Calling it twice causes state-ID mismatches in NeoForge 1.21
+                // that cause the client to reject the click.
             }
             return;
         }
@@ -159,7 +166,6 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
     public ItemStack quickMoveStack(Player player, int index) {
         if (index >= 0 && index < GHOST_COUNT) {
             slots.get(index).set(ItemStack.EMPTY);
-            broadcastChanges();
         }
         return ItemStack.EMPTY;
     }

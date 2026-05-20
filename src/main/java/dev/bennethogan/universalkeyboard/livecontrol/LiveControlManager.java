@@ -28,7 +28,7 @@ public class LiveControlManager {
     private static final Map<Long, Integer>    rsIncCounters  = new HashMap<>();
     private static final Map<Integer, Integer> thrIncCounters = new HashMap<>();
 
-    private static int actionBarTick = 0;
+    private static int actionBarTick  = 0;
 
     // ── Activation ───────────────────────────────────────────────────────────
 

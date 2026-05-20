@@ -10,9 +10,9 @@ public class LiveControlBinding {
     // ── Nested enums ─────────────────────────────────────────────────────────
 
     public enum ActionType {
-        REDSTONE,       // 0
-        THRUSTER_POWER, // 1
-        THRUSTER_VECTOR // 2
+        REDSTONE,        // 0
+        THRUSTER_POWER,  // 1
+        THRUSTER_VECTOR  // 2
     }
 
     /** Activation mode for a binding. VEC does not support INC. */
@@ -76,9 +76,8 @@ public class LiveControlBinding {
 
         int atOrd = tag.getInt("actionType");
         ActionType[] atValues = ActionType.values();
-        // Clamp: ordinals 3-4 were the now-removed REDSTONE_INC / THRUSTER_INC; map back to base types.
-        if (atOrd >= atValues.length) atOrd = atOrd == 3 ? 0 : 1;
-        b.actionType = (atOrd >= 0 && atOrd < atValues.length) ? atValues[atOrd] : ActionType.REDSTONE;
+        if (atOrd < 0 || atOrd >= atValues.length) atOrd = 0;
+        b.actionType = atValues[atOrd];
 
         // Mode: prefer "mode" key; fall back to old "toggle" boolean for old saves.
         Mode[] mValues = Mode.values();
@@ -131,8 +130,8 @@ public class LiveControlBinding {
 
         int atOrd = buf.readByte() & 0xFF;
         ActionType[] atValues = ActionType.values();
-        if (atOrd >= atValues.length) atOrd = atOrd == 3 ? 0 : 1;
-        b.actionType = (atOrd < atValues.length) ? atValues[atOrd] : ActionType.REDSTONE;
+        if (atOrd >= atValues.length) atOrd = 0;
+        b.actionType = atValues[atOrd];
 
         int mOrd = buf.readByte() & 0xFF;
         Mode[] mValues = Mode.values();

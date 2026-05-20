@@ -1,5 +1,6 @@
 package dev.bennethogan.universalkeyboard.client.screen;
 
+import dev.bennethogan.universalkeyboard.compat.SableCompat;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.ActionType;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.Mode;
@@ -19,8 +20,8 @@ import java.util.List;
 public class LiveControlScreen extends Screen {
 
     // ── Layout constants ──────────────────────────────────────────────────────
-    private static final int MAX_SLOTS  = 20;
-    private static final int ROWS       = 10;
+    private static final int MAX_SLOTS  = 40;
+    private static final int ROWS       = 10; // rows per page column (10×2 = 20 per page, 2 pages)
     private static final int PAD        = 8;
     private static final int TITLE_H    = 10;
     private static final int ROW_H      = 15;
@@ -54,6 +55,7 @@ public class LiveControlScreen extends Screen {
     private int firstRowY;
     private int listeningSlot   = -1;
     private int vectorOverlaySlot = -1;
+    private int page = 0; // 0 = slots 0–19, 1 = slots 20–39
 
     // Typewriter import state
     private net.minecraft.core.BlockPos twOfferPos   = null; // non-null when offer is pending
@@ -109,13 +111,28 @@ public class LiveControlScreen extends Screen {
         firstRowY = panelY + PAD + TITLE_H + 4;
 
         int btnY = panelY + panelH - PAD - BTN_H;
-        int btnW = (PANEL_W - PAD * 2 - 4 * 2) / 3;
+        boolean sablePresent = SableCompat.isPresent();
+        // Bottom button row: Save | Start | [Import Typewriter if Sable present]
+        int bottomBtnCount = sablePresent ? 3 : 2;
+        int btnW = (PANEL_W - PAD * 2 - 4 * (bottomBtnCount - 1)) / bottomBtnCount;
         addRenderableWidget(Button.builder(Component.literal("Save"),  b -> doSave())
                 .pos(panelX + PAD, btnY).size(btnW, BTN_H).build());
         addRenderableWidget(Button.builder(Component.literal("Start"), b -> doStart())
-                .pos(panelX + PAD + btnW + 4, btnY).size(btnW, BTN_H).build());
-        addRenderableWidget(Button.builder(Component.literal("Import Typewriter"), b -> doTypewriterScan())
-                .pos(panelX + PAD + (btnW + 4) * 2, btnY).size(btnW, BTN_H).build());
+                .pos(panelX + PAD + (btnW + 4), btnY).size(btnW, BTN_H).build());
+        if (sablePresent) {
+            addRenderableWidget(Button.builder(Component.literal("Import Typewriter"), b -> doTypewriterScan())
+                    .pos(panelX + PAD + (btnW + 4) * 2, btnY).size(btnW, BTN_H).build());
+        }
+
+        // Page navigation buttons at top-right of panel
+        int pageBtnY = panelY + PAD;
+        int pageBtnW = 80;
+        addRenderableWidget(Button.builder(Component.literal("Next Page →"),
+                        b -> { page = 1; vectorOverlaySlot = -1; listeningSlot = -1; })
+                .pos(panelX + PANEL_W - PAD - pageBtnW, pageBtnY).size(pageBtnW, 12).build());
+        addRenderableWidget(Button.builder(Component.literal("← Prev Page"),
+                        b -> { page = 0; vectorOverlaySlot = -1; listeningSlot = -1; })
+                .pos(panelX + PANEL_W - PAD - pageBtnW * 2 - 4, pageBtnY).size(pageBtnW, 12).build());
     }
 
     public BlockPos getKeyboardPos() { return keyboardPos; }
@@ -154,11 +171,15 @@ public class LiveControlScreen extends Screen {
         renderBackground(g, mx, my, pt);
         g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, 0xFF111111);
         drawBorder(g, panelX, panelY, PANEL_W, panelH, 0xFF666666);
-        g.drawCenteredString(font, "§bLive Controller", panelX + PANEL_W / 2, panelY + PAD, 0xFFFFFF);
+        // Title in top-left so it doesn't conflict with the page-nav buttons on the right
+        g.drawString(font, "§bLive Controller", panelX + PAD, panelY + PAD + 1, 0xFFFFFF, false);
 
         if (vectorOverlaySlot < 0) {
-            for (int i = 0; i < MAX_SLOTS; i++) {
-                int col = i / ROWS, row = i % ROWS;
+            int pageStart = page * (ROWS * 2); // 20 slots per page
+            for (int pi = 0; pi < ROWS * 2; pi++) {
+                int i = pageStart + pi;
+                if (i >= MAX_SLOTS) break;
+                int col = pi / ROWS, row = pi % ROWS;
                 int rx = panelX + PAD + col * COL_OFFSET;
                 int ry = firstRowY + row * (ROW_H + ROW_GAP);
                 renderSlot(g, mx, my, i, rx, ry);
@@ -374,8 +395,11 @@ public class LiveControlScreen extends Screen {
 
         if (vectorOverlaySlot >= 0) { handleVectorOverlayClick(imx, imy, vectorOverlaySlot, btn); return true; }
         if (listeningSlot >= 0) listeningSlot = -1;
-        for (int i = 0; i < MAX_SLOTS; i++) {
-            int col = i / ROWS, row = i % ROWS;
+        int pageStart = page * (ROWS * 2);
+        for (int pi = 0; pi < ROWS * 2; pi++) {
+            int i = pageStart + pi;
+            if (i >= MAX_SLOTS) break;
+            int col = pi / ROWS, row = pi % ROWS;
             int rx = panelX + PAD + col * COL_OFFSET;
             int ry = firstRowY + row * (ROW_H + ROW_GAP);
             if (handleSlotClick(i, rx, ry, imx, imy, btn)) return true;
@@ -414,8 +438,8 @@ public class LiveControlScreen extends Screen {
         if (isIn(mx, my, tx, ry, TYPE_W, ROW_H)) {
             int dir = (btn == 1) ? -1 : 1;
             b.actionType = nextAvailableType(b.actionType, dir);
-            // VEC doesn't support INC — reset to HLD if needed
-            if (b.actionType == ActionType.THRUSTER_VECTOR && b.mode == Mode.INC) b.mode = Mode.HLD;
+            // VEC doesn't support INC — reset to HLD
+            if (b.mode == Mode.INC && b.actionType == ActionType.THRUSTER_VECTOR) b.mode = Mode.HLD;
             return true;
         }
 
@@ -483,8 +507,11 @@ public class LiveControlScreen extends Screen {
     public boolean mouseScrolled(double mx, double my, double dx, double dy) {
         int imx = (int) mx, imy = (int) my;
         int dir = dy > 0 ? 1 : -1;
-        for (int i = 0; i < MAX_SLOTS; i++) {
-            int col = i / ROWS, row = i % ROWS;
+        int pageStart = page * (ROWS * 2);
+        for (int pi = 0; pi < ROWS * 2; pi++) {
+            int i = pageStart + pi;
+            if (i >= MAX_SLOTS) break;
+            int col = pi / ROWS, row = pi % ROWS;
             int rx = panelX + PAD + col * COL_OFFSET;
             int ry = firstRowY + row * (ROW_H + ROW_GAP);
             if (!isIn(imx, imy, rx, ry, COL_W, ROW_H)) continue;
@@ -492,7 +519,7 @@ public class LiveControlScreen extends Screen {
             int cfgX = rx + CFG_OFF;
             if (isIn(imx, imy, cfgX, ry, CFG_W, ROW_H) && b.mode != Mode.INC) {
                 switch (b.actionType) {
-                    case REDSTONE      -> b.signalStrength = Math.max(0, Math.min(15, b.signalStrength + dir));
+                    case REDSTONE       -> b.signalStrength = Math.max(0, Math.min(15, b.signalStrength + dir));
                     case THRUSTER_POWER -> b.powerLevel = Math.max(0.0, Math.min(1.0,
                             Math.round((b.powerLevel + dir * 0.05) * 20) / 20.0));
                     default -> {}

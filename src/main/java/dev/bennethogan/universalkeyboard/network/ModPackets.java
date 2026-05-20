@@ -12,6 +12,7 @@ import dev.bennethogan.universalkeyboard.sequencer.SequencerStep;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -351,6 +352,20 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
+    // Client → server: set a single ghost slot without using the vanilla container-click state-ID system
+    public record WirelessGhostSetPacket(BlockPos keyboardPos, int slotIdx, ItemStack item) implements CustomPacketPayload {
+        public static final Type<WirelessGhostSetPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "wireless_ghost_set"));
+        // ItemStack.OPTIONAL_STREAM_CODEC requires RegistryFriendlyByteBuf (needs registry context for item lookup)
+        public static final StreamCodec<RegistryFriendlyByteBuf, WirelessGhostSetPacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC,           WirelessGhostSetPacket::keyboardPos,
+                        ByteBufCodecs.INT,               WirelessGhostSetPacket::slotIdx,
+                        ItemStack.OPTIONAL_STREAM_CODEC, WirelessGhostSetPacket::item,
+                        WirelessGhostSetPacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
     // client → server: re-read thruster state and push updated OpenThrusterControlPacket
     public record RequestThrusterRefreshPacket(BlockPos keyboardPos) implements CustomPacketPayload {
         public static final Type<RequestThrusterRefreshPacket> TYPE =
@@ -387,6 +402,7 @@ public class ModPackets {
         registrar.optional().playToServer(RequestThrusterRefreshPacket.TYPE,   RequestThrusterRefreshPacket.CODEC,   ModPackets::handleRequestThrusterRefresh);
         registrar.optional().playToServer(OpenWirelessConfigPacket.TYPE,       OpenWirelessConfigPacket.CODEC,       ModPackets::handleOpenWirelessConfig);
         registrar.optional().playToServer(WirelessAddRemovePacket.TYPE,        WirelessAddRemovePacket.CODEC,        ModPackets::handleWirelessAddRemove);
+        registrar.optional().playToServer(WirelessGhostSetPacket.TYPE,         WirelessGhostSetPacket.CODEC,         ModPackets::handleWirelessGhostSet);
 
         // playToClient — the server must declare these channels so the handshake succeeds.
         // Real handlers are registered by ClientPacketHandlers (client only); skip here on client
@@ -1112,6 +1128,7 @@ public class ModPackets {
         });
     }
 
+
     /** Searches a 20-block cube around keyboardPos for any typewriter peripheral. */
     private static BlockPos findNearbyTypewriter(net.minecraft.server.level.ServerLevel level, BlockPos center) {
         int radius = 20;
@@ -1241,6 +1258,29 @@ public class ModPackets {
         });
     }
 
+    public static void sendWirelessGhostSet(BlockPos keyboardPos, int slotIdx, ItemStack item) {
+        PacketDistributor.sendToServer(new WirelessGhostSetPacket(keyboardPos, slotIdx, item));
+    }
+
+    private static void handleWirelessGhostSet(WirelessGhostSetPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            int slotIdx  = packet.slotIdx();
+            int cols     = dev.bennethogan.universalkeyboard.menu.WirelessConfigMenu.GHOST_COLS;
+            int entryIdx = slotIdx / cols;
+            if (entryIdx < 0 || entryIdx >= kb.getWirelessCount()) return;
+            boolean isFirst = (slotIdx % cols) == 0;
+            kb.setWirelessFrequencyItem(entryIdx, isFirst, packet.item());
+            // Immediately broadcast so the client stays in sync
+            if (sp.containerMenu instanceof dev.bennethogan.universalkeyboard.menu.WirelessConfigMenu wcm
+                    && wcm.getKeyboardPos().equals(packet.keyboardPos())) {
+                wcm.broadcastChanges();
+            }
+        });
+    }
+
     // ══════════════════════════════════════════════════════════════════════════
     // Live Control packets
     // ══════════════════════════════════════════════════════════════════════════
@@ -1286,8 +1326,8 @@ public class ModPackets {
                     List<dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding> binds = new ArrayList<>(cnt);
                     for (int i = 0; i < cnt; i++)
                         binds.add(dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.decode(buf));
-                    int wc = buf.readInt();
-                    boolean ht = buf.readBoolean();
+                    int wc  = buf.readInt();
+                    boolean ht  = buf.readBoolean();
                     boolean hvt = buf.readBoolean();
                     int[] lrs = fromByteArray(buf.readByteArray());
                     int[] wp  = fromByteArray(buf.readByteArray());
@@ -1419,8 +1459,7 @@ public class ModPackets {
             if (!(ctx.player() instanceof ServerPlayer sp)) return;
             BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
             if (be instanceof LinkedKeyboardBlockEntity kb) {
-                // Only stop (and clear outputs) if the sequencer was actually running.
-                // If live control set the outputs, we must not wipe them here.
+  
                 if (kb.isSequencerRunning()) kb.stopSequencer();
                 kb.setLiveControlBindings(packet.bindings());
             }

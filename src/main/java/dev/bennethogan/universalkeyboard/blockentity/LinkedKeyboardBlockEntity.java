@@ -55,7 +55,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     // ----- Live Control -----
 
-    public static final int MAX_LIVE_BINDINGS = 20;
+    public static final int MAX_LIVE_BINDINGS = 40;
     private final List<LiveControlBinding> liveControlBindings = new ArrayList<>();
 
     public List<LiveControlBinding> getLiveControlBindings() { return Collections.unmodifiableList(liveControlBindings); }
@@ -147,7 +147,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     // Wireless redstone outputs (Create RedstoneLink integration). Indexed 0-based;
     // user-facing labels are W1..W{N}. Up to MAX_WIRELESS entries.
-    public static final int MAX_WIRELESS = 12;
+    public static final int MAX_WIRELESS = 20;
     private final List<WirelessEntry> wirelessEntries = new ArrayList<>();
 
     // Cached peripheral getter values for Create display source
