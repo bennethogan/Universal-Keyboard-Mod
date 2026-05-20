@@ -25,8 +25,11 @@ public class TypewriterHelper {
     /** One key-binding as read from the typewriter block entity. */
     public record Binding(int keyCode, ItemStack firstItem, ItemStack secondItem) {}
 
-    /** True if the block at pos is a CC peripheral whose type name contains "typewriter". */
+    /** True if the block at pos is a typewriter (detected by class name or CC peripheral type). */
     public static boolean isTypewriter(Level level, BlockPos pos) {
+        BlockEntity be = level.getBlockEntity(pos);
+        if (be == null) return false;
+        if (be.getClass().getName().toLowerCase().contains("typewriter")) return true;
         if (!PeripheralHelper.isCCPresent()) return false;
         Object p = PeripheralHelper.getPeripheral(level, pos);
         if (p == null) return false;

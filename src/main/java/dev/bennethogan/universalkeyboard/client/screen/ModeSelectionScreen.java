@@ -1,6 +1,7 @@
 package dev.bennethogan.universalkeyboard.client.screen;
 
 import dev.bennethogan.universalkeyboard.compat.KeyboardMode;
+import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import dev.bennethogan.universalkeyboard.compat.wireless.WirelessPresence;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
 import net.minecraft.client.gui.GuiGraphics;
@@ -9,6 +10,9 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.List;
+import net.minecraft.util.FormattedCharSequence;
 
 public class ModeSelectionScreen extends Screen {
 
@@ -118,20 +122,35 @@ public class ModeSelectionScreen extends Screen {
 
         // Greyed-out rows for unavailable modes
         if (!showResetConfirm) {
+            boolean ccMissing = !PeripheralHelper.isCCPresent();
             KeyboardMode[] modes = KeyboardMode.values();
             int y = firstRowY + BTN_H + ROW_GAP;
+            KeyboardMode tooltipMode = null;
+            int tooltipY = 0;
             for (KeyboardMode mode : modes) {
                 boolean available = (availableBits & (1 << mode.ordinal())) != 0;
                 if (!available) {
                     int rowX = panelX + PAD;
                     int rowW = PANEL_W - PAD * 2;
+                    boolean ccRow = ccMissing && mode.requiresCC();
                     g.fill(rowX, y, rowX + rowW, y + BTN_H, 0xFF1A1A1A);
-                    String label = "§8" + mode.displayName + " §7(" + mode.unavailableReason() + ")";
+                    String reason = ccRow ? "CC:Tweaked not installed" : mode.unavailableReason();
+                    String label  = "§8" + mode.displayName + " §7(" + reason + ")";
                     g.drawCenteredString(font, label, rowX + rowW / 2, y + 5, 0x666666);
+                    if (ccRow && mx >= rowX && mx < rowX + rowW && my >= y && my < y + BTN_H) {
+                        tooltipMode = mode;
+                        tooltipY = y;
+                    }
                 }
                 y += BTN_H + ROW_GAP;
             }
             for (var renderable : this.renderables) renderable.render(g, mx, my, pt);
+            if (tooltipMode != null) {
+                List<FormattedCharSequence> lines = List.of(
+                        Component.literal("§eYou must download CC:Tweaked from Modrinth.").getVisualOrderText(),
+                        Component.literal("§7The Curseforge version has not been updated!").getVisualOrderText());
+                g.renderTooltip(font, lines, mx, my);
+            }
         } else {
             renderResetConfirm(g, mx, my);
         }

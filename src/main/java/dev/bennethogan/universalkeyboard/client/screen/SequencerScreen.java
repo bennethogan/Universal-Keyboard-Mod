@@ -501,13 +501,15 @@ public class SequencerScreen extends Screen {
         refreshAllRows();
     }
 
-    /** Types always present in the dropdown. TYPE_TEXT/TYPE_VARIABLE appended only when a CC computer is linked. */
     private Type[] buildAvailableTypes() {
+        boolean ccPresent = dev.bennethogan.universalkeyboard.compat.PeripheralHelper.isCCPresent();
         List<Type> list = new ArrayList<>();
         for (Type t : Type.values()) {
-            if (t != Type.TYPE_TEXT && t != Type.TYPE_VARIABLE) list.add(t);
+            if (t == Type.TYPE_TEXT || t == Type.TYPE_VARIABLE) continue; // added conditionally below
+            if (t == Type.SET_VALUE && !ccPresent) continue;
+            list.add(t);
         }
-        if (hasLinkedComputer()) {
+        if (ccPresent && hasLinkedComputer()) {
             list.add(Type.TYPE_TEXT);
             list.add(Type.TYPE_VARIABLE);
         }
@@ -1064,8 +1066,13 @@ public class SequencerScreen extends Screen {
         private void cycleSource() {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
+            boolean ccPresent = dev.bennethogan.universalkeyboard.compat.PeripheralHelper.isCCPresent();
             ConditionSource[] sources = ConditionSource.values();
-            step.conditionSource = sources[(step.conditionSource.ordinal() + 1) % sources.length];
+            int next = step.conditionSource.ordinal();
+            do {
+                next = (next + 1) % sources.length;
+            } while (!ccPresent && sources[next] == ConditionSource.PERIPHERAL);
+            step.conditionSource = sources[next];
             refresh();
         }
 

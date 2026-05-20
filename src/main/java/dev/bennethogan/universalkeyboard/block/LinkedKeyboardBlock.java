@@ -134,12 +134,9 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
             return InteractionResult.CONSUME;
         }
 
-        int bits = KeyboardMode.availableBitfield(level, targetPos);
-        if (bits == 0) {
-            player.displayClientMessage(Component.literal(
-                    "§c[Universal Keyboard] §fLinked block has no compatible modes (might have changed)."), true);
-            return InteractionResult.CONSUME;
-        }
+        // Sequencer is always available regardless of what's linked
+        int bits = KeyboardMode.availableBitfield(level, targetPos)
+                | (1 << KeyboardMode.PERIPHERAL_SEQUENCER.ordinal());
 
         String typeName = level.getBlockState(targetPos).getBlock()
                 .getName().getString();

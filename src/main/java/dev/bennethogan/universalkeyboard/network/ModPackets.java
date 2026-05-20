@@ -525,7 +525,8 @@ public class ModPackets {
             if (idx < 0 || idx >= modes.length) return;
             KeyboardMode mode = modes[idx];
 
-            if (!mode.isAvailableAt(sp.serverLevel(), targetPos)) {
+            if (mode != KeyboardMode.PERIPHERAL_SEQUENCER
+                    && !mode.isAvailableAt(sp.serverLevel(), targetPos)) {
                 sp.displayClientMessage(net.minecraft.network.chat.Component.literal(
                         "§c[Keyboard] §fThat mode isn't available for this block."), true);
                 return;

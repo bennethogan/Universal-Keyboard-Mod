@@ -40,6 +40,10 @@ public enum KeyboardMode {
         };
     }
 
+    public boolean requiresCC() {
+        return this == CC_COMPUTER || this == CC_PERIPHERAL || this == THRUSTER_CONTROL;
+    }
+
     public String unavailableReason() {
         return switch (this) {
             case CC_COMPUTER      -> "not a CC computer";
