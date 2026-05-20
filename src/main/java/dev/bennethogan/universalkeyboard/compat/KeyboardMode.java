@@ -8,11 +8,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 public enum KeyboardMode {
-    CC_COMPUTER(       "CC Computer",       "Type to a CC:Tweaked computer"),
-    CC_PERIPHERAL(     "CC Peripheral",     "Call setter methods on a CC peripheral"),
-    VALUE_PANEL(       "Value Panel",       "Set values on a Create scroll-value block"),
-    THRUSTER_CONTROL(    "Thruster Control",  "Control thruster direction and power"),
     PERIPHERAL_SEQUENCER("Sequencer",        "Script peripheral calls with conditions and delays"),
+    THRUSTER_CONTROL(    "Thruster Control",  "Control thruster direction and power"),
+    VALUE_PANEL(         "Value Panel",       "Set values on a Create scroll-value block"),
+    CC_PERIPHERAL(       "CC Peripheral",     "Call setter methods on a CC peripheral"),
+    CC_COMPUTER(         "CC Computer",       "Type to a CC:Tweaked computer"),
     ;
 
     public final String displayName;

@@ -64,8 +64,15 @@ public class ModeSelectionScreen extends Screen {
                     .build());
         }
 
-        // Full-width mode buttons
-        int y = firstRowY;
+        // Live Controller always at top
+        addRenderableWidget(Button.builder(Component.literal("Live Controller"),
+                b -> { ModPackets.sendOpenLiveControl(keyboardPos); onClose(); })
+                .pos(panelX + PAD, firstRowY)
+                .size(PANEL_W - PAD * 2, BTN_H)
+                .build());
+
+        // Full-width mode buttons below Live Controller
+        int y = firstRowY + BTN_H + ROW_GAP;
         for (KeyboardMode mode : modes) {
             boolean available = (availableBits & (1 << mode.ordinal())) != 0;
             if (available) {
@@ -78,12 +85,6 @@ public class ModeSelectionScreen extends Screen {
             }
             y += BTN_H + ROW_GAP;
         }
-        // Live Controller button
-        addRenderableWidget(Button.builder(Component.literal("Live Controller"),
-                b -> { ModPackets.sendOpenLiveControl(keyboardPos); onClose(); })
-                .pos(panelX + PAD, y)
-                .size(PANEL_W - PAD * 2, BTN_H)
-                .build());
     }
 
     private void onWireless() {
@@ -118,7 +119,7 @@ public class ModeSelectionScreen extends Screen {
         // Greyed-out rows for unavailable modes
         if (!showResetConfirm) {
             KeyboardMode[] modes = KeyboardMode.values();
-            int y = firstRowY;
+            int y = firstRowY + BTN_H + ROW_GAP;
             for (KeyboardMode mode : modes) {
                 boolean available = (availableBits & (1 << mode.ordinal())) != 0;
                 if (!available) {
