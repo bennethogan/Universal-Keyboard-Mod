@@ -1,3 +1,6 @@
+### 🌐 Read this in other languages: 
+### [English](README.md) | [Português](README.pt.md) |
+
 
 [![Youtube Link to Example Video](https://img.youtube.com/vi/y3kmv2i7s8A/0.jpg)](https://www.youtube.com/watch?v=y3kmv2i7s8A)
 <img width="784" height="522" alt="KeyboardModGallery7" src="https://github.com/user-attachments/assets/a600faff-04b0-4898-ae08-aaa2cfd95f9f" />
@@ -12,6 +15,9 @@
 ## **Universal Keyboard mod that allows you to control various features I wanted better control over. There is a base range of 16 blocks, can be configured up to 256. **
 
 -----------
+
+
+
 
 ## What Features Require Which Optional Dependencies?
 
