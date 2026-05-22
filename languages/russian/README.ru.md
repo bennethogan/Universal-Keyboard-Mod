@@ -1,5 +1,5 @@
 ### 🌐 Читайте на других языках: 
-### [English](README.md) | [Português](languages/portuguese/README.pt.md) | [Русский](languages/russian/README.ru.md) |
+### [English](/README.md) | [Português](/languages/portuguese/README.pt.md) | [Русский](/languages/russian/README.ru.md) |
 
 
 # ВАЖНЫЕ ЗАМЕЧАНИЯ 
