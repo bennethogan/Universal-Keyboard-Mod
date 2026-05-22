@@ -1,5 +1,3 @@
-# INCOMPLETA
-
 <img width="960" height="540" alt="UniversalKeyboardWiki_portuguese" src="https://github.com/user-attachments/assets/45d5e536-d7b6-412c-b18b-b00fb39af408" />
 
 <img width="960" height="540" alt="UniversalKeyboardWiki_portuguese(1)" src="https://github.com/user-attachments/assets/24e5827c-d5da-4284-8182-fee38364bba4" />
