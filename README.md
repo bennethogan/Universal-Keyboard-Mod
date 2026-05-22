@@ -1,5 +1,5 @@
 ### 🌐 Read this in other languages: 
-### [English](README.md) | [Português](README.pt.md) |
+### [English](README.md) | [Português](languages/portuguese/README.pt.md) |
 
 
 [![Youtube Link to Example Video](https://img.youtube.com/vi/y3kmv2i7s8A/0.jpg)](https://www.youtube.com/watch?v=y3kmv2i7s8A)
