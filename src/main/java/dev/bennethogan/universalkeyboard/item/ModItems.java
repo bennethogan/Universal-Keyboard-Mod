@@ -19,4 +19,19 @@ public class ModItems {
             ITEMS.register("trans_keyboard", () ->
                     new LinkedKeyboardItem(ModBlocks.TRANS_KEYBOARD.get(),
                             new Item.Properties().stacksTo(1)));
+
+    public static final DeferredItem<LinkedKeyboardItem> RAINBOW_KEYBOARD =
+            ITEMS.register("rainbow_keyboard", () ->
+                    new LinkedKeyboardItem(ModBlocks.RAINBOW_KEYBOARD.get(),
+                            new Item.Properties().stacksTo(1)));
+
+    public static final DeferredItem<LinkedKeyboardItem> ACE_KEYBOARD =
+            ITEMS.register("ace_keyboard", () ->
+                    new LinkedKeyboardItem(ModBlocks.ACE_KEYBOARD.get(),
+                            new Item.Properties().stacksTo(1)));
+
+    public static final DeferredItem<LinkedKeyboardItem> BI_KEYBOARD =
+            ITEMS.register("bi_keyboard", () ->
+                    new LinkedKeyboardItem(ModBlocks.BI_KEYBOARD.get(),
+                            new Item.Properties().stacksTo(1)));
 }

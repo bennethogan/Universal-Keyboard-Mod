@@ -12,6 +12,7 @@ import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.util.FormattedCharSequence;
 
 public class ModeSelectionScreen extends Screen {
@@ -24,9 +25,10 @@ public class ModeSelectionScreen extends Screen {
     private static final int SMALL_H   = 14;
     private static final int HEADER_H  = PAD + SMALL_H + 8;
 
-    // Confirmation dialog dimensions
     private static final int CONF_W    = 200;
-    private static final int CONF_H    = 52;
+    private static final int CONF_PAD  = 6;
+    private static final int CONF_GAP  = 2;
+    private static final int CONF_BTN_H = 14;
 
     private final BlockPos keyboardPos;
     private final int      availableBits;
@@ -54,7 +56,7 @@ public class ModeSelectionScreen extends Screen {
         firstRowY = panelY + HEADER_H;
 
         // "Reset Data" button — top-left
-        addRenderableWidget(Button.builder(Component.literal("Reset Data"),
+        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.reset_data"),
                         b -> showResetConfirm = true)
                 .pos(panelX + PAD, panelY + PAD)
                 .size(SMALL_W, SMALL_H)
@@ -62,14 +64,14 @@ public class ModeSelectionScreen extends Screen {
 
         // "Wifi Setup" button — top-right (Create wireless only)
         if (WirelessPresence.isPresent()) {
-            addRenderableWidget(Button.builder(Component.literal("Wifi Setup"), b -> onWireless())
+            addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.wifi_setup"), b -> onWireless())
                     .pos(panelX + PANEL_W - PAD - SMALL_W, panelY + PAD)
                     .size(SMALL_W, SMALL_H)
                     .build());
         }
 
         // Live Controller always at top
-        addRenderableWidget(Button.builder(Component.literal("Live Controller"),
+        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.live_controller"),
                 b -> { ModPackets.sendOpenLiveControl(keyboardPos); onClose(); })
                 .pos(panelX + PAD, firstRowY)
                 .size(PANEL_W - PAD * 2, BTN_H)
@@ -81,7 +83,7 @@ public class ModeSelectionScreen extends Screen {
             boolean available = (availableBits & (1 << mode.ordinal())) != 0;
             if (available) {
                 addRenderableWidget(Button.builder(
-                        Component.literal(mode.displayName),
+                        Component.translatable(mode.displayName),
                         b -> selectMode(mode))
                         .pos(panelX + PAD, y)
                         .size(PANEL_W - PAD * 2, BTN_H)
@@ -118,15 +120,13 @@ public class ModeSelectionScreen extends Screen {
         g.fill(panelX + PANEL_W - 1, panelY, panelX + PANEL_W, panelY + panelH,  0xFF666666);
 
         int titleY = panelY + PAD + (SMALL_H - 8) / 2;
-        g.drawCenteredString(font, "§bUniversal Keyboard", panelX + PANEL_W / 2, titleY, 0xFFFFFF);
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.screen.mode_selection.title"), panelX + PANEL_W / 2, titleY, 0xFFFFFF);
 
-        // Greyed-out rows for unavailable modes
         if (!showResetConfirm) {
             boolean ccMissing = !PeripheralHelper.isCCPresent();
             KeyboardMode[] modes = KeyboardMode.values();
             int y = firstRowY + BTN_H + ROW_GAP;
             KeyboardMode tooltipMode = null;
-            int tooltipY = 0;
             for (KeyboardMode mode : modes) {
                 boolean available = (availableBits & (1 << mode.ordinal())) != 0;
                 if (!available) {
@@ -134,12 +134,11 @@ public class ModeSelectionScreen extends Screen {
                     int rowW = PANEL_W - PAD * 2;
                     boolean ccRow = ccMissing && mode.requiresCC();
                     g.fill(rowX, y, rowX + rowW, y + BTN_H, 0xFF1A1A1A);
-                    String reason = ccRow ? "CC:Tweaked not installed" : mode.unavailableReason();
-                    String label  = "§8" + mode.displayName + " §7(" + reason + ")";
+                    String reason = ccRow ? I18n.get("gui.universalkeyboard.msg.cc_not_installed") : I18n.get(mode.unavailableReason());
+                    String label  = "§8" + I18n.get(mode.displayName) + " §7(" + reason + ")";
                     g.drawCenteredString(font, label, rowX + rowW / 2, y + 5, 0x666666);
                     if (ccRow && mx >= rowX && mx < rowX + rowW && my >= y && my < y + BTN_H) {
                         tooltipMode = mode;
-                        tooltipY = y;
                     }
                 }
                 y += BTN_H + ROW_GAP;
@@ -147,8 +146,8 @@ public class ModeSelectionScreen extends Screen {
             for (var renderable : this.renderables) renderable.render(g, mx, my, pt);
             if (tooltipMode != null) {
                 List<FormattedCharSequence> lines = List.of(
-                        Component.literal("§eYou must download CC:Tweaked from Modrinth.").getVisualOrderText(),
-                        Component.literal("§7The Curseforge version has not been updated!").getVisualOrderText());
+                        Component.translatable("gui.universalkeyboard.tooltip.cc_modrinth_1").getVisualOrderText(),
+                        Component.translatable("gui.universalkeyboard.tooltip.cc_modrinth_2").getVisualOrderText());
                 g.renderTooltip(font, lines, mx, my);
             }
         } else {
@@ -156,53 +155,60 @@ public class ModeSelectionScreen extends Screen {
         }
     }
 
+    // ── Reset confirm dialog ─────────────────────────────────────────────────
+
+    private int resetDialogHeight() {
+        int textW = CONF_W - CONF_PAD * 2;
+        return CONF_PAD
+                + GuiText.wrappedHeight(font, I18n.get("gui.universalkeyboard.dialog.reset_title"), textW) + CONF_GAP
+                + GuiText.wrappedHeight(font, I18n.get("gui.universalkeyboard.dialog.reset_body"), textW) + CONF_GAP + 4
+                + CONF_BTN_H + CONF_PAD;
+    }
+
     private void renderResetConfirm(GuiGraphics g, int mx, int my) {
+        int dh = resetDialogHeight();
+        int textW = CONF_W - CONF_PAD * 2;
         int cx = panelX + (PANEL_W - CONF_W) / 2;
-        int cy = panelY + (panelH - CONF_H) / 2;
+        int cy = panelY + (panelH - dh) / 2;
 
-        // Dialog box
-        g.fill(cx, cy, cx + CONF_W, cy + CONF_H, 0xFF0A0A14);
+        g.fill(cx, cy, cx + CONF_W, cy + dh, 0xFF0A0A14);
         g.fill(cx, cy, cx + CONF_W, cy + 1, 0xFFCC4444);
-        g.fill(cx, cy + CONF_H - 1, cx + CONF_W, cy + CONF_H, 0xFFCC4444);
-        g.fill(cx, cy, cx + 1, cy + CONF_H, 0xFFCC4444);
-        g.fill(cx + CONF_W - 1, cy, cx + CONF_W, cy + CONF_H, 0xFFCC4444);
+        g.fill(cx, cy + dh - 1, cx + CONF_W, cy + dh, 0xFFCC4444);
+        g.fill(cx, cy, cx + 1, cy + dh, 0xFFCC4444);
+        g.fill(cx + CONF_W - 1, cy, cx + CONF_W, cy + dh, 0xFFCC4444);
 
-        g.drawCenteredString(font, "§cReset all keyboard data?", cx + CONF_W / 2, cy + 6, 0xFFFFFF);
-        g.drawCenteredString(font, "§7This cannot be undone.", cx + CONF_W / 2, cy + 16, 0xAAAAAA);
+        int centerX = cx + CONF_W / 2;
+        int y = cy + CONF_PAD;
+        y += GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.reset_title"), centerX, y, textW, 0xFFFFFF) + CONF_GAP;
+        GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.reset_body"), centerX, y, textW, 0xAAAAAA);
 
-        // Yes button
         int btnW = 54;
         int yesX = cx + CONF_W / 2 - btnW - 4;
         int noX  = cx + CONF_W / 2 + 4;
-        int btnY = cy + CONF_H - 18;
-        boolean yesHov = isIn(mx, my, yesX, btnY, btnW, 14);
-        boolean noHov  = isIn(mx, my, noX,  btnY, btnW, 14);
-        g.fill(yesX, btnY, yesX + btnW, btnY + 14, yesHov ? 0xFF882222 : 0xFF551111);
-        g.fill(noX,  btnY, noX  + btnW, btnY + 14, noHov  ? 0xFF334433 : 0xFF223322);
+        int btnY = cy + dh - CONF_PAD - CONF_BTN_H;
+        boolean yesHov = isIn(mx, my, yesX, btnY, btnW, CONF_BTN_H);
+        boolean noHov  = isIn(mx, my, noX,  btnY, btnW, CONF_BTN_H);
+        g.fill(yesX, btnY, yesX + btnW, btnY + CONF_BTN_H, yesHov ? 0xFF882222 : 0xFF551111);
+        g.fill(noX,  btnY, noX  + btnW, btnY + CONF_BTN_H, noHov  ? 0xFF334433 : 0xFF223322);
         g.fill(yesX, btnY, yesX + btnW, btnY + 1, 0xFFCC4444);
         g.fill(noX,  btnY, noX  + btnW, btnY + 1, 0xFF448844);
-        g.drawCenteredString(font, "§cYes, reset", yesX + btnW / 2, btnY + 3, 0xFFFFFF);
-        g.drawCenteredString(font, "§aCancel", noX + btnW / 2, btnY + 3, 0xFFFFFF);
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.yes_reset"), yesX + btnW / 2, btnY + 3, 0xFFFFFF);
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.cancel"), noX + btnW / 2, btnY + 3, 0xFFFFFF);
     }
 
     @Override
     public boolean mouseClicked(double mx, double my, int btn) {
         if (showResetConfirm && btn == 0) {
-            int cx  = panelX + (PANEL_W - CONF_W) / 2;
-            int cy  = panelY + (panelH  - CONF_H)  / 2;
+            int dh   = resetDialogHeight();
+            int cx   = panelX + (PANEL_W - CONF_W) / 2;
+            int cy   = panelY + (panelH  - dh)  / 2;
             int btnW = 54;
             int yesX = cx + CONF_W / 2 - btnW - 4;
             int noX  = cx + CONF_W / 2 + 4;
-            int btnY = cy + CONF_H - 18;
-            if (isIn((int) mx, (int) my, yesX, btnY, btnW, 14)) {
-                doResetData();
-                return true;
-            }
-            if (isIn((int) mx, (int) my, noX, btnY, btnW, 14)) {
-                showResetConfirm = false;
-                return true;
-            }
-            return true; // consume clicks while dialog is open
+            int btnY = cy + dh - CONF_PAD - CONF_BTN_H;
+            if (isIn((int) mx, (int) my, yesX, btnY, btnW, CONF_BTN_H)) { doResetData();          return true; }
+            if (isIn((int) mx, (int) my, noX,  btnY, btnW, CONF_BTN_H)) { showResetConfirm = false; return true; }
+            return true;
         }
         return super.mouseClicked(mx, my, btn);
     }

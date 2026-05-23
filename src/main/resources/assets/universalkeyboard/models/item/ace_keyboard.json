@@ -1,5 +1,5 @@
 {
-  "parent": "universalkeyboard:block/trans_keyboard",
+  "parent": "universalkeyboard:block/ace_keyboard",
   "display": {
     "gui": {
       "rotation": [25, 135, 0],

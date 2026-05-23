@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    { "item": "universalkeyboard:universal_keyboard" },
+    { "item": "minecraft:purple_dye" }
+  ],
+  "result": {
+    "id": "universalkeyboard:ace_keyboard",
+    "count": 1
+  }
+}

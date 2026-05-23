@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "universalkeyboard:block/bi_keyboard" },
+    "facing=east":  { "model": "universalkeyboard:block/bi_keyboard", "y": 90 },
+    "facing=south": { "model": "universalkeyboard:block/bi_keyboard", "y": 180 },
+    "facing=west":  { "model": "universalkeyboard:block/bi_keyboard", "y": 270 }
+  }
+}

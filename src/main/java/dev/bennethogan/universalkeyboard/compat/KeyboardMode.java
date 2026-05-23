@@ -8,11 +8,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 public enum KeyboardMode {
-    PERIPHERAL_SEQUENCER("Sequencer",        "Script peripheral calls with conditions and delays"),
-    THRUSTER_CONTROL(    "Thruster Control",  "Control thruster direction and power"),
-    VALUE_PANEL(         "Value Panel",       "Set values on a Create scroll-value block"),
-    CC_PERIPHERAL(       "CC Peripheral",     "Call setter methods on a CC peripheral"),
-    CC_COMPUTER(         "CC Computer",       "Type to a CC:Tweaked computer"),
+    PERIPHERAL_SEQUENCER("gui.universalkeyboard.mode.sequencer.name",        "gui.universalkeyboard.mode.sequencer.desc"),
+    THRUSTER_CONTROL(    "gui.universalkeyboard.mode.thruster_control.name", "gui.universalkeyboard.mode.thruster_control.desc"),
+    VALUE_PANEL(         "gui.universalkeyboard.mode.value_panel.name",      "gui.universalkeyboard.mode.value_panel.desc"),
+    CC_PERIPHERAL(       "gui.universalkeyboard.mode.cc_peripheral.name",    "gui.universalkeyboard.mode.cc_peripheral.desc"),
+    CC_COMPUTER(         "gui.universalkeyboard.mode.cc_computer.name",      "gui.universalkeyboard.mode.cc_computer.desc"),
     ;
 
     public final String displayName;
@@ -46,11 +46,11 @@ public enum KeyboardMode {
 
     public String unavailableReason() {
         return switch (this) {
-            case CC_COMPUTER      -> "not a CC computer";
-            case CC_PERIPHERAL    -> "no peripheral";
-            case VALUE_PANEL      -> "no scroll value";
-            case THRUSTER_CONTROL      -> "not a thruster peripheral";
-            case PERIPHERAL_SEQUENCER  -> "no peripheral";
+            case CC_COMPUTER          -> "gui.universalkeyboard.mode.cc_computer.unavailable";
+            case CC_PERIPHERAL        -> "gui.universalkeyboard.mode.cc_peripheral.unavailable";
+            case VALUE_PANEL          -> "gui.universalkeyboard.mode.value_panel.unavailable";
+            case THRUSTER_CONTROL     -> "gui.universalkeyboard.mode.thruster_control.unavailable";
+            case PERIPHERAL_SEQUENCER -> "gui.universalkeyboard.mode.sequencer.unavailable";
         };
     }
 

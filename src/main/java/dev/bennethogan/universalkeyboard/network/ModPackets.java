@@ -1234,7 +1234,7 @@ public class ModPackets {
             if (!(be instanceof LinkedKeyboardBlockEntity)) return;
             sp.openMenu(new net.minecraft.world.MenuProvider() {
                 @Override public net.minecraft.network.chat.Component getDisplayName() {
-                    return net.minecraft.network.chat.Component.literal("Wireless Redstone");
+                    return net.minecraft.network.chat.Component.translatable("gui.universalkeyboard.screen.wireless_config.title");
                 }
                 @Override public net.minecraft.world.inventory.AbstractContainerMenu createMenu(
                         int id, net.minecraft.world.entity.player.Inventory inv,
@@ -1411,7 +1411,7 @@ public class ModPackets {
     }
 
     public static void sendLiveAction(BlockPos keyboardPos, List<LiveAction> actions) {
-        if (!actions.isEmpty())
+        if (!actions.isEmpty() && net.minecraft.client.Minecraft.getInstance().getConnection() != null)
             PacketDistributor.sendToServer(new LiveActionPacket(keyboardPos, actions));
     }
 
@@ -1424,7 +1424,7 @@ public class ModPackets {
             boolean hasThrusters = false, hasVector = false;
 
             // Current thruster power by channel (1-16); index 0 unused
-            int[] thrusterPowers = new int[17];
+            int[] thrusterPowers = new int[LinkedKeyboardBlockEntity.MAX_CHANNELS + 1];
             for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS; ch++) {
                 for (BlockPos tp : kb.getLinkedTargetPositions(ch)) {
                     Object p = PeripheralHelper.getPeripheral(level, tp);

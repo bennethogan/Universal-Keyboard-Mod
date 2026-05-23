@@ -3,6 +3,7 @@ package dev.bennethogan.universalkeyboard.livecontrol;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.Mode;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -71,10 +72,9 @@ public class LiveControlManager {
 
     public static void deactivate() {
         active = false;
-        // Clear held keys so HLD bindings emit 0.
-        // Keep toggledOn and incCounters so their values persist on the server.
         heldKeys.clear();
-        computeAndSend();
+        // Send zero-state only when still connected — avoids NPE on disconnect.
+        if (Minecraft.getInstance().getConnection() != null) computeAndSend();
         toggledOn.clear();
         rsIncCounters.clear();
         thrIncCounters.clear();
@@ -92,7 +92,7 @@ public class LiveControlManager {
         if (++actionBarTick >= 20) {
             actionBarTick = 0;
             mc.player.displayClientMessage(
-                    Component.literal("§c[Live Control] §fPress ESC to exit"), true);
+                    Component.literal(I18n.get("gui.universalkeyboard.msg.live_control_active")), true);
         }
     }
 

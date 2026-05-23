@@ -9,6 +9,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.world.item.ItemStack;
 
 public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfigMenu> {
@@ -31,10 +32,10 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
     protected void init() {
         super.init();
         int btnY = topPos + 18 + WirelessConfigMenu.COL_ROWS * 18 + 6;
-        addBtn = Button.builder(Component.literal("Add"),
+        addBtn = Button.builder(Component.translatable("gui.universalkeyboard.btn.add"),
                         b -> ModPackets.sendWirelessAddRemove(menu.getKeyboardPos(), true))
                 .pos(leftPos + 73, btnY).size(28, 12).build();
-        removeBtn = Button.builder(Component.literal("Remove"),
+        removeBtn = Button.builder(Component.translatable("gui.universalkeyboard.btn.remove"),
                         b -> ModPackets.sendWirelessAddRemove(menu.getKeyboardPos(), false))
                 .pos(leftPos + 105, btnY).size(44, 12).build();
         addRenderableWidget(addBtn);
@@ -132,7 +133,7 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
 
     @Override
     protected void renderLabels(GuiGraphics g, int mx, int my) {
-        g.drawString(font, "Wireless Redstone", 8, 6, 0xFFFFFF, false);
+        g.drawString(font, I18n.get("gui.universalkeyboard.screen.wireless_config.title"), 8, 6, 0xFFFFFF, false);
         g.drawString(font, playerInventoryTitle, this.inventoryLabelX, this.inventoryLabelY, 0xAAAAAA, false);
     }
 }

@@ -2,12 +2,15 @@ package dev.bennethogan.universalkeyboard;
 
 import dev.bennethogan.universalkeyboard.blockentity.ModBlockEntities;
 import dev.bennethogan.universalkeyboard.client.ClientPacketHandlers;
+import dev.bennethogan.universalkeyboard.client.KeyboardCaptureManager;
 import dev.bennethogan.universalkeyboard.client.KeyboardInputHandler;
 import dev.bennethogan.universalkeyboard.client.LinkingModeRenderer;
+import dev.bennethogan.universalkeyboard.livecontrol.LiveControlManager;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.common.NeoForge;
 
 @Mod(value = UniversalKeyboardMod.MOD_ID, dist = Dist.CLIENT)
@@ -23,6 +26,7 @@ public class UniversalKeyboardModClient {
         NeoForge.EVENT_BUS.addListener(KeyboardInputHandler::onInteractionKey);
         NeoForge.EVENT_BUS.addListener(KeyboardInputHandler::onMouseScroll);
         NeoForge.EVENT_BUS.addListener(LinkingModeRenderer::onRenderLevelStage);
+        NeoForge.EVENT_BUS.addListener(UniversalKeyboardModClient::onPlayerLogout);
     }
 
     private void onRegisterMenuScreens(net.neoforged.neoforge.client.event.RegisterMenuScreensEvent event) {
@@ -32,5 +36,12 @@ public class UniversalKeyboardModClient {
 
     private void onRegisterCapabilities(RegisterCapabilitiesEvent event) {
         ModBlockEntities.registerCapabilities(event);
+    }
+
+    private static void onPlayerLogout(ClientPlayerNetworkEvent.LoggingOut event) {
+        if (LiveControlManager.isActive()) LiveControlManager.deactivate();
+        if (KeyboardCaptureManager.isCapturing()) {
+            KeyboardCaptureManager.setCaptureMode(null, false);
+        }
     }
 }

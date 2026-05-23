@@ -1,0 +1,10 @@
+{
+  "parent": "universalkeyboard:custom/keyboardmouse",
+  "textures": {
+    "all":      "universalkeyboard:block/mousetexture_ace",
+    "particle": "universalkeyboard:block/mousetexture_ace",
+    "0":        "universalkeyboard:block/mousetexture_ace",
+    "1":        "universalkeyboard:block/keyboardtexture_ace"
+  },
+  "render_type": "solid"
+}

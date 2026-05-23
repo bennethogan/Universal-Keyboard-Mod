@@ -332,6 +332,7 @@ public class PeripheralHelper {
     public static void callVectorSetter(Object peripheral, double x, double y) {
         init();
         if (!ccPresent) return;
+        ensureThrusterPeripheralMode(peripheral);
         // Try the atomic two-arg setVector(double, double) first.
         for (Method m : peripheral.getClass().getMethods()) {
             if (!m.getName().equals("setVector")) continue;

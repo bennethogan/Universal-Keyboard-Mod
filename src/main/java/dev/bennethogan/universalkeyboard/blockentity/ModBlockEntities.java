@@ -16,7 +16,10 @@ public class ModBlockEntities {
             BLOCK_ENTITIES.register("universal_keyboard", () ->
                     BlockEntityType.Builder.of(LinkedKeyboardBlockEntity::new,
                             ModBlocks.LINKED_KEYBOARD.get(),
-                            ModBlocks.TRANS_KEYBOARD.get()).build(null));
+                            ModBlocks.TRANS_KEYBOARD.get(),
+                            ModBlocks.RAINBOW_KEYBOARD.get(),
+                            ModBlocks.ACE_KEYBOARD.get(),
+                            ModBlocks.BI_KEYBOARD.get()).build(null));
 
     public static void registerCapabilities(RegisterCapabilitiesEvent event) {
         try {

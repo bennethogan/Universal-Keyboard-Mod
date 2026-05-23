@@ -10,6 +10,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
+import net.minecraft.client.resources.language.I18n;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -108,12 +110,12 @@ public class PeripheralMethodScreen extends Screen {
         inputY = y;
         int editW = PANEL_W - PAD * 2 - 44;
         inputBox = new EditBox(font, panelX + PAD, y, editW, BTN_H,
-                Component.literal("value"));
+                Component.literal(I18n.get("gui.universalkeyboard.label.value")));
         inputBox.setMaxLength(256);
-        inputBox.setHint(Component.literal("§7select a control above"));
+        inputBox.setHint(Component.literal(I18n.get("gui.universalkeyboard.hint.select_control")));
         addRenderableWidget(inputBox);
 
-        addRenderableWidget(Button.builder(Component.literal("Set"), b -> submitCall())
+        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.set"), b -> submitCall())
                 .pos(panelX + PAD + editW + 4, y)
                 .size(36, BTN_H)
                 .build());
@@ -123,16 +125,16 @@ public class PeripheralMethodScreen extends Screen {
         int rowW   = PANEL_W - PAD * 2;
         int thirdW = (rowW - 8) / 3;
         addRenderableWidget(Button.builder(
-                Component.literal("Channel " + currentChannel),
+                Component.literal(I18n.get("gui.universalkeyboard.btn.channel", currentChannel)),
                 b -> ModPackets.sendCycleChannelAndReopen(keyboardPos, KeyboardMode.CC_PERIPHERAL))
                 .pos(panelX + PAD, y)
                 .size(thirdW, BTN_H)
                 .build());
-        addRenderableWidget(Button.builder(Component.literal("Refresh"), b -> requestRefresh())
+        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.refresh"), b -> requestRefresh())
                 .pos(panelX + PAD + thirdW + 4, y)
                 .size(thirdW, BTN_H)
                 .build());
-        addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose())
+        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.close"), b -> onClose())
                 .pos(panelX + PAD + (thirdW + 4) * 2, y)
                 .size(rowW - (thirdW + 4) * 2, BTN_H)
                 .build());
@@ -201,7 +203,7 @@ public class PeripheralMethodScreen extends Screen {
         // Getter section
         if (!getters.isEmpty()) {
             int vis = Math.min(getters.size(), MAX_GETTERS);
-            g.drawString(font, "§7Values:", panelX + PAD, getterLabelY, 0xAAAAAA, true);
+            g.drawString(font, I18n.get("gui.universalkeyboard.label.values_section"), panelX + PAD, getterLabelY, 0xAAAAAA, true);
 
             for (int i = 0; i < vis; i++) {
                 int di = getterScroll + i;
@@ -224,8 +226,8 @@ public class PeripheralMethodScreen extends Screen {
         // Setter section label
         if (!setters.isEmpty()) {
             String hint = selectedIdx >= 0
-                    ? "§7Controls: §8(selected)"
-                    : "§7Controls:";
+                    ? I18n.get("gui.universalkeyboard.label.controls_section_selected")
+                    : I18n.get("gui.universalkeyboard.label.controls_section");
             g.drawString(font, hint, panelX + PAD, setterLabelY, 0xAAAAAA, true);
 
             // Scroll arrows on right edge when overflowing

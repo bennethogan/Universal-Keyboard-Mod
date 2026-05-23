@@ -23,8 +23,9 @@ public class ModConfig {
             keyboardRange = builder
                     .comment("Max wireless range in blocks between the keyboard and its linked target.",
                              "Events are dropped if the player exceeds this distance.",
-                             "Range: 1–256. Default: 16.")
-                    .defineInRange("keyboardRange", 16, 1, 256);
+                             "Set to a very large value for effectively unlimited range.",
+                             "Range: 1–2147483647. Default: 32.")
+                    .defineInRange("keyboardRange", 32, 1, Integer.MAX_VALUE);
 
             builder.pop();
         }

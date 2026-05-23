@@ -1,5 +1,6 @@
 package dev.bennethogan.universalkeyboard.client.screen;
 
+import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.universalkeyboard.compat.SableCompat;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.ActionType;
@@ -13,6 +14,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
+
+import net.minecraft.client.resources.language.I18n;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -115,22 +118,22 @@ public class LiveControlScreen extends Screen {
         // Bottom button row: Save | Start | [Import Typewriter if Sable present]
         int bottomBtnCount = sablePresent ? 3 : 2;
         int btnW = (PANEL_W - PAD * 2 - 4 * (bottomBtnCount - 1)) / bottomBtnCount;
-        addRenderableWidget(Button.builder(Component.literal("Save"),  b -> doSave())
+        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.save"),  b -> doSave())
                 .pos(panelX + PAD, btnY).size(btnW, BTN_H).build());
-        addRenderableWidget(Button.builder(Component.literal("Start"), b -> doStart())
+        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.start"), b -> doStart())
                 .pos(panelX + PAD + (btnW + 4), btnY).size(btnW, BTN_H).build());
         if (sablePresent) {
-            addRenderableWidget(Button.builder(Component.literal("Import Typewriter"), b -> doTypewriterScan())
+            addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.import_typewriter"), b -> doTypewriterScan())
                     .pos(panelX + PAD + (btnW + 4) * 2, btnY).size(btnW, BTN_H).build());
         }
 
         // Page navigation buttons at top-right of panel
         int pageBtnY = panelY + PAD;
         int pageBtnW = 80;
-        addRenderableWidget(Button.builder(Component.literal("Next Page →"),
+        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.next_page"),
                         b -> { page = 1; vectorOverlaySlot = -1; listeningSlot = -1; })
                 .pos(panelX + PANEL_W - PAD - pageBtnW, pageBtnY).size(pageBtnW, 12).build());
-        addRenderableWidget(Button.builder(Component.literal("← Prev Page"),
+        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.prev_page"),
                         b -> { page = 0; vectorOverlaySlot = -1; listeningSlot = -1; })
                 .pos(panelX + PANEL_W - PAD - pageBtnW * 2 - 4, pageBtnY).size(pageBtnW, 12).build());
     }
@@ -146,7 +149,7 @@ public class LiveControlScreen extends Screen {
 
     private void doTypewriterScan() {
         twOfferPos = null;
-        twMessage  = "§7Scanning...";
+        twMessage  = I18n.get("gui.universalkeyboard.msg.scanning");
         twMessageTick = 60;
         ModPackets.sendTypewriterScan(keyboardPos);
     }
@@ -172,7 +175,7 @@ public class LiveControlScreen extends Screen {
         g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, 0xFF111111);
         drawBorder(g, panelX, panelY, PANEL_W, panelH, 0xFF666666);
         // Title in top-left so it doesn't conflict with the page-nav buttons on the right
-        g.drawString(font, "§bLive Controller", panelX + PAD, panelY + PAD + 1, 0xFFFFFF, false);
+        g.drawString(font, I18n.get("gui.universalkeyboard.screen.live_controller.title"), panelX + PAD, panelY + PAD + 1, 0xFFFFFF, false);
 
         if (vectorOverlaySlot < 0) {
             int pageStart = page * (ROWS * 2); // 20 slots per page
@@ -207,7 +210,7 @@ public class LiveControlScreen extends Screen {
         g.drawString(font, "§8" + (idx + 1), rx, ry + 4, 0x888888, false);
 
         int kx = rx + NUM_W;
-        String keyLabel = listening ? "§e???" : LiveControlBinding.keyName(b.keyCode);
+        String keyLabel = listening ? I18n.get("gui.universalkeyboard.label.listening") : LiveControlBinding.keyName(b.keyCode);
         int keyBg = listening ? 0xFF5500AA : (b.keyCode < 0 ? 0xFF1A1A1A : 0xFF1A2A1A);
         boolean kHov = isIn(mx, my, kx, ry, KEY_W, ROW_H);
         g.fill(kx, ry, kx + KEY_W, ry + ROW_H, kHov ? brighten(keyBg) : keyBg);
@@ -216,9 +219,9 @@ public class LiveControlScreen extends Screen {
 
         int tx = kx + KEY_W + 2;
         String typeLabel = switch (b.actionType) {
-            case REDSTONE        -> "§cRS";
-            case THRUSTER_POWER  -> "§6Thr";
-            case THRUSTER_VECTOR -> "§bVEC";
+            case REDSTONE        -> I18n.get("gui.universalkeyboard.label.action_rs");
+            case THRUSTER_POWER  -> I18n.get("gui.universalkeyboard.label.action_thr");
+            case THRUSTER_VECTOR -> I18n.get("gui.universalkeyboard.label.action_vec");
         };
         boolean tHov = isIn(mx, my, tx, ry, TYPE_W, ROW_H);
         g.fill(tx, ry, tx + TYPE_W, ry + ROW_H, tHov ? 0xFF333355 : 0xFF1F1F3A);
@@ -253,9 +256,9 @@ public class LiveControlScreen extends Screen {
         // Mode button cycles Hld → Tog → Inc
         boolean mHov = isIn(mx, my, x, y, 20, ROW_H);
         String modeLabel = switch (b.mode) {
-            case HLD -> "§7Hld";
-            case TGL -> "§aTog";
-            case INC -> "§6Inc";
+            case HLD -> I18n.get("gui.universalkeyboard.label.mode_hld");
+            case TGL -> I18n.get("gui.universalkeyboard.label.mode_tog");
+            case INC -> I18n.get("gui.universalkeyboard.label.mode_inc");
         };
         g.fill(x, y, x + 20, y + ROW_H, mHov ? 0xFF253525 : 0xFF1A261A);
         drawBorder(g, x, y, 20, ROW_H, 0xFF446644);
@@ -287,9 +290,9 @@ public class LiveControlScreen extends Screen {
 
         boolean mHov = isIn(mx, my, x, y, 20, ROW_H);
         String modeLabel = switch (b.mode) {
-            case HLD -> "§7Hld";
-            case TGL -> "§aTog";
-            case INC -> "§6Inc";
+            case HLD -> I18n.get("gui.universalkeyboard.label.mode_hld");
+            case TGL -> I18n.get("gui.universalkeyboard.label.mode_tog");
+            case INC -> I18n.get("gui.universalkeyboard.label.mode_inc");
         };
         g.fill(x, y, x + 20, y + ROW_H, mHov ? 0xFF253525 : 0xFF1A261A);
         drawBorder(g, x, y, 20, ROW_H, 0xFF446644);
@@ -320,7 +323,7 @@ public class LiveControlScreen extends Screen {
         x += 42;
 
         boolean mHov = isIn(mx, my, x, y, 20, ROW_H);
-        String modeLabel = b.mode == Mode.TGL ? "§aTog" : "§7Hld";
+        String modeLabel = b.mode == Mode.TGL ? I18n.get("gui.universalkeyboard.label.mode_tog") : I18n.get("gui.universalkeyboard.label.mode_hld");
         g.fill(x, y, x + 20, y + ROW_H, mHov ? 0xFF253525 : 0xFF1A261A);
         drawBorder(g, x, y, 20, ROW_H, 0xFF446644);
         g.drawCenteredString(font, modeLabel, x + 10, y + 4, 0xFFFFFF);
@@ -342,7 +345,7 @@ public class LiveControlScreen extends Screen {
 
         g.fill(ovX, ovY, ovX + VEC_OV_W, ovY + VEC_OV_H, 0xFF070710);
         drawBorder(g, ovX, ovY, VEC_OV_W, VEC_OV_H, 0xFF6688BB);
-        g.drawCenteredString(font, "§bVector Direction", ovX + VEC_OV_W / 2, ovY + 4, 0xFFFFFF);
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.label.vector_title"), ovX + VEC_OV_W / 2, ovY + 4, 0xFFFFFF);
         g.drawCenteredString(font, "§7Slot " + (idx + 1), ovX + VEC_OV_W / 2, ovY + 13, 0x888888);
 
         int cx = ovX + VEC_OV_W / 2;
@@ -362,14 +365,14 @@ public class LiveControlScreen extends Screen {
         double dispMag = Math.sqrt(b.vectorX * b.vectorX + b.vectorY * b.vectorY);
         String coords = String.format("§7X:§f%.2f §7Y:§f%.2f §8(%.0f%%)", b.vectorX, b.vectorY, dispMag * 100);
         g.drawCenteredString(font, coords, ovX + VEC_OV_W / 2, ovY + 22 + r * 2 + 6, 0xFFFFFF);
-        g.drawCenteredString(font, "§7Click anywhere in circle", ovX + VEC_OV_W / 2, ovY + VEC_OV_H - 22, 0x666666);
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.label.vector_hint"), ovX + VEC_OV_W / 2, ovY + VEC_OV_H - 22, 0x666666);
 
         int okX = ovX + VEC_OV_W / 2 - 18;
         int okY = ovY + VEC_OV_H - 14;
         boolean okHov = isIn(mx, my, okX, okY, 36, 12);
         g.fill(okX, okY, okX + 36, okY + 12, okHov ? 0xFF335533 : 0xFF224422);
         drawBorder(g, okX, okY, 36, 12, 0xFF448844);
-        g.drawCenteredString(font, "§aOK", okX + 18, okY + 2, 0xFFFFFF);
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.ok"), okX + 18, okY + 2, 0xFFFFFF);
     }
 
     // ── Mouse handling ────────────────────────────────────────────────────────
@@ -379,10 +382,9 @@ public class LiveControlScreen extends Screen {
 
         // Typewriter import dialog intercepts all clicks
         if (twOfferPos != null) {
-            int dw = 300, dh = 72;
-            int dx = panelX + (PANEL_W - dw) / 2;
-            int dy = panelY + (panelH  - dh) / 2;
-            if (imx >= dx + 20 && imx < dx + 120 && imy >= dy + 54 && imy < dy + 68) {
+            int[] L = twDialogLayout();
+            int dx = L[0], btnY = L[4], btnH = L[5];
+            if (imx >= dx + 20 && imx < dx + 120 && imy >= btnY && imy < btnY + btnH) {
                 // Confirm
                 ModPackets.sendTypewriterConfirm(keyboardPos, twOfferPos);
                 twOfferPos = null;
@@ -469,8 +471,8 @@ public class LiveControlScreen extends Screen {
             }
             case THRUSTER_POWER -> {
                 if (isIn(mx, my, x, y, 40, ROW_H)) {
-                    if (mx < x + 12) b.channel = b.channel == 1 ? 16 : b.channel - 1;
-                    else if (mx > x + 28) b.channel = b.channel == 16 ? 1 : b.channel + 1;
+                    if (mx < x + 12) b.channel = b.channel == 1 ? LinkedKeyboardBlockEntity.MAX_CHANNELS : b.channel - 1;
+                    else if (mx > x + 28) b.channel = b.channel == LinkedKeyboardBlockEntity.MAX_CHANNELS ? 1 : b.channel + 1;
                     return true;
                 }
                 x += 42;
@@ -487,8 +489,8 @@ public class LiveControlScreen extends Screen {
             }
             case THRUSTER_VECTOR -> {
                 if (isIn(mx, my, x, y, 40, ROW_H)) {
-                    if (mx < x + 12) b.channel = b.channel == 1 ? 16 : b.channel - 1;
-                    else if (mx > x + 28) b.channel = b.channel == 16 ? 1 : b.channel + 1;
+                    if (mx < x + 12) b.channel = b.channel == 1 ? LinkedKeyboardBlockEntity.MAX_CHANNELS : b.channel - 1;
+                    else if (mx > x + 28) b.channel = b.channel == LinkedKeyboardBlockEntity.MAX_CHANNELS ? 1 : b.channel + 1;
                     return true;
                 }
                 x += 42;
@@ -555,31 +557,46 @@ public class LiveControlScreen extends Screen {
         if (twMessageTick > 0) { if (--twMessageTick == 0) twMessage = null; }
     }
 
+    /** Layout for the typewriter dialog: {dx, dy, dw, dh, btnY, btnH}. */
+    private int[] twDialogLayout() {
+        int dw = 300, pad = 8, gap = 3, btnH = 14;
+        int textW = dw - pad * 2;
+        int textBlock = GuiText.wrappedHeight(font, I18n.get("gui.universalkeyboard.dialog.tw_import_title"), textW) + gap
+                + GuiText.wrappedHeight(font, I18n.get("gui.universalkeyboard.dialog.tw_import_summary", twBindCount, twFreqCount), textW) + gap
+                + GuiText.wrappedHeight(font, I18n.get("gui.universalkeyboard.dialog.tw_import_warn1"), textW)
+                + GuiText.wrappedHeight(font, I18n.get("gui.universalkeyboard.dialog.tw_import_warn2"), textW);
+        int dh = pad + textBlock + gap + 4 + btnH + pad;
+        int dx = panelX + (PANEL_W - dw) / 2;
+        int dy = panelY + (panelH  - dh) / 2;
+        int btnY = dy + dh - pad - btnH;
+        return new int[]{dx, dy, dw, dh, btnY, btnH};
+    }
+
     private void renderTypewriterDialog(GuiGraphics g, int mx, int my) {
         g.pose().pushPose();
         g.pose().translate(0, 0, 400);
         // Dim the whole panel
         g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, 0xAA000000);
 
-        int dw = 300, dh = 72;
-        int dx = panelX + (PANEL_W - dw) / 2;
-        int dy = panelY + (panelH  - dh) / 2;
+        int[] L = twDialogLayout();
+        int dx = L[0], dy = L[1], dw = L[2], dh = L[3], btnY = L[4], btnH = L[5];
+        int pad = 8, gap = 3, textW = dw - pad * 2, cx = dx + dw / 2;
+
         g.fill(dx - 1, dy - 1, dx + dw + 1, dy + dh + 1, 0xFF666666);
         g.fill(dx, dy, dx + dw, dy + dh, 0xFF1A1A1A);
 
-        g.drawCenteredString(font, "§bTypewriter Import", dx + dw / 2, dy + 6, 0xFFFFFF);
-        g.drawCenteredString(font,
-                "§f" + twBindCount + " binding(s) → §e" + twFreqCount + "§f wireless slot(s)",
-                dx + dw / 2, dy + 20, 0xFFFFFF);
-        g.drawCenteredString(font, "§8Overwrites wireless config & live bindings.", dx + dw / 2, dy + 32, 0xAAAAAA);
-        g.drawCenteredString(font, "§8Thruster links are preserved.",              dx + dw / 2, dy + 42, 0xAAAAAA);
+        int y = dy + pad;
+        y += GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.tw_import_title"), cx, y, textW, 0xFFFFFF) + gap;
+        y += GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.tw_import_summary", twBindCount, twFreqCount), cx, y, textW, 0xFFFFFF) + gap;
+        y += GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.tw_import_warn1"), cx, y, textW, 0xAAAAAA);
+        GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.tw_import_warn2"), cx, y, textW, 0xAAAAAA);
 
-        boolean yh = mx >= dx + 20  && mx < dx + 120 && my >= dy + 54 && my < dy + 68;
-        boolean nh = mx >= dx + 180 && mx < dx + 280 && my >= dy + 54 && my < dy + 68;
-        g.fill(dx + 20,  dy + 54, dx + 120, dy + 68, yh ? 0xFF2A4A2A : 0xFF1E3A1E);
-        g.fill(dx + 180, dy + 54, dx + 280, dy + 68, nh ? 0xFF4A2A2A : 0xFF3A1E1E);
-        g.drawCenteredString(font, "Import", dx + 70,  dy + 57, yh ? 0x88FF88 : 0x66CC66);
-        g.drawCenteredString(font, "Cancel", dx + 230, dy + 57, nh ? 0xFF8888 : 0xCC6666);
+        boolean yh = mx >= dx + 20  && mx < dx + 120 && my >= btnY && my < btnY + btnH;
+        boolean nh = mx >= dx + 180 && mx < dx + 280 && my >= btnY && my < btnY + btnH;
+        g.fill(dx + 20,  btnY, dx + 120, btnY + btnH, yh ? 0xFF2A4A2A : 0xFF1E3A1E);
+        g.fill(dx + 180, btnY, dx + 280, btnY + btnH, nh ? 0xFF4A2A2A : 0xFF3A1E1E);
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.import"), dx + 70,  btnY + 3, yh ? 0x88FF88 : 0x66CC66);
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.cancel"), dx + 230, btnY + 3, nh ? 0xFF8888 : 0xCC6666);
         g.pose().popPose();
     }
 

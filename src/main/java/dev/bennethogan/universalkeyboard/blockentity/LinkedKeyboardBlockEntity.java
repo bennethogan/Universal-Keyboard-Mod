@@ -1,5 +1,6 @@
 package dev.bennethogan.universalkeyboard.blockentity;
 
+import com.simibubi.create.api.schematic.nbt.PartialSafeNBT;
 import dev.bennethogan.universalkeyboard.UniversalKeyboardMod;
 import dev.bennethogan.universalkeyboard.compat.CreateValueHelper;
 import dev.bennethogan.universalkeyboard.compat.KeyboardMode;
@@ -33,7 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 
-public class LinkedKeyboardBlockEntity extends BlockEntity {
+public class LinkedKeyboardBlockEntity extends BlockEntity implements PartialSafeNBT {
 
     public static final int MAX_CHANNELS = 16;
 
@@ -726,6 +727,24 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             }
         }
 
+        // Relative-only data means a schematic was printed — convert offsets to absolute at this location.
+        if (channelTargets.isEmpty()) {
+            for (int ch = 1; ch <= MAX_CHANNELS; ch++) {
+                String relKey = "ch" + ch + "_rel_targets";
+                if (!tag.contains(relKey, Tag.TAG_LIST)) continue;
+                ListTag relList = tag.getList(relKey, Tag.TAG_COMPOUND);
+                List<BlockPos> converted = new ArrayList<>();
+                for (int i = 0; i < relList.size(); i++) {
+                    CompoundTag e = relList.getCompound(i);
+                    converted.add(new BlockPos(
+                            worldPosition.getX() + e.getInt("rx"),
+                            worldPosition.getY() + e.getInt("ry"),
+                            worldPosition.getZ() + e.getInt("rz")));
+                }
+                if (!converted.isEmpty()) channelTargets.put(ch, converted);
+            }
+        }
+
         // Legacy: old single-channel mesh_targets → channel 1
         if (channelTargets.isEmpty()) {
             List<BlockPos> legacy = new ArrayList<>();
@@ -807,6 +826,68 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                 CreateWirelessHelper.removeFromNetwork(level, e);
         }
         super.onChunkUnloaded();
+    }
+
+    // ── Schematic (PartialSafeNBT) ───────────────────────────────────────────
+
+    /**
+     * Called by Create's schematic system. Saves all position-independent data plus
+     * channel targets as relative offsets so schematics survive being printed at a
+     * new world location.
+     */
+    @Override
+    public void writeSafe(CompoundTag tag, HolderLookup.Provider registries) {
+        tag.putInt("active_channel", activeChannel);
+        tag.putString("autotype_script", autoTypeScript);
+        if (!sequencerSteps.isEmpty()) {
+            ListTag seqList = new ListTag();
+            for (SequencerStep step : sequencerSteps) seqList.add(step.save());
+            tag.put("sequencer_steps", seqList);
+        }
+        engine.saveToTag(tag);
+        tag.putIntArray("redstone_outputs", redstoneOutputs);
+        if (!wirelessEntries.isEmpty()) {
+            ListTag wl = new ListTag();
+            for (WirelessEntry e : wirelessEntries) {
+                CompoundTag c = new CompoundTag();
+                c.put("first",  e.getFirstStack().saveOptional(registries));
+                c.put("second", e.getSecondStack().saveOptional(registries));
+                wl.add(c);
+            }
+            tag.put("wireless_entries", wl);
+        }
+        if (!liveControlBindings.isEmpty()) {
+            ListTag lcl = new ListTag();
+            for (LiveControlBinding b : liveControlBindings) {
+                CompoundTag bt = new CompoundTag();
+                b.saveToTag(bt);
+                lcl.add(bt);
+            }
+            tag.put("live_control_bindings", lcl);
+        }
+        for (Map.Entry<Integer, List<BlockPos>> entry : channelTargets.entrySet()) {
+            List<BlockPos> list = entry.getValue();
+            if (list.isEmpty()) continue;
+            ListTag relList = new ListTag();
+            for (BlockPos p : list) {
+                CompoundTag e = new CompoundTag();
+                e.putInt("rx", p.getX() - worldPosition.getX());
+                e.putInt("ry", p.getY() - worldPosition.getY());
+                e.putInt("rz", p.getZ() - worldPosition.getZ());
+                relList.add(e);
+            }
+            tag.put("ch" + entry.getKey() + "_rel_targets", relList);
+        }
+    }
+
+    public CompoundTag exportData(HolderLookup.Provider registries) {
+        CompoundTag tag = new CompoundTag();
+        saveAdditional(tag, registries);
+        return tag;
+    }
+
+    public void importData(CompoundTag tag, HolderLookup.Provider registries) {
+        loadAdditional(tag, registries);
     }
 
     // ── BlockEntity client sync ──────────────────────────────────────────────

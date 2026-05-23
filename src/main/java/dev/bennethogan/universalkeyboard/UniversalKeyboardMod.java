@@ -59,6 +59,9 @@ public class UniversalKeyboardMod {
         if (event.getTabKey() == CreativeModeTabs.REDSTONE_BLOCKS) {
             event.accept(ModItems.LINKED_KEYBOARD);
             event.accept(ModItems.TRANS_KEYBOARD);
+            event.accept(ModItems.RAINBOW_KEYBOARD);
+            event.accept(ModItems.ACE_KEYBOARD);
+            event.accept(ModItems.BI_KEYBOARD);
         }
     }
 }

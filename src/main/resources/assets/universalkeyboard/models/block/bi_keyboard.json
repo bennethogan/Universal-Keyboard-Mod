@@ -1,0 +1,10 @@
+{
+  "parent": "universalkeyboard:custom/keyboardmouse",
+  "textures": {
+    "all":      "universalkeyboard:block/mousetexture_bi",
+    "particle": "universalkeyboard:block/mousetexture_bi",
+    "0":        "universalkeyboard:block/mousetexture_bi",
+    "1":        "universalkeyboard:block/keyboardtexture_bi"
+  },
+  "render_type": "solid"
+}

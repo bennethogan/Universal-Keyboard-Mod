@@ -17,6 +17,7 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.Tag;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
@@ -158,7 +159,7 @@ public class SequencerScreen extends Screen {
         saveName  = new EditBox(font, panelX + (PANEL_W - nameW) / 2,
                 panelY + PAD + 12 + 4, nameW, BTN_H, Component.empty());
         saveName.setMaxLength(40);
-        saveName.setHint(Component.literal("§7save name..."));
+        saveName.setHint(Component.literal(I18n.get("gui.universalkeyboard.hint.save_name")));
         addRenderableWidget(saveName);
 
         for (int r = 0; r < VISIBLE; r++) rows.add(new RowWidgets(r));
@@ -172,17 +173,17 @@ public class SequencerScreen extends Screen {
                 .pos(panelX + PAD, bottomBtnY).size(bottomBtnW, BTN_H).build();
         addRenderableWidget(runStopBtn);
 
-        addRenderableWidget(Button.builder(Component.literal("Save"), b -> onSave())
+        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.save"), b -> onSave())
                 .pos(panelX + PAD + (bottomBtnW + gap), bottomBtnY).size(bottomBtnW, BTN_H).build());
 
-        addRenderableWidget(Button.builder(Component.literal("Save File"), b -> onSaveFile())
+        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.save_file"), b -> onSaveFile())
                 .pos(panelX + PAD + (bottomBtnW + gap) * 2, bottomBtnY).size(bottomBtnW, BTN_H).build());
 
         loadBtnX = panelX + PAD + (bottomBtnW + gap) * 3;
-        addRenderableWidget(Button.builder(Component.literal("Load File"), b -> onLoadFile())
+        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.load_file"), b -> onLoadFile())
                 .pos(loadBtnX, bottomBtnY).size(bottomBtnW, BTN_H).build());
 
-        addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose())
+        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.close"), b -> onClose())
                 .pos(panelX + PAD + (bottomBtnW + gap) * 4, bottomBtnY).size(bottomBtnW, BTN_H).build());
 
         refreshAllRows();
@@ -207,7 +208,7 @@ public class SequencerScreen extends Screen {
         g.fill(panelX, panelY, panelX + 1, panelY + panelH,  0xFF666666);
         g.fill(panelX + PANEL_W - 1, panelY, panelX + PANEL_W, panelY + panelH, 0xFF666666);
 
-        g.drawCenteredString(font, "§bPeripheral Sequencer",
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.screen.sequencer.title"),
                 panelX + PANEL_W / 2, panelY + PAD, 0xFFFFFF);
 
         int cx   = panelX + PAD;
@@ -248,7 +249,7 @@ public class SequencerScreen extends Screen {
 
         // Empty-list hint
         if (steps.isEmpty()) {
-            g.drawCenteredString(font, "§8Hover anywhere to insert a step",
+            g.drawCenteredString(font, I18n.get("gui.universalkeyboard.hint.insert_step"),
                     panelX + PANEL_W / 2,
                     rowAreaY + (VISIBLE * (ROW_H + ROW_GAP)) / 2 - 4,
                     0x666666);
@@ -288,10 +289,10 @@ public class SequencerScreen extends Screen {
 
         int statusY = rowAreaY + VISIBLE * (ROW_H + ROW_GAP) + PAD;
         if (running)
-            g.drawString(font, "§a● Running  §7step §f" + (currentStep + 1) + "§7/§f" + steps.size(),
+            g.drawString(font, I18n.get("gui.universalkeyboard.msg.seq_running", currentStep + 1, steps.size()),
                     cx, statusY, 0xFFFFFF, false);
         else
-            g.drawString(font, "§8● Stopped  §7(" + steps.size() + " step" + (steps.size() == 1 ? "" : "s") + ")",
+            g.drawString(font, I18n.get("gui.universalkeyboard.msg.seq_stopped", steps.size(), steps.size() == 1 ? "" : "s"),
                     cx, statusY, 0xFFFFFF, false);
 
         for (var w : renderables) w.render(g, mx, my, pt);
@@ -376,40 +377,58 @@ public class SequencerScreen extends Screen {
         drawScrollArrows(g, ddX, ddW, ddY, ddH, loadDropdownScroll, loadDropdownFiles.size());
     }
 
-    private void renderConfirmDialog(GuiGraphics g, int mx, int my) {
-        g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, 0xAA000000);
-        int dw = 240, dh = 58;
+    /** {dx, dy, dw, dh, btnY, btnH} for the overwrite confirm dialog. */
+    private int[] overwriteDialogLayout() {
+        int dw = 240, pad = 8, gap = 4, btnH = 14;
+        int textW = dw - pad * 2;
+        String label = confirmOverwriteName == null ? "" : confirmOverwriteName;
+        if (font.width(label) > dw - 40) label = font.plainSubstrByWidth(label, dw - 44) + "…";
+        String title = I18n.get("gui.universalkeyboard.dialog.overwrite", label);
+        int dh = pad + GuiText.wrappedHeight(font, title, textW) + gap + 4 + btnH + pad;
         int dx = panelX + (PANEL_W - dw) / 2;
         int dy = panelY + (panelH  - dh) / 2;
+        int btnY = dy + dh - pad - btnH;
+        return new int[]{dx, dy, dw, dh, btnY, btnH};
+    }
+
+    private void renderConfirmDialog(GuiGraphics g, int mx, int my) {
+        g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, 0xAA000000);
+        int[] L = overwriteDialogLayout();
+        int dx = L[0], dy = L[1], dw = L[2], dh = L[3], btnY = L[4], btnH = L[5];
+        int pad = 8, textW = dw - pad * 2;
 
         g.fill(dx - 1, dy - 1, dx + dw + 1, dy + dh + 1, 0xFF666666);
         g.fill(dx, dy, dx + dw, dy + dh, 0xFF1A1A1A);
 
         String label = confirmOverwriteName;
         if (font.width(label) > dw - 40) label = font.plainSubstrByWidth(label, dw - 44) + "…";
-        g.drawCenteredString(font, "Overwrite §e'" + label + "'§r?", dx + dw / 2, dy + 10, 0xFFFFFF);
+        GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.overwrite", label), dx + dw / 2, dy + pad, textW, 0xFFFFFF);
 
-        boolean yh = mx >= dx + 20  && mx < dx + 100 && my >= dy + 30 && my < dy + 44;
-        boolean nh = mx >= dx + 140 && mx < dx + 220 && my >= dy + 30 && my < dy + 44;
-        g.fill(dx + 20,  dy + 30, dx + 100, dy + 44, yh ? 0xFF2A4A2A : 0xFF1E3A1E);
-        g.fill(dx + 140, dy + 30, dx + 220, dy + 44, nh ? 0xFF4A2A2A : 0xFF3A1E1E);
-        g.drawCenteredString(font, "Yes", dx + 60,  dy + 33, yh ? 0x88FF88 : 0x66CC66);
-        g.drawCenteredString(font, "No",  dx + 180, dy + 33, nh ? 0xFF8888 : 0xCC6666);
+        boolean yh = mx >= dx + 20  && mx < dx + 100 && my >= btnY && my < btnY + btnH;
+        boolean nh = mx >= dx + 140 && mx < dx + 220 && my >= btnY && my < btnY + btnH;
+        g.fill(dx + 20,  btnY, dx + 100, btnY + btnH, yh ? 0xFF2A4A2A : 0xFF1E3A1E);
+        g.fill(dx + 140, btnY, dx + 220, btnY + btnH, nh ? 0xFF4A2A2A : 0xFF3A1E1E);
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.yes"), dx + 60,  btnY + 3, yh ? 0x88FF88 : 0x66CC66);
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.no"),  dx + 180, btnY + 3, nh ? 0xFF8888 : 0xCC6666);
     }
 
     private void renderNoNameDialog(GuiGraphics g, int mx, int my) {
         g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, 0xAA000000);
-        int dw = 240, dh = 46;
+        int dw = 240, pad = 8, gap = 4, btnH = 14;
+        int textW = dw - pad * 2;
+        String msg = I18n.get("gui.universalkeyboard.msg.enter_save_name");
+        int dh = pad + GuiText.wrappedHeight(font, msg, textW) + gap + 4 + btnH + pad;
         int dx = panelX + (PANEL_W - dw) / 2;
         int dy = panelY + (panelH  - dh) / 2;
 
         g.fill(dx - 1, dy - 1, dx + dw + 1, dy + dh + 1, 0xFF666666);
         g.fill(dx, dy, dx + dw, dy + dh, 0xFF1A1A1A);
-        g.drawCenteredString(font, "Enter a save name first.", dx + dw / 2, dy + 10, 0xFFFFFF);
+        GuiText.drawWrappedCentered(g, font, msg, dx + dw / 2, dy + pad, textW, 0xFFFFFF);
 
-        boolean hov = mx >= dx + 80 && mx < dx + 160 && my >= dy + 26 && my < dy + 40;
-        g.fill(dx + 80, dy + 26, dx + 160, dy + 40, hov ? 0xFF3A3A3A : 0xFF2A2A2A);
-        g.drawCenteredString(font, "OK", dx + 120, dy + 29, hov ? 0xFFFFFF : 0xAAAAAA);
+        int btnY = dy + dh - pad - btnH;
+        boolean hov = mx >= dx + 80 && mx < dx + 160 && my >= btnY && my < btnY + btnH;
+        g.fill(dx + 80, btnY, dx + 160, btnY + btnH, hov ? 0xFF3A3A3A : 0xFF2A2A2A);
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.ok"), dx + 120, btnY + 3, hov ? 0xFFFFFF : 0xAAAAAA);
     }
 
     // ── Dropdown drawing helpers ───────────────────────────────────────────────
@@ -541,7 +560,7 @@ public class SequencerScreen extends Screen {
 
     private List<String> buildMathSrcOptions(int channel) {
         List<String> opts = new ArrayList<>();
-        opts.add("[Manual Input]");
+        opts.add(I18n.get("gui.universalkeyboard.label.manual_input"));
         for (int v = 1; v <= 8; v++) opts.add("V" + v);
         opts.add("RS:N"); opts.add("RS:S"); opts.add("RS:E"); opts.add("RS:W");
         opts.addAll(gettersFor(channel));
@@ -556,10 +575,9 @@ public class SequencerScreen extends Screen {
 
         // Confirm dialog blocks everything else
         if (confirmOverwriteName != null) {
-            int dw = 240, dh = 58;
-            int dx = panelX + (PANEL_W - dw) / 2;
-            int dy = panelY + (panelH  - dh) / 2;
-            if (mx >= dx + 20 && mx < dx + 100 && my >= dy + 30 && my < dy + 44) {
+            int[] L = overwriteDialogLayout();
+            int dx = L[0], btnY = L[4], btnH = L[5];
+            if (mx >= dx + 20 && mx < dx + 100 && my >= btnY && my < btnY + btnH) {
                 saveToFile(confirmOverwriteName);
             }
             confirmOverwriteName = null;
@@ -633,7 +651,7 @@ public class SequencerScreen extends Screen {
             if (rel >= 0 && rel < vis && idx < opts.size()) {
                 String sel  = opts.get(idx);
                 SequencerStep step = steps.get(si);
-                if (sel.equals("[Manual Input]")) {
+                if (sel.equals(I18n.get("gui.universalkeyboard.label.manual_input"))) {
                     if (savedIsA) step.mathAManual = true; else step.mathBManual = true;
                 } else {
                     if (savedIsA) { step.mathA = sel; step.mathAManual = false; }
@@ -839,18 +857,18 @@ public class SequencerScreen extends Screen {
             methodBtn = DarkButton.make(Component.literal(""), b -> cycleMethod(),
                     ctx, rowY + 1, 120, BTN_H);
             addRenderableWidget(methodBtn);
-            valueInput = makeBox(ctx + 124, rowY, 156, "value or V1-V8",
+            valueInput = makeBox(ctx + 124, rowY, 156, I18n.get("gui.universalkeyboard.hint.value_or_variable"),
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).setValueStr = str; });
 
             // SET_REDSTONE
             rsDirBtn = DarkButton.make(Component.literal(""), b -> cycleRedstoneDir(),
                     ctx, rowY + 1, 90, BTN_H);
             addRenderableWidget(rsDirBtn);
-            rsSignalInput = makeBox(ctx + 94, rowY, 80, "0-15 or V1-V8",
+            rsSignalInput = makeBox(ctx + 94, rowY, 80, I18n.get("gui.universalkeyboard.hint.signal_or_variable"),
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).redstoneOutSignalStr = str; });
 
             // TYPE_TEXT
-            typeTextInput = makeBox(ctx, rowY, 210, "text to type...",
+            typeTextInput = makeBox(ctx, rowY, 210, I18n.get("gui.universalkeyboard.hint.text_to_type"),
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).typeTextStr = str; });
             typeTextInput.setMaxLength(200);
             typeEnterBtn = DarkButton.make(Component.literal("↵"), b -> toggleTypeEnter(),
@@ -864,7 +882,7 @@ public class SequencerScreen extends Screen {
             ifOpBtn = DarkButton.make(Component.literal(">"), b -> cycleIfOp(),
                     ctx + 84, rowY + 1, 28, BTN_H);
             addRenderableWidget(ifOpBtn);
-            ifValueInput = makeBox(ctx + 116, rowY, 64, "# or V1-V8 or RS:N",
+            ifValueInput = makeBox(ctx + 116, rowY, 64, I18n.get("gui.universalkeyboard.hint.cond_value"),
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).ifValueStr = str; });
             ifModeBtn = DarkButton.make(Component.literal("skip"), b -> toggleIfMode(),
                     ctx + 184, rowY + 1, 34, BTN_H);
@@ -872,7 +890,7 @@ public class SequencerScreen extends Screen {
             ifSkipBtn = DarkButton.make(Component.literal("×1"), b -> cycleIfSkip(),
                     ctx + 222, rowY + 1, 60, BTN_H);
             addRenderableWidget(ifSkipBtn);
-            ifJumpInput = makeBox(ctx + 222, rowY, 60, "step#",
+            ifJumpInput = makeBox(ctx + 222, rowY, 60, I18n.get("gui.universalkeyboard.hint.step_number"),
                     str -> {
                         int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
                         try { steps.get(si).jumpTarget = Math.max(1, Math.min(MAX_STEPS, Integer.parseInt(str.trim()))); }
@@ -921,7 +939,7 @@ public class SequencerScreen extends Screen {
             mathBSourceBtn = DarkButton.make(Component.literal("src B..."), b -> openMathDropdown(false),
                     ctx + 180, rowY + 1, 64, BTN_H);
             addRenderableWidget(mathBSourceBtn);
-            mathBInput = makeBox(ctx + 180, rowY, 64, "B",
+            mathBInput = makeBox(ctx + 180, rowY, 64, I18n.get("gui.universalkeyboard.hint.math_src_b"),
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).mathB = str; });
             mathBChBtn = DarkButton.make(Component.literal("1"), b -> cycleMathBCh(),
                     ctx + 246, rowY + 1, 22, BTN_H);
@@ -1154,7 +1172,7 @@ public class SequencerScreen extends Screen {
                     if (step.setMethod.isEmpty() && !stepSetters.isEmpty())
                         step.setMethod = stepSetters.get(0)[0];
                     methodBtn.setMessage(Component.literal(
-                            step.setMethod.isEmpty() ? "(no setters)" : step.setMethod));
+                            step.setMethod.isEmpty() ? I18n.get("gui.universalkeyboard.label.no_setters") : step.setMethod));
                     valueInput.setValue(step.setValueStr);
                 }
                 case SET_REDSTONE -> {
@@ -1174,7 +1192,7 @@ public class SequencerScreen extends Screen {
                     ifJumpInput.visible = goTo;
                     List<String> list = buildIfGetterList(step.channel);
                     if (step.ifGetter.isEmpty() && !list.isEmpty()) step.ifGetter = list.get(0);
-                    ifGetterBtn.setMessage(Component.literal(step.ifGetter.isEmpty() ? "(none)" : step.ifGetter));
+                    ifGetterBtn.setMessage(Component.literal(step.ifGetter.isEmpty() ? I18n.get("gui.universalkeyboard.label.no_getter") : step.ifGetter));
                     ifOpBtn.setMessage(Component.literal(step.ifOp));
                     ifValueInput.setValue(step.ifValueStr);
                     ifModeBtn.setMessage(Component.literal(goTo ? "→step" : "skip"));
@@ -1192,7 +1210,7 @@ public class SequencerScreen extends Screen {
                         if (step.conditionGetter.isEmpty() && !stepGetters.isEmpty())
                             step.conditionGetter = stepGetters.get(0);
                         getterBtn.setMessage(Component.literal(
-                                step.conditionGetter.isEmpty() ? "(no getters)" : step.conditionGetter));
+                                step.conditionGetter.isEmpty() ? I18n.get("gui.universalkeyboard.label.no_getters") : step.conditionGetter));
                         opInput.setX(cx + COL_CTX + 154); opInput.setWidth(124);
                     } else {
                         getterBtn.visible = false;

@@ -21,7 +21,7 @@ public class AutoTypeScreen extends Screen {
     private MultiLineEditBox scriptBox;
 
     public AutoTypeScreen(BlockPos keyboardPos, String existingScript) {
-        super(Component.literal("Auto-Type Script"));
+        super(Component.translatable("gui.universalkeyboard.screen.auto_type.title"));
         this.keyboardPos    = keyboardPos;
         this.existingScript = existingScript;
     }
@@ -35,8 +35,8 @@ public class AutoTypeScreen extends Screen {
 
         scriptBox = new MultiLineEditBox(
                 font, boxX, boxY, boxWidth, boxHeight,
-                Component.literal("Type your script here..."),
-                Component.literal("Script")
+                Component.translatable("gui.universalkeyboard.hint.script_placeholder"),
+                Component.translatable("gui.universalkeyboard.label.script")
         );
         scriptBox.setCharacterLimit(4096);
         scriptBox.setValue(existingScript);
@@ -46,14 +46,14 @@ public class AutoTypeScreen extends Screen {
         int centerX  = width / 2;
 
         addRenderableWidget(Button.builder(
-                Component.literal("Save"),
+                Component.translatable("gui.universalkeyboard.btn.save"),
                 btn -> { ModPackets.sendSaveAutoTypeScript(keyboardPos, scriptBox.getValue()); onClose(); })
                 .pos(centerX - BUTTON_WIDTH - 4, buttonsY)
                 .size(BUTTON_WIDTH, BUTTON_HEIGHT)
                 .build());
 
         addRenderableWidget(Button.builder(
-                Component.literal("Cancel"), btn -> onClose())
+                Component.translatable("gui.universalkeyboard.btn.cancel"), btn -> onClose())
                 .pos(centerX + 4, buttonsY)
                 .size(BUTTON_WIDTH, BUTTON_HEIGHT)
                 .build());
@@ -64,7 +64,7 @@ public class AutoTypeScreen extends Screen {
         renderBackground(graphics, mouseX, mouseY, partialTick);
         graphics.drawCenteredString(font, title, width / 2, PADDING, 0xFFFFFF);
         graphics.drawCenteredString(font,
-                Component.literal("§7Script runs when keyboard receives a redstone pulse."),
+                Component.translatable("gui.universalkeyboard.hint.script_info"),
                 width / 2, PADDING + LABEL_HEIGHT + 1, 0xAAAAAA);
         super.render(graphics, mouseX, mouseY, partialTick);
     }

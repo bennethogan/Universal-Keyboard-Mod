@@ -13,6 +13,7 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 
@@ -185,12 +186,12 @@ public class ThrusterControlScreen extends Screen {
         int channelBW = btnRowW / 2 - 2;
         int closeBW   = btnRowW - channelBW - 4;
         addRenderableWidget(Button.builder(
-                Component.literal("Channel " + currentChannel),
+                Component.literal(I18n.get("gui.universalkeyboard.btn.channel", currentChannel)),
                 b -> ModPackets.sendCycleChannelAndReopen(keyboardPos, KeyboardMode.THRUSTER_CONTROL))
                 .pos(panelX + PAD, btnRowY)
                 .size(channelBW, BTN_H)
                 .build());
-        addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose())
+        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.close"), b -> onClose())
                 .pos(panelX + PAD + channelBW + 4, btnRowY)
                 .size(closeBW, BTN_H)
                 .build());
@@ -238,15 +239,15 @@ public class ThrusterControlScreen extends Screen {
     }
 
     private String friendlyTitle() {
-        if (peripheralType == null) return "THRUSTER CONTROL";
+        if (peripheralType == null) return I18n.get("gui.universalkeyboard.thruster.type.standard");
         return switch (peripheralType) {
-            case "thruster"                 -> "THRUSTER CONTROL";
-            case "ion_thruster"             -> "ION THRUSTER";
-            case "vector_thruster"          -> "VECTOR THRUSTER";
-            case "liquid_vector_thruster"   -> "LIQUID VECTOR THRUSTER";
-            case "creative_thruster"        -> "CREATIVE THRUSTER";
-            case "creative_vector_thruster" -> "VECTOR THRUSTER (CREATIVE)";
-            case "propulsion_thruster"      -> "THRUSTER CONTROL"; // legacy
+            case "thruster"                 -> I18n.get("gui.universalkeyboard.thruster.type.standard");
+            case "ion_thruster"             -> I18n.get("gui.universalkeyboard.thruster.type.ion");
+            case "vector_thruster"          -> I18n.get("gui.universalkeyboard.thruster.type.vector");
+            case "liquid_vector_thruster"   -> I18n.get("gui.universalkeyboard.thruster.type.liquid_vector");
+            case "creative_thruster"        -> I18n.get("gui.universalkeyboard.thruster.type.creative");
+            case "creative_vector_thruster" -> I18n.get("gui.universalkeyboard.thruster.type.creative_vector");
+            case "propulsion_thruster"      -> I18n.get("gui.universalkeyboard.thruster.type.standard"); // legacy
             default                         -> peripheralType.replace('_', ' ').toUpperCase();
         };
     }
@@ -269,26 +270,26 @@ public class ThrusterControlScreen extends Screen {
 
         if (isVector) {
             drawPhosphorLine(g, tx, ty,      "THRUST : " + thrust); ty += LINE;
-            drawPhosphorLine(g, tx, ty,      String.format("TGT VX : %+.2f", targetVectorX)); ty += LINE;
-            drawPhosphorLine(g, tx, ty,      String.format("TGT VY : %+.2f", targetVectorY)); ty += LINE;
-            drawPhosphorLine(g, tx, ty,      String.format("CUR VX : %+.2f", currentVectorX)); ty += LINE;
-            drawPhosphorLine(g, tx, ty,      String.format("CUR VY : %+.2f", currentVectorY)); ty += LINE;
-            drawPhosphorLine(g, tx, ty,      String.format("POWER  : %.3f pN", currentThrustPn / 1000.0));
+            drawPhosphorLine(g, tx, ty,      I18n.get("gui.universalkeyboard.thruster.telemetry.tgt_vx", targetVectorX)); ty += LINE;
+            drawPhosphorLine(g, tx, ty,      I18n.get("gui.universalkeyboard.thruster.telemetry.tgt_vy", targetVectorY)); ty += LINE;
+            drawPhosphorLine(g, tx, ty,      I18n.get("gui.universalkeyboard.thruster.telemetry.cur_vx", currentVectorX)); ty += LINE;
+            drawPhosphorLine(g, tx, ty,      I18n.get("gui.universalkeyboard.thruster.telemetry.cur_vy", currentVectorY)); ty += LINE;
+            drawPhosphorLine(g, tx, ty,      I18n.get("gui.universalkeyboard.thruster.telemetry.power_pn", currentThrustPn / 1000.0));
         } else if (isCreative) {
             drawPhosphorLine(g, tx, ty,      "POWER  : " + thrust); ty += LINE;
             drawPhosphorLine(g, tx, ty,      "CONFIG : " + thrustConfig + "%"); ty += LINE;
-            drawPhosphorLine(g, tx, ty,      String.format("THRUST : %.3f pN", displayedThrustPn / 1000.0)); ty += LINE;
-            drawPhosphorLine(g, tx, ty,      String.format("AIRFLO : %.1f m/s", airflowMs)); ty += LINE;
-            drawPhosphorLine(g, tx, ty,      "OBSTR  : " + obstruction);
+            drawPhosphorLine(g, tx, ty,      I18n.get("gui.universalkeyboard.thruster.telemetry.thrust_pn", displayedThrustPn / 1000.0)); ty += LINE;
+            drawPhosphorLine(g, tx, ty,      I18n.get("gui.universalkeyboard.thruster.telemetry.airflow", airflowMs)); ty += LINE;
+            drawPhosphorLine(g, tx, ty,      I18n.get("gui.universalkeyboard.thruster.telemetry.obstruction", obstruction));
         } else {
             drawPhosphorLine(g, tx, ty,      "POWER  : " + thrust); ty += LINE;
-            drawPhosphorLine(g, tx, ty,      String.format("THRUST : %.3f pN", currentThrustPn / 1000.0)); ty += LINE;
-            drawPhosphorLine(g, tx, ty,      String.format("AIRFLO : %.1f m/s", airflowMs)); ty += LINE;
+            drawPhosphorLine(g, tx, ty,      I18n.get("gui.universalkeyboard.thruster.telemetry.thrust_pn", currentThrustPn / 1000.0)); ty += LINE;
+            drawPhosphorLine(g, tx, ty,      I18n.get("gui.universalkeyboard.thruster.telemetry.airflow", airflowMs)); ty += LINE;
             if (fuelCapacityMb > 0) {
-                drawPhosphorLine(g, tx, ty,  String.format("FUEL   : %d/%d mB", fuelAmountMb, fuelCapacityMb));
+                drawPhosphorLine(g, tx, ty,  I18n.get("gui.universalkeyboard.thruster.telemetry.fuel", fuelAmountMb, fuelCapacityMb));
                 ty += LINE;
             }
-            drawPhosphorLine(g, tx, ty,      "OBSTR  : " + obstruction);
+            drawPhosphorLine(g, tx, ty,      I18n.get("gui.universalkeyboard.thruster.telemetry.obstruction", obstruction));
         }
     }
 
@@ -303,12 +304,12 @@ public class ThrusterControlScreen extends Screen {
         if (thrustSlider != null) {
             int lx = thrustSlider.getX() + thrustSlider.getWidth() / 2;
             int ly = readoutY + READOUT_H + 2;
-            g.drawCenteredString(font, "§7PWR", lx, ly, 0xAAAAAA);
+            g.drawCenteredString(font, I18n.get("gui.universalkeyboard.label.power_slider"), lx, ly, 0xAAAAAA);
         }
         if (configSlider != null) {
             int lx = configSlider.getX() + configSlider.getWidth() / 2;
             int ly = readoutY + READOUT_H + 2;
-            g.drawCenteredString(font, "§7%", lx, ly, 0xAAAAAA);
+            g.drawCenteredString(font, I18n.get("gui.universalkeyboard.label.percent"), lx, ly, 0xAAAAAA);
         }
     }
 
@@ -328,13 +329,13 @@ public class ThrusterControlScreen extends Screen {
         g.pose().scale(sc, sc, 1.0f);
         int y = 0;
         final int LINE = 9;
-        drawPhosphorLine(g, 0, y, String.format("POS %+.1f / %+.1f / %+.1f m",
+        drawPhosphorLine(g, 0, y, I18n.get("gui.universalkeyboard.thruster.telemetry.pos",
                 sublevelSnapshot[0], sublevelSnapshot[1], sublevelSnapshot[2])); y += LINE;
-        drawPhosphorLine(g, 0, y, String.format("VEL %+.2f / %+.2f / %+.2f m/s",
+        drawPhosphorLine(g, 0, y, I18n.get("gui.universalkeyboard.thruster.telemetry.vel",
                 sublevelSnapshot[3], sublevelSnapshot[4], sublevelSnapshot[5])); y += LINE;
-        drawPhosphorLine(g, 0, y, String.format("ROT %+.1f / %+.1f / %+.1f deg",
+        drawPhosphorLine(g, 0, y, I18n.get("gui.universalkeyboard.thruster.telemetry.rot",
                 sublevelSnapshot[6], sublevelSnapshot[7], sublevelSnapshot[8])); y += LINE;
-        drawPhosphorLine(g, 0, y, String.format(" ω  %+.2f / %+.2f / %+.2f r/s",
+        drawPhosphorLine(g, 0, y, I18n.get("gui.universalkeyboard.thruster.telemetry.angular_vel",
                 sublevelSnapshot[9], sublevelSnapshot[10], sublevelSnapshot[11]));
         g.pose().popPose();
     }

@@ -26,4 +26,28 @@ public class ModBlocks {
                             .sound(SoundType.STONE)
                             .noOcclusion()
             ));
+
+    public static final DeferredBlock<LinkedKeyboardBlock> RAINBOW_KEYBOARD =
+            BLOCKS.register("rainbow_keyboard", () -> new LinkedKeyboardBlock(
+                    BlockBehaviour.Properties.of()
+                            .strength(1.0f)
+                            .sound(SoundType.STONE)
+                            .noOcclusion()
+            ));
+
+    public static final DeferredBlock<LinkedKeyboardBlock> ACE_KEYBOARD =
+            BLOCKS.register("ace_keyboard", () -> new LinkedKeyboardBlock(
+                    BlockBehaviour.Properties.of()
+                            .strength(1.0f)
+                            .sound(SoundType.STONE)
+                            .noOcclusion()
+            ));
+
+    public static final DeferredBlock<LinkedKeyboardBlock> BI_KEYBOARD =
+            BLOCKS.register("bi_keyboard", () -> new LinkedKeyboardBlock(
+                    BlockBehaviour.Properties.of()
+                            .strength(1.0f)
+                            .sound(SoundType.STONE)
+                            .noOcclusion()
+            ));
 }
