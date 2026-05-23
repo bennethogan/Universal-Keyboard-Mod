@@ -26,8 +26,12 @@
 
 ### Смотрите слайды ниже для подробных инструкций (неполные)
 
-<img width="960" height="540" alt="UniversalKeyboardWiki_russian" src="https://github.com/user-attachments/assets/2d599564-2b57-4289-be91-08f2668d01ac" />
-<img width="960" height="540" alt="UniversalKeyboardWiki_russian(1)" src="https://github.com/user-attachments/assets/08a06538-5905-4363-ab24-36a19afbc9d5" />
+<img width="960" height="540" alt="UniversalKeyboardWiki_russian" src="https://github.com/user-attachments/assets/2804272a-05db-447e-b72e-b2439c1beba5" />
+<img width="960" height="540" alt="UniversalKeyboardWiki_russian(1)" src="https://github.com/user-attachments/assets/2da1a34d-6021-4380-8abb-e6f970c1f269" />
+<img width="960" height="540" alt="UniversalKeyboardWiki_russian(2)" src="https://github.com/user-attachments/assets/65124d9d-bc88-408b-a177-0de066719957" />
+<img width="960" height="540" alt="UniversalKeyboardWiki_russian(3)" src="https://github.com/user-attachments/assets/4ead3e0d-c20e-4ad2-a4b3-0e1869ff46ef" />
+<img width="960" height="540" alt="UniversalKeyboardWiki_russian(4)" src="https://github.com/user-attachments/assets/8e2fa24d-8fd3-4654-9e25-8c427cb59fb9" />
+
 
 -----------
 
