@@ -563,8 +563,19 @@ public class SequencerScreen extends Screen {
         opts.add(I18n.get("gui.universalkeyboard.label.manual_input"));
         for (int v = 1; v <= 8; v++) opts.add("V" + v);
         opts.add("RS:N"); opts.add("RS:S"); opts.add("RS:E"); opts.add("RS:W");
+        int wc = getWirelessCount();
+        for (int w = 1; w <= wc; w++) opts.add("W" + w);
         opts.addAll(gettersFor(channel));
         return opts;
+    }
+
+    int getWirelessCount() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return 0;
+        var be = mc.level.getBlockEntity(keyboardPos);
+        if (be instanceof dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity kb)
+            return kb.getWirelessCount();
+        return 0;
     }
 
     // ── Input ─────────────────────────────────────────────────────────────────
@@ -718,6 +729,12 @@ public class SequencerScreen extends Screen {
             return true;
         }
 
+        // Scroll over a row's cycle button to step its value without repeated clicking.
+        int cycleDir = dy > 0 ? 1 : -1;
+        for (RowWidgets row : rows) {
+            if (row.handleScrollCycle(mx, my, cycleDir)) return true;
+        }
+
         int maxOff = Math.max(0, steps.size() - VISIBLE);
         int newOff = Math.max(0, Math.min(maxOff, scrollOffset + dir));
         if (newOff != scrollOffset) { scrollOffset = newOff; refreshAllRows(); return true; }
@@ -837,7 +854,7 @@ public class SequencerScreen extends Screen {
             int cx   = panelX + PAD;
             int ctx  = cx + COL_CTX;
 
-            channelBtn = DarkButton.make(Component.literal("-"), b -> cycleChannel(),
+            channelBtn = DarkButton.make(Component.literal("-"), b -> cycleChannel(1),
                     cx + COL_CH, rowY + 1, 16, BTN_H);
             addRenderableWidget(channelBtn);
 
@@ -854,14 +871,14 @@ public class SequencerScreen extends Screen {
             addRenderableWidget(deleteBtn);
 
             // SET_VALUE
-            methodBtn = DarkButton.make(Component.literal(""), b -> cycleMethod(),
+            methodBtn = DarkButton.make(Component.literal(""), b -> cycleMethod(1),
                     ctx, rowY + 1, 120, BTN_H);
             addRenderableWidget(methodBtn);
             valueInput = makeBox(ctx + 124, rowY, 156, I18n.get("gui.universalkeyboard.hint.value_or_variable"),
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).setValueStr = str; });
 
             // SET_REDSTONE
-            rsDirBtn = DarkButton.make(Component.literal(""), b -> cycleRedstoneDir(),
+            rsDirBtn = DarkButton.make(Component.literal(""), b -> cycleRedstoneDir(1),
                     ctx, rowY + 1, 90, BTN_H);
             addRenderableWidget(rsDirBtn);
             rsSignalInput = makeBox(ctx + 94, rowY, 80, I18n.get("gui.universalkeyboard.hint.signal_or_variable"),
@@ -876,10 +893,10 @@ public class SequencerScreen extends Screen {
             addRenderableWidget(typeEnterBtn);
 
             // IF
-            ifGetterBtn = DarkButton.make(Component.literal(""), b -> cycleIfGetter(),
+            ifGetterBtn = DarkButton.make(Component.literal(""), b -> cycleIfGetter(1),
                     ctx, rowY + 1, 80, BTN_H);
             addRenderableWidget(ifGetterBtn);
-            ifOpBtn = DarkButton.make(Component.literal(">"), b -> cycleIfOp(),
+            ifOpBtn = DarkButton.make(Component.literal(">"), b -> cycleIfOp(1),
                     ctx + 84, rowY + 1, 28, BTN_H);
             addRenderableWidget(ifOpBtn);
             ifValueInput = makeBox(ctx + 116, rowY, 64, I18n.get("gui.universalkeyboard.hint.cond_value"),
@@ -887,7 +904,7 @@ public class SequencerScreen extends Screen {
             ifModeBtn = DarkButton.make(Component.literal("skip"), b -> toggleIfMode(),
                     ctx + 184, rowY + 1, 34, BTN_H);
             addRenderableWidget(ifModeBtn);
-            ifSkipBtn = DarkButton.make(Component.literal("×1"), b -> cycleIfSkip(),
+            ifSkipBtn = DarkButton.make(Component.literal("×1"), b -> cycleIfSkip(1),
                     ctx + 222, rowY + 1, 60, BTN_H);
             addRenderableWidget(ifSkipBtn);
             ifJumpInput = makeBox(ctx + 222, rowY, 60, I18n.get("gui.universalkeyboard.hint.step_number"),
@@ -899,10 +916,10 @@ public class SequencerScreen extends Screen {
             ifJumpInput.setMaxLength(3);
 
             // CONDITION
-            sourceBtn = DarkButton.make(Component.literal(""), b -> cycleSource(),
+            sourceBtn = DarkButton.make(Component.literal(""), b -> cycleSource(1),
                     ctx, rowY + 1, 66, BTN_H);
             addRenderableWidget(sourceBtn);
-            getterBtn = DarkButton.make(Component.literal(""), b -> cycleGetter(),
+            getterBtn = DarkButton.make(Component.literal(""), b -> cycleGetter(1),
                     ctx + 70, rowY + 1, 80, BTN_H);
             addRenderableWidget(getterBtn);
             opInput = makeBox(ctx + 154, rowY, 124, ">0",
@@ -922,7 +939,7 @@ public class SequencerScreen extends Screen {
             jumpInput.setMaxLength(3);
 
             // MATH
-            mathDestBtn = DarkButton.make(Component.literal("V1"), b -> cycleMathDest(),
+            mathDestBtn = DarkButton.make(Component.literal("V1"), b -> cycleMathDest(1),
                     ctx, rowY + 1, 36, BTN_H);
             addRenderableWidget(mathDestBtn);
             mathASourceBtn = DarkButton.make(Component.literal("src A..."), b -> openMathDropdown(true),
@@ -930,10 +947,10 @@ public class SequencerScreen extends Screen {
             addRenderableWidget(mathASourceBtn);
             mathAInput = makeBox(ctx + 48, rowY, 64, "A (# V1 RS:N getter)",
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).mathA = str; });
-            mathAChBtn = DarkButton.make(Component.literal("1"), b -> cycleMathACh(),
+            mathAChBtn = DarkButton.make(Component.literal("1"), b -> cycleMathACh(1),
                     ctx + 114, rowY + 1, 22, BTN_H);
             addRenderableWidget(mathAChBtn);
-            mathOpBtn = DarkButton.make(Component.literal("+"), b -> cycleMathOp(),
+            mathOpBtn = DarkButton.make(Component.literal("+"), b -> cycleMathOp(1),
                     ctx + 140, rowY + 1, 36, BTN_H);
             addRenderableWidget(mathOpBtn);
             mathBSourceBtn = DarkButton.make(Component.literal("src B..."), b -> openMathDropdown(false),
@@ -941,7 +958,7 @@ public class SequencerScreen extends Screen {
             addRenderableWidget(mathBSourceBtn);
             mathBInput = makeBox(ctx + 180, rowY, 64, I18n.get("gui.universalkeyboard.hint.math_src_b"),
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).mathB = str; });
-            mathBChBtn = DarkButton.make(Component.literal("1"), b -> cycleMathBCh(),
+            mathBChBtn = DarkButton.make(Component.literal("1"), b -> cycleMathBCh(1),
                     ctx + 246, rowY + 1, 22, BTN_H);
             addRenderableWidget(mathBChBtn);
         }
@@ -958,11 +975,11 @@ public class SequencerScreen extends Screen {
 
         // ── Cycling helpers ─────────────────────────────────────────────────
 
-        private void cycleChannel() {
+        private void cycleChannel(int dir) {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
             if (!stepUsesChannel(step.type)) return;
-            step.channel = (step.channel % 16) + 1;
+            step.channel = wrapIdx(step.channel - 1, 16, dir) + 1;
             channelBtn.setMessage(Component.literal(String.valueOf(step.channel)));
         }
 
@@ -970,19 +987,31 @@ public class SequencerScreen extends Screen {
             return t == Type.SET_VALUE || t == Type.TYPE_TEXT || t == Type.IF || t == Type.CONDITION;
         }
 
-        private void cycleMethod() {
+        private void cycleType(int dir) {
+            int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
+            SequencerStep step = steps.get(si);
+            Type[] avail = buildAvailableTypes();
+            if (avail.length == 0) return;
+            int idx = 0;
+            for (int i = 0; i < avail.length; i++) if (avail[i] == step.type) { idx = i; break; }
+            step.type = avail[wrapIdx(idx, avail.length, dir)];
+            refreshAllRows();
+        }
+
+        private void cycleMethod(int dir) {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
             if (step.type == Type.TYPE_VARIABLE) {
                 String v = step.setValueStr.matches("V[1-8]") ? step.setValueStr : "V1";
-                step.setValueStr = "V" + ((v.charAt(1) - '0') % 8 + 1);
+                step.setValueStr = "V" + (wrapIdx(v.charAt(1) - '1', 8, dir) + 1);
                 methodBtn.setMessage(Component.literal(step.setValueStr));
                 return;
             }
             List<String[]> setters = settersFor(step.channel);
             if (setters.isEmpty()) return;
             int idx = indexOfSetter(step.setMethod, setters);
-            step.setMethod = setters.get((idx + 1) % setters.size())[0];
+            if (idx < 0) idx = 0;
+            step.setMethod = setters.get(wrapIdx(idx, setters.size(), dir))[0];
             methodBtn.setMessage(Component.literal(step.setMethod));
         }
 
@@ -993,7 +1022,7 @@ public class SequencerScreen extends Screen {
             typeEnterBtn.setMessage(Component.literal(step.typeTextEnter ? "↵ on" : "↵ off"));
         }
 
-        private void cycleRedstoneDir() {
+        private void cycleRedstoneDir(int dir) {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
 
@@ -1009,7 +1038,7 @@ public class SequencerScreen extends Screen {
                 currentPos = 0;
                 for (int i = 0; i < RS_DIRS.length; i++) if (RS_DIRS[i] == step.redstoneOutDir) { currentPos = i; break; }
             }
-            int nextPos = (currentPos + 1) % totalSlots;
+            int nextPos = wrapIdx(currentPos, totalSlots, dir);
 
             if (nextPos < RS_DIRS.length) {
                 step.wirelessOutIdx = 0;
@@ -1025,37 +1054,30 @@ public class SequencerScreen extends Screen {
             return step.redstoneOutDir.getName().toUpperCase();
         }
 
-        private int getWirelessCount() {
-            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
-            if (mc.level == null) return 0;
-            net.minecraft.world.level.block.entity.BlockEntity be = mc.level.getBlockEntity(keyboardPos);
-            if (be instanceof dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity kb)
-                return kb.getWirelessCount();
-            return 0;
-        }
-
-        private void cycleIfGetter() {
+        private void cycleIfGetter(int dir) {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
             List<String> list = buildIfGetterList(step.channel);
             if (list.isEmpty()) return;
             int idx = list.indexOf(step.ifGetter);
-            step.ifGetter = list.get((idx + 1) % list.size());
+            if (idx < 0) idx = 0;
+            step.ifGetter = list.get(wrapIdx(idx, list.size(), dir));
             ifGetterBtn.setMessage(Component.literal(step.ifGetter));
         }
 
-        private void cycleIfOp() {
+        private void cycleIfOp(int dir) {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
             int idx = Arrays.asList(IF_OPS).indexOf(step.ifOp);
-            step.ifOp = IF_OPS[(idx + 1) % IF_OPS.length];
+            if (idx < 0) idx = 0;
+            step.ifOp = IF_OPS[wrapIdx(idx, IF_OPS.length, dir)];
             ifOpBtn.setMessage(Component.literal(step.ifOp));
         }
 
-        private void cycleIfSkip() {
+        private void cycleIfSkip(int dir) {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
-            step.ifSkipCount = (step.ifSkipCount % 16) + 1;
+            step.ifSkipCount = wrapIdx(step.ifSkipCount - 1, 16, dir) + 1;
             ifSkipBtn.setMessage(Component.literal("×" + step.ifSkipCount));
         }
 
@@ -1077,65 +1099,118 @@ public class SequencerScreen extends Screen {
         private List<String> buildIfGetterList(int channel) {
             List<String> list = new ArrayList<>(Arrays.asList(SequencerStep.RS_INPUT_GETTER_NAMES));
             for (int i = 1; i <= 8; i++) list.add("V" + i);
+            int wc = getWirelessCount();
+            for (int w = 1; w <= wc; w++) list.add("W" + w);
             list.addAll(gettersFor(channel));
             return list;
         }
 
-        private void cycleSource() {
+        private void cycleSource(int dir) {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
             boolean ccPresent = dev.bennethogan.universalkeyboard.compat.PeripheralHelper.isCCPresent();
             ConditionSource[] sources = ConditionSource.values();
             int next = step.conditionSource.ordinal();
             do {
-                next = (next + 1) % sources.length;
+                next = wrapIdx(next, sources.length, dir);
             } while (!ccPresent && sources[next] == ConditionSource.PERIPHERAL);
             step.conditionSource = sources[next];
             refresh();
         }
 
-        private void cycleGetter() {
+        private void cycleGetter(int dir) {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
             List<String> getters = gettersFor(step.channel);
             if (getters.isEmpty()) return;
             int idx = getters.indexOf(step.conditionGetter);
-            step.conditionGetter = getters.get((idx + 1) % getters.size());
+            if (idx < 0) idx = 0;
+            step.conditionGetter = getters.get(wrapIdx(idx, getters.size(), dir));
             getterBtn.setMessage(Component.literal(step.conditionGetter));
         }
 
-        private void cycleMathDest() {
+        private void cycleMathDest(int dir) {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
             String d = (step.mathDest != null && step.mathDest.matches("V[1-8]")) ? step.mathDest : "V1";
-            step.mathDest = "V" + ((d.charAt(1) - '0') % 8 + 1);
+            step.mathDest = "V" + (wrapIdx(d.charAt(1) - '1', 8, dir) + 1);
             mathDestBtn.setMessage(Component.literal(step.mathDest));
         }
 
-        private void cycleMathACh() {
+        private void cycleMathACh(int dir) {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
-            step.mathACh = (step.mathACh % 16) + 1;
+            step.mathACh = wrapIdx(step.mathACh - 1, 16, dir) + 1;
             mathAChBtn.setMessage(Component.literal(String.valueOf(step.mathACh)));
         }
 
-        private void cycleMathBCh() {
+        private void cycleMathBCh(int dir) {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
-            step.mathBCh = (step.mathBCh % 16) + 1;
+            step.mathBCh = wrapIdx(step.mathBCh - 1, 16, dir) + 1;
             mathBChBtn.setMessage(Component.literal(String.valueOf(step.mathBCh)));
         }
 
-        private void cycleMathOp() {
+        private void cycleMathOp(int dir) {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
-            int next = (Arrays.asList(MATH_OPS).indexOf(step.mathOp) + 1) % MATH_OPS.length;
+            int next = wrapIdx(Arrays.asList(MATH_OPS).indexOf(step.mathOp), MATH_OPS.length, dir);
             step.mathOp = MATH_OPS[next];
             mathOpBtn.setMessage(Component.literal(step.mathOp));
             boolean unary = MATH_UNARY[next];
             mathBInput.visible     = !unary && step.mathBManual;
             mathBSourceBtn.visible = !unary && !step.mathBManual;
             mathBChBtn.visible     = !unary;
+        }
+
+        /** Scroll over a math source button to cycle its selected source directly. */
+        private void cycleMathSource(boolean isA, int dir) {
+            int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
+            SequencerStep step = steps.get(si);
+            int ch = isA ? step.mathACh : step.mathBCh;
+            List<String> opts = buildMathSrcOptions(ch);
+            if (opts.isEmpty()) return;
+            String manual = I18n.get("gui.universalkeyboard.label.manual_input");
+            String cur = isA ? (step.mathAManual ? manual : step.mathA)
+                             : (step.mathBManual ? manual : step.mathB);
+            int idx = opts.indexOf(cur);
+            if (idx < 0) idx = 0;
+            String sel = opts.get(wrapIdx(idx, opts.size(), dir));
+            if (sel.equals(manual)) {
+                if (isA) step.mathAManual = true; else step.mathBManual = true;
+            } else {
+                if (isA) { step.mathA = sel; step.mathAManual = false; }
+                else     { step.mathB = sel; step.mathBManual = false; }
+            }
+            refresh();
+        }
+
+        // ── Scroll-to-cycle ─────────────────────────────────────────────────
+
+        /** If the mouse is over one of this row's cycle buttons, step it by dir. */
+        boolean handleScrollCycle(double mx, double my, int dir) {
+            int si = scrollOffset + rowIdx;
+            if (si >= steps.size()) return false;
+            if (hit(channelBtn, mx, my))     { cycleChannel(dir);           return true; }
+            if (hit(typeBtn, mx, my))        { cycleType(dir);              return true; }
+            if (hit(methodBtn, mx, my))      { cycleMethod(dir);            return true; }
+            if (hit(rsDirBtn, mx, my))       { cycleRedstoneDir(dir);       return true; }
+            if (hit(ifGetterBtn, mx, my))    { cycleIfGetter(dir);          return true; }
+            if (hit(ifOpBtn, mx, my))        { cycleIfOp(dir);              return true; }
+            if (hit(ifSkipBtn, mx, my))      { cycleIfSkip(dir);            return true; }
+            if (hit(sourceBtn, mx, my))      { cycleSource(dir);            return true; }
+            if (hit(getterBtn, mx, my))      { cycleGetter(dir);            return true; }
+            if (hit(mathDestBtn, mx, my))    { cycleMathDest(dir);          return true; }
+            if (hit(mathASourceBtn, mx, my)) { cycleMathSource(true, dir);  return true; }
+            if (hit(mathAChBtn, mx, my))     { cycleMathACh(dir);           return true; }
+            if (hit(mathOpBtn, mx, my))      { cycleMathOp(dir);            return true; }
+            if (hit(mathBSourceBtn, mx, my)) { cycleMathSource(false, dir); return true; }
+            if (hit(mathBChBtn, mx, my))     { cycleMathBCh(dir);           return true; }
+            return false;
+        }
+
+        private boolean hit(net.minecraft.client.gui.components.AbstractWidget w, double mx, double my) {
+            return w.visible && w.isMouseOver(mx, my);
         }
 
         // ── Refresh ─────────────────────────────────────────────────────────
@@ -1267,6 +1342,12 @@ public class SequencerScreen extends Screen {
         for (int i = 0; i < MATH_OPS.length; i++)
             if (MATH_OPS[i].equals(op)) return MATH_UNARY[i];
         return false;
+    }
+
+    /** Modular step of an index by dir (+1/-1), wrapping at both ends. */
+    private static int wrapIdx(int idx, int size, int dir) {
+        if (size <= 0) return 0;
+        return ((idx + dir) % size + size) % size;
     }
 
     private static void parseOpInput(SequencerStep step, String raw) {

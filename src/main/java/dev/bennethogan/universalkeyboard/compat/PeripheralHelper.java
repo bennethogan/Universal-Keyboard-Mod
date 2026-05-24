@@ -154,7 +154,13 @@ public class PeripheralHelper {
             if (m.getAnnotation(luaFunctionClass) == null) continue;
             Parameter[] params = m.getParameters();
             if (params.length == 0) {
-                entries.add(new MethodEntry(m.getName(), invokeGetter(peripheral, m), ""));
+                if (m.getReturnType() == void.class) {
+                    // void no-arg methods are commands (e.g. stop()) — don't call eagerly,
+                    // expose as callable commands in the setter list.
+                    entries.add(new MethodEntry(m.getName(), "", "call"));
+                } else {
+                    entries.add(new MethodEntry(m.getName(), invokeGetter(peripheral, m), ""));
+                }
             } else if (params.length == 1) {
                 String hint = argTypeHint(params[0].getType());
                 if (!hint.isEmpty())
@@ -186,6 +192,17 @@ public class PeripheralHelper {
             if (!m.getName().equals(methodName)) continue;
             if (m.getAnnotation(luaFunctionClass) == null) continue;
             Parameter[] params = m.getParameters();
+            if (params.length == 0) {
+                // void no-arg command (e.g. stop())
+                try {
+                    m.invoke(peripheral);
+                    return null;
+                } catch (Exception e) {
+                    Throwable cause = e.getCause() != null ? e.getCause() : e;
+                    UniversalKeyboardMod.LOGGER.warn("peripheral call {} failed: {}", methodName, cause.getMessage());
+                    return cause.getMessage();
+                }
+            }
             if (params.length != 1) continue;
             Object arg = parseArg(params[0].getType(), argStr);
             if (arg == null) return "invalid input for type " + argTypeHint(params[0].getType());
@@ -368,6 +385,17 @@ public class PeripheralHelper {
         for (Method m : peripheral.getClass().getMethods()) {
             if (!m.getName().equals(methodName)) continue;
             Parameter[] params = m.getParameters();
+            if (params.length == 0) {
+                // void no-arg command (e.g. the electric motor's stop()) — value is ignored.
+                try {
+                    m.invoke(peripheral);
+                    return null;
+                } catch (Exception e) {
+                    Throwable cause = e.getCause() != null ? e.getCause() : e;
+                    UniversalKeyboardMod.LOGGER.warn("peripheral call {} failed: {}", methodName, cause.getMessage());
+                    return cause.getMessage();
+                }
+            }
             if (params.length != 1) continue;
             Class<?> type = params[0].getType();
             Object arg;

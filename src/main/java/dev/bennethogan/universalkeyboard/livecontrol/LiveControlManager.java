@@ -137,7 +137,12 @@ public class LiveControlManager {
             for (LiveControlBinding b : bindings) {
                 if (b.keyCode != keyCode || b.mode != Mode.INC) continue;
                 heldKeys.add(keyCode);
-                incHoldTicks.put(keyCode, 0); // reset delay timer on each fresh press
+                // Only reset the delay timer if this is a genuine new press (key was not
+                // already tracked). On Wayland the OS key-repeat can generate rapid
+                // press/release pairs, in that case the key may still be in heldKeys
+                // from the previous press
+                if (!incHoldTicks.containsKey(keyCode))
+                    incHoldTicks.put(keyCode, 0);
                 int delta = b.incPlus ? 1 : -1;
                 switch (b.actionType) {
                     case REDSTONE -> rsIncCounters.merge(
@@ -148,6 +153,16 @@ public class LiveControlManager {
                             (cur, d) -> Math.max(0, Math.min(15, cur + d)));
                     default -> {}
                 }
+            }
+        }
+
+        // GLFW_REPEAT - OS key-repeat event: keep the key tracked as held without
+        // resetting the delay timer, so tick() eventually fires auto-repeat
+        if (glfw_action == GLFW.GLFW_REPEAT) {
+            for (LiveControlBinding b : bindings) {
+                if (b.keyCode != keyCode || b.mode != Mode.INC) continue;
+                heldKeys.add(keyCode);
+                incHoldTicks.putIfAbsent(keyCode, 0);
             }
         }
 

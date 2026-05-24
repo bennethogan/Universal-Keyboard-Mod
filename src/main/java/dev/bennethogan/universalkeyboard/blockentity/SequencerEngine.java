@@ -265,7 +265,19 @@ class SequencerEngine {
         for (BlockPos targetPos : targets) {
             if (be.getBlockPos().distSqr(targetPos) > rangeSq) continue;
             Object p = PeripheralHelper.getPeripheral(be.getLevel(), targetPos);
-            if (p != null) PeripheralHelper.callMethodWithDouble(p, step.setMethod, value);
+            if (p == null) continue;
+            String err = PeripheralHelper.callMethodWithDouble(p, step.setMethod, value);
+            if (err != null) notifyNearbyPlayers("§c[Keyboard] §f" + err);
+        }
+    }
+
+    private void notifyNearbyPlayers(String msg) {
+        if (!(be.getLevel() instanceof net.minecraft.server.level.ServerLevel sl)) return;
+        net.minecraft.network.chat.Component c = net.minecraft.network.chat.Component.literal(msg);
+        double rangeSq = 32.0 * 32.0;
+        for (net.minecraft.server.level.ServerPlayer sp : sl.players()) {
+            if (sp.blockPosition().distSqr(be.getBlockPos()) <= rangeSq)
+                sp.displayClientMessage(c, true);
         }
     }
 

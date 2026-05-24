@@ -249,9 +249,10 @@ public class PeripheralMethodScreen extends Screen {
 
     private void submitCall() {
         if (selectedIdx < 0 || selectedIdx >= setters.size()) return;
-        String method = setters.get(selectedIdx)[0];
-        String arg    = inputBox.getValue().trim();
-        if (arg.isEmpty()) return;
+        String method  = setters.get(selectedIdx)[0];
+        String argType = setters.get(selectedIdx)[1];
+        String arg     = inputBox.getValue().trim();
+        if (arg.isEmpty() && !argType.equals("call")) return;
         ModPackets.sendCallPeripheralMethod(keyboardPos, method, arg);
     }
 
