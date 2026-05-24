@@ -28,8 +28,11 @@ public class LiveControlManager {
     private static final Set<Integer>          toggledOn      = new HashSet<>();
     private static final Map<Long, Integer>    rsIncCounters  = new HashMap<>();
     private static final Map<Integer, Integer> thrIncCounters = new HashMap<>();
+    private static final Map<Integer, Integer> incHoldTicks   = new HashMap<>();
 
-    private static int actionBarTick  = 0;
+    private static final int INC_REPEAT_DELAY_TICKS = 10; // 0.5 s before auto-repeat
+
+    private static int actionBarTick = 0;
 
     // ── Activation ───────────────────────────────────────────────────────────
 
@@ -42,6 +45,7 @@ public class LiveControlManager {
         toggledOn.clear();
         rsIncCounters.clear();
         thrIncCounters.clear();
+        incHoldTicks.clear();
 
         // Seed INC counters and TGL toggle state from current server values so the
         // first keypress doesn't overwrite persisted signals with zeros.
@@ -73,6 +77,7 @@ public class LiveControlManager {
     public static void deactivate() {
         active = false;
         heldKeys.clear();
+        incHoldTicks.clear();
         // Send zero-state only when still connected — avoids NPE on disconnect.
         if (Minecraft.getInstance().getConnection() != null) computeAndSend();
         toggledOn.clear();
@@ -94,6 +99,29 @@ public class LiveControlManager {
             mc.player.displayClientMessage(
                     Component.literal(I18n.get("gui.universalkeyboard.msg.live_control_active")), true);
         }
+
+        // INC mode: auto-repeat after INC_REPEAT_DELAY_TICKS of holding
+        boolean incFired = false;
+        Set<Integer> countedThisTick = new java.util.HashSet<>();
+        for (LiveControlBinding b : bindings) {
+            if (b.mode != Mode.INC || !heldKeys.contains(b.keyCode)) continue;
+            // Advance the hold timer once per key per tick
+            if (countedThisTick.add(b.keyCode))
+                incHoldTicks.merge(b.keyCode, 1, Integer::sum);
+            if (incHoldTicks.getOrDefault(b.keyCode, 0) < INC_REPEAT_DELAY_TICKS) continue;
+            int delta = b.incPlus ? 1 : -1;
+            switch (b.actionType) {
+                case REDSTONE -> rsIncCounters.merge(
+                        rsKey(b.wirelessIdx, b.rsSide), delta,
+                        (cur, d) -> Math.max(0, Math.min(15, cur + d)));
+                case THRUSTER_POWER -> thrIncCounters.merge(
+                        b.channel, delta,
+                        (cur, d) -> Math.max(0, Math.min(15, cur + d)));
+                default -> {}
+            }
+            incFired = true;
+        }
+        if (incFired) computeAndSend();
     }
 
     // ── Key handling ─────────────────────────────────────────────────────────
@@ -104,10 +132,12 @@ public class LiveControlManager {
             return;
         }
 
-        // INC mode: step the counter once per key press
+        // INC mode: step the counter immediately on press, then per-tick via heldKeys
         if (glfw_action == GLFW.GLFW_PRESS) {
             for (LiveControlBinding b : bindings) {
                 if (b.keyCode != keyCode || b.mode != Mode.INC) continue;
+                heldKeys.add(keyCode);
+                incHoldTicks.put(keyCode, 0); // reset delay timer on each fresh press
                 int delta = b.incPlus ? 1 : -1;
                 switch (b.actionType) {
                     case REDSTONE -> rsIncCounters.merge(
@@ -135,6 +165,7 @@ public class LiveControlManager {
             }
         } else if (glfw_action == GLFW.GLFW_RELEASE) {
             heldKeys.remove(keyCode);
+            incHoldTicks.remove(keyCode);
         }
 
         computeAndSend();

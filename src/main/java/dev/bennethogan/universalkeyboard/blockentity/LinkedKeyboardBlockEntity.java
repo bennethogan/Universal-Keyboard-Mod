@@ -1,6 +1,5 @@
 package dev.bennethogan.universalkeyboard.blockentity;
 
-import com.simibubi.create.api.schematic.nbt.PartialSafeNBT;
 import dev.bennethogan.universalkeyboard.UniversalKeyboardMod;
 import dev.bennethogan.universalkeyboard.compat.CreateValueHelper;
 import dev.bennethogan.universalkeyboard.compat.KeyboardMode;
@@ -34,7 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 
-public class LinkedKeyboardBlockEntity extends BlockEntity implements PartialSafeNBT {
+public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     public static final int MAX_CHANNELS = 16;
 
@@ -830,12 +829,6 @@ public class LinkedKeyboardBlockEntity extends BlockEntity implements PartialSaf
 
     // ── Schematic (PartialSafeNBT) ───────────────────────────────────────────
 
-    /**
-     * Called by Create's schematic system. Saves all position-independent data plus
-     * channel targets as relative offsets so schematics survive being printed at a
-     * new world location.
-     */
-    @Override
     public void writeSafe(CompoundTag tag, HolderLookup.Provider registries) {
         tag.putInt("active_channel", activeChannel);
         tag.putString("autotype_script", autoTypeScript);
@@ -844,7 +837,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity implements PartialSaf
             for (SequencerStep step : sequencerSteps) seqList.add(step.save());
             tag.put("sequencer_steps", seqList);
         }
-        engine.saveToTag(tag);
+        // Note: engine.saveToTag (sequencer run-state) is intentionally omitted here —
+        // a schematic should paste in idle, not resume a program mid-run.
         tag.putIntArray("redstone_outputs", redstoneOutputs);
         if (!wirelessEntries.isEmpty()) {
             ListTag wl = new ListTag();

@@ -91,7 +91,7 @@ public class TypewriterHelper {
 
     private static int readInt(CompoundTag tag, String... keys) {
         for (String k : keys)
-            if (tag.contains(k)) return tag.getInt(k); // works for any numeric tag
+            if (tag.contains(k, Tag.TAG_ANY_NUMERIC)) return tag.getInt(k);
         return -1;
     }
 

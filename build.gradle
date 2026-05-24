@@ -80,6 +80,17 @@ processResources {
     filesMatching(['META-INF/neoforge.mods.toml']) {
         expand replaceProperties
     }
+
+    // Ship es_es.json under every supported Spanish locale without keeping
+    // duplicate files in the repo. The translator maintains only es_es.json.
+    def spanishLangDir = 'assets/universalkeyboard/lang'
+    def esSource = file("src/main/resources/${spanishLangDir}/es_es.json")
+    ['es_mx', 'es_ar', 'es_cl', 'es_uy', 'es_ve', 'es_ec'].each { locale ->
+        from(esSource) {
+            into spanishLangDir
+            rename { "${locale}.json" }
+        }
+    }
 }
 
 idea {

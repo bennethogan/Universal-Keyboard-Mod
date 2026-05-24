@@ -26,7 +26,7 @@ import java.lang.reflect.Method;
  */
 public class SableCompat {
 
-    private static final Logger LOGGER = LogManager.getLogger("bennetsmod/SableCompat");
+    private static final Logger LOGGER = LogManager.getLogger("universalkeyboard/SableCompat");
     private static final String DETECT_CLASS = "dev.ryanhcode.sable.companion.SableCompanion";
 
     public static final String[] GETTER_NAMES = {

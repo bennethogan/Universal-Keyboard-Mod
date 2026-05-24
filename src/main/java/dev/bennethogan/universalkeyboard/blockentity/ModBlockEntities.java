@@ -2,7 +2,9 @@ package dev.bennethogan.universalkeyboard.blockentity;
 
 import dev.bennethogan.universalkeyboard.UniversalKeyboardMod;
 import dev.bennethogan.universalkeyboard.block.ModBlocks;
+import dev.bennethogan.universalkeyboard.compat.CreateKeyboardBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
@@ -13,13 +15,20 @@ public class ModBlockEntities {
             DeferredRegister.create(net.minecraft.core.registries.Registries.BLOCK_ENTITY_TYPE, UniversalKeyboardMod.MOD_ID);
 
     public static final Supplier<BlockEntityType<LinkedKeyboardBlockEntity>> LINKED_KEYBOARD =
-            BLOCK_ENTITIES.register("universal_keyboard", () ->
-                    BlockEntityType.Builder.of(LinkedKeyboardBlockEntity::new,
-                            ModBlocks.LINKED_KEYBOARD.get(),
-                            ModBlocks.TRANS_KEYBOARD.get(),
-                            ModBlocks.RAINBOW_KEYBOARD.get(),
-                            ModBlocks.ACE_KEYBOARD.get(),
-                            ModBlocks.BI_KEYBOARD.get()).build(null));
+            BLOCK_ENTITIES.register("universal_keyboard", () -> {
+                var blocks = new net.minecraft.world.level.block.Block[]{
+                        ModBlocks.LINKED_KEYBOARD.get(),
+                        ModBlocks.TRANS_KEYBOARD.get(),
+                        ModBlocks.RAINBOW_KEYBOARD.get(),
+                        ModBlocks.ACE_KEYBOARD.get(),
+                        ModBlocks.BI_KEYBOARD.get()
+                };
+                BlockEntityType.BlockEntitySupplier<LinkedKeyboardBlockEntity> factory =
+                        ModList.get().isLoaded("create")
+                                ? CreateKeyboardBlockEntity::new
+                                : LinkedKeyboardBlockEntity::new;
+                return BlockEntityType.Builder.of(factory, blocks).build(null);
+            });
 
     public static void registerCapabilities(RegisterCapabilitiesEvent event) {
         try {

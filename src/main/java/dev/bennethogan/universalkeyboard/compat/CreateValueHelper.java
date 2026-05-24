@@ -83,6 +83,7 @@ public class CreateValueHelper {
 
     public static int getMin(BlockEntity be) {
         init();
+        if (!createPresent) return 0;
         Object b = getScrollBehaviour(be);
         if (b == null) return 0;
         try { return (int) minField.get(b); } catch (Exception e) { return 0; }
@@ -90,6 +91,7 @@ public class CreateValueHelper {
 
     public static int getMax(BlockEntity be) {
         init();
+        if (!createPresent) return 256;
         Object b = getScrollBehaviour(be);
         if (b == null) return 256;
         try { return (int) maxField.get(b); } catch (Exception e) { return 256; }

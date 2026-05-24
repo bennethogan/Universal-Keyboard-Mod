@@ -77,7 +77,7 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
 
     @Override
     public @Nullable BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
-        return new LinkedKeyboardBlockEntity(pos, state);
+        return ModBlockEntities.LINKED_KEYBOARD.get().create(pos, state);
     }
 
     @Override
