@@ -31,6 +31,7 @@ public class LiveControlManager {
     private static final Map<Integer, Integer> incHoldTicks   = new HashMap<>();
 
     private static final int INC_REPEAT_DELAY_TICKS = 10; // 0.5 s before auto-repeat
+    private static final int MAX_DISPLAY_KEYS        = 3;  // action-bar key labels before "+N more"
 
     private static int actionBarTick = 0;
 
@@ -94,7 +95,11 @@ public class LiveControlManager {
         if (!active) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
-        if (++actionBarTick >= 20) {
+
+        if (!heldKeys.isEmpty() || !toggledOn.isEmpty()) {
+            mc.player.displayClientMessage(Component.literal(buildKeyDisplay()), true);
+            actionBarTick = 0;
+        } else if (++actionBarTick >= 20) {
             actionBarTick = 0;
             mc.player.displayClientMessage(
                     Component.literal(I18n.get("gui.universalkeyboard.msg.live_control_active")), true);
@@ -273,5 +278,81 @@ public class LiveControlManager {
     private static long rsKey(int wirelessIdx, Direction rsSide) {
         int sideOrd = (wirelessIdx == 0) ? rsSide.ordinal() : 0;
         return ((long) wirelessIdx << 16) | (sideOrd & 0xFFFF);
+    }
+
+    private static String buildKeyDisplay() {
+        // Toggled-on keys first (persistent state stays visible), then momentarily
+        // held keys. A key that is both held and toggled appears once, as a toggle.
+        java.util.LinkedHashSet<Integer> keys = new java.util.LinkedHashSet<>();
+        for (int idx : toggledOn)
+            if (idx >= 0 && idx < bindings.size()) keys.add(bindings.get(idx).keyCode);
+        keys.addAll(heldKeys);
+
+        StringBuilder sb = new StringBuilder("§c[Live] ");
+        int shown = 0;
+        for (int key : keys) {
+            if (shown >= MAX_DISPLAY_KEYS) {
+                sb.append(" §7+").append(keys.size() - MAX_DISPLAY_KEYS).append(" more");
+                break;
+            }
+            if (shown > 0) sb.append(" ");
+            sb.append(keyLabel(key));
+            shown++;
+        }
+        return sb.toString();
+    }
+
+    private static String keyLabel(int keyCode) {
+        String name = keyDisplayName(keyCode);
+        // INC mode (only relevant while held): append current power level as a percent.
+        if (heldKeys.contains(keyCode)) {
+            Integer level = incLevelForKey(keyCode);
+            if (level != null)
+                return "§f[" + name + " " + Math.round(level / 15.0 * 100) + "%]";
+        }
+        // Toggled-on keys render green so on/off state is obvious at a glance.
+        if (isKeyToggledOn(keyCode)) return "§a[" + name + "]";
+        return "§f[" + name + "]";
+    }
+
+    private static Integer incLevelForKey(int keyCode) {
+        for (LiveControlBinding b : bindings) {
+            if (b.keyCode != keyCode || b.mode != Mode.INC) continue;
+            switch (b.actionType) {
+                case REDSTONE       -> { return rsIncCounters.getOrDefault(rsKey(b.wirelessIdx, b.rsSide), 0); }
+                case THRUSTER_POWER -> { return thrIncCounters.getOrDefault(b.channel, 0); }
+                default -> {}
+            }
+        }
+        return null;
+    }
+
+    private static boolean isKeyToggledOn(int keyCode) {
+        for (int idx : toggledOn)
+            if (idx >= 0 && idx < bindings.size() && bindings.get(idx).keyCode == keyCode) return true;
+        return false;
+    }
+
+    private static String keyDisplayName(int keyCode) {
+        String name = org.lwjgl.glfw.GLFW.glfwGetKeyName(keyCode, 0);
+        if (name != null && !name.isEmpty()) return name.toUpperCase();
+        return switch (keyCode) {
+            case GLFW.GLFW_KEY_SPACE       -> "Space";
+            case GLFW.GLFW_KEY_ENTER,
+                 GLFW.GLFW_KEY_KP_ENTER   -> "Enter";
+            case GLFW.GLFW_KEY_TAB         -> "Tab";
+            case GLFW.GLFW_KEY_BACKSPACE   -> "Bksp";
+            case GLFW.GLFW_KEY_UP          -> "Up";
+            case GLFW.GLFW_KEY_DOWN        -> "Down";
+            case GLFW.GLFW_KEY_LEFT        -> "Left";
+            case GLFW.GLFW_KEY_RIGHT       -> "Right";
+            case GLFW.GLFW_KEY_LEFT_SHIFT,
+                 GLFW.GLFW_KEY_RIGHT_SHIFT -> "Shift";
+            case GLFW.GLFW_KEY_LEFT_CONTROL,
+                 GLFW.GLFW_KEY_RIGHT_CONTROL -> "Ctrl";
+            case GLFW.GLFW_KEY_LEFT_ALT,
+                 GLFW.GLFW_KEY_RIGHT_ALT   -> "Alt";
+            default -> "Key" + keyCode;
+        };
     }
 }
