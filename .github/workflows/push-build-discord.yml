@@ -4,7 +4,7 @@ on:
     branches:
       - "**"
     paths-ignore:
-      - "demo_sequences/**"
+      - "sequence_demos/**"
       - "languages/**"
   workflow_dispatch:
 permissions:
