@@ -283,13 +283,14 @@ class SequencerEngine {
         switch (step.regressMode) {
             case "RESET" -> resetRegression();
             case "SAMPLE" -> {
-                double x = resolveSource(step.mathA, step.mathACh);
-                double y = resolveSource(step.mathB, step.mathBCh);
-                rN     += 1;
-                rSumX  += x;
-                rSumY  += y;
-                rSumXY += x * y;
-                rSumXX += x * x;
+                String[] xs = step.mathA.split(",");
+                String[] ys = step.mathB.split(",");
+                int count = Math.min(xs.length, ys.length);
+                for (int i = 0; i < count; i++) {
+                    double x = resolveSource(xs[i].trim(), step.mathACh);
+                    double y = resolveSource(ys[i].trim(), step.mathBCh);
+                    rN++; rSumX += x; rSumY += y; rSumXY += x * y; rSumXX += x * x;
+                }
             }
             case "SOLVE" -> {
                 double denom = rN * rSumXX - rSumX * rSumX;
@@ -356,6 +357,14 @@ class SequencerEngine {
             case "round" -> (double) Math.round(a);
             case "floor" -> Math.floor(a);
             case "ceil"  -> Math.ceil(a);
+            case "pow"   -> Math.pow(a, b);
+            case "sin"   -> Math.sin(Math.toRadians(a));
+            case "cos"   -> Math.cos(Math.toRadians(a));
+            case "tan"   -> Math.tan(Math.toRadians(a));
+            case "asin"  -> Math.toDegrees(Math.asin(Math.max(-1.0, Math.min(1.0, a))));
+            case "acos"  -> Math.toDegrees(Math.acos(Math.max(-1.0, Math.min(1.0, a))));
+            case "atan"  -> Math.toDegrees(Math.atan(a));
+            case "atan2" -> Math.toDegrees(Math.atan2(a, b));
             default      -> a;
         };
     }

@@ -3,6 +3,7 @@ package dev.bennethogan.universalkeyboard.blockentity;
 import dev.bennethogan.universalkeyboard.UniversalKeyboardMod;
 import dev.bennethogan.universalkeyboard.compat.CreateValueHelper;
 import dev.bennethogan.universalkeyboard.compat.KeyboardMode;
+import dev.bennethogan.universalkeyboard.compat.MonitorHelper;
 import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import dev.bennethogan.universalkeyboard.compat.SableCompat;
 import dev.bennethogan.universalkeyboard.compat.wireless.CreateWirelessHelper;
@@ -582,13 +583,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                                   LinkedKeyboardBlockEntity be) {
         if (!be.typeQueue.isEmpty()) {
             if (be.typeTimer <= 0) {
-                char c = be.typeQueue.poll();
-                if (c == '\n') {
-                    be.queueEventOnLinkedComputer("key", 257, false);
-                    be.queueEventOnLinkedComputer("key_up", 257);
-                } else {
-                    be.queueEventOnLinkedComputer("char", String.valueOf(c));
-                }
+                be.deliverTypedChar(be.typeQueue.poll());
                 be.typeTimer = TICKS_PER_CHAR;
             } else {
                 be.typeTimer--;
@@ -616,6 +611,32 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     }
 
     // ----- CC computer interaction — broadcasts to active-channel targets in range -----
+
+    // Routes one queued character to every target type: computers get key/char events,
+    // monitors get the character written straight to their terminal.
+    void deliverTypedChar(char c) {
+        if (c == '\n') {
+            queueEventOnLinkedComputer("key", 257, false);
+            queueEventOnLinkedComputer("key_up", 257);
+        } else {
+            queueEventOnLinkedComputer("char", String.valueOf(c));
+        }
+        writeCharToLinkedMonitors(c);
+    }
+
+    private void writeCharToLinkedMonitors(char c) {
+        List<BlockPos> targets = getLinkedTargetPositions();
+        if (targets.isEmpty() || level == null || level.isClientSide) return;
+        double range = ModConfig.COMMON.keyboardRange.get();
+        double rangeSq = range * range;
+        for (BlockPos targetPos : targets) {
+            if (worldPosition.distSqr(targetPos) > rangeSq) continue;
+            BlockEntity target = level.getBlockEntity(targetPos);
+            if (!MonitorHelper.isMonitor(target)) continue;
+            if (c == '\n') MonitorHelper.newline(target);
+            else           MonitorHelper.writeChar(target, c);
+        }
+    }
 
     void queueEventOnLinkedComputer(String event, Object... args) {
         List<BlockPos> targets = getLinkedTargetPositions();

@@ -28,8 +28,10 @@ import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DirectionProperty;
+import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.BlockHitResult;
@@ -42,12 +44,22 @@ import java.util.List;
 public class LinkedKeyboardBlock extends BaseEntityBlock {
 
     public static final DirectionProperty FACING = BlockStateProperties.HORIZONTAL_FACING;
-    private static final VoxelShape SHAPE_NS = Block.box(0, 0, 2, 16, 2, 14);
-    private static final VoxelShape SHAPE_EW = Block.box(2, 0, 0, 14, 2, 16);
+    public static final EnumProperty<AttachFace> FACE = BlockStateProperties.ATTACH_FACE;
+
+    private static final VoxelShape SHAPE_FLOOR_NS   = Block.box( 0,  0,  2, 16,  2, 14);
+    private static final VoxelShape SHAPE_FLOOR_EW   = Block.box( 2,  0,  0, 14,  2, 16);
+    private static final VoxelShape SHAPE_CEIL_NS    = Block.box( 0, 14,  2, 16, 16, 14);
+    private static final VoxelShape SHAPE_CEIL_EW    = Block.box( 2, 14,  0, 14, 16, 16);
+    private static final VoxelShape SHAPE_WALL_N     = Block.box( 0,  5, 14, 16, 10, 16);
+    private static final VoxelShape SHAPE_WALL_S     = Block.box( 0,  5,  0, 16, 10,  2);
+    private static final VoxelShape SHAPE_WALL_E     = Block.box( 0,  5,  0,  2, 10, 16);
+    private static final VoxelShape SHAPE_WALL_W     = Block.box(14,  5,  0, 16, 10, 16);
 
     public LinkedKeyboardBlock(Properties properties) {
         super(properties);
-        this.registerDefaultState(this.stateDefinition.any().setValue(FACING, Direction.NORTH));
+        this.registerDefaultState(this.stateDefinition.any()
+                .setValue(FACING, Direction.NORTH)
+                .setValue(FACE, AttachFace.FLOOR));
     }
 
     @Override
@@ -57,19 +69,41 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
 
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
-        builder.add(FACING);
+        builder.add(FACING, FACE);
     }
 
     @Override
     public BlockState getStateForPlacement(BlockPlaceContext context) {
-        return this.defaultBlockState()
-                .setValue(FACING, context.getHorizontalDirection());
+        Direction clicked = context.getClickedFace();
+        AttachFace face;
+        Direction facing;
+        if (clicked == Direction.UP) {
+            face = AttachFace.FLOOR;
+            facing = context.getHorizontalDirection();
+        } else if (clicked == Direction.DOWN) {
+            face = AttachFace.CEILING;
+            facing = context.getHorizontalDirection();
+        } else {
+            face = AttachFace.WALL;
+            facing = clicked;
+        }
+        return this.defaultBlockState().setValue(FACE, face).setValue(FACING, facing);
     }
 
     @Override
     public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
         Direction facing = state.getValue(FACING);
-        return (facing == Direction.NORTH || facing == Direction.SOUTH) ? SHAPE_NS : SHAPE_EW;
+        boolean ns = (facing == Direction.NORTH || facing == Direction.SOUTH);
+        return switch (state.getValue(FACE)) {
+            case FLOOR   -> ns ? SHAPE_FLOOR_NS : SHAPE_FLOOR_EW;
+            case CEILING -> ns ? SHAPE_CEIL_NS  : SHAPE_CEIL_EW;
+            case WALL    -> switch (facing) {
+                case NORTH -> SHAPE_WALL_N;
+                case SOUTH -> SHAPE_WALL_S;
+                case EAST  -> SHAPE_WALL_E;
+                default    -> SHAPE_WALL_W;
+            };
+        };
     }
 
     @Override
@@ -168,7 +202,9 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
             saved = be.exportData(level.registryAccess());
         }
 
-        level.setBlock(pos, target.defaultBlockState().setValue(FACING, state.getValue(FACING)),
+        level.setBlock(pos, target.defaultBlockState()
+                .setValue(FACING, state.getValue(FACING))
+                .setValue(FACE, state.getValue(FACE)),
                 Block.UPDATE_ALL);
 
         // Restore into the freshly-created block entity.
@@ -203,7 +239,7 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
         super.onRemove(state, level, pos, newState, movedByPiston);
     }
 
-    // keyboards aren't lost to accidental creative breaks (matches Create typewriter).
+    // keyboards aren't lost to accidental creative breaks (copied Create typewriter).
     @Override
     public BlockState playerWillDestroy(Level level, BlockPos pos, BlockState state, Player player) {
         if (!level.isClientSide && player.isCreative()
@@ -216,9 +252,7 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
         return super.playerWillDestroy(level, pos, state, player);
     }
 
-    // Survival player breaks + non-player destruction (explosions, etc.).
-    // Read the block entity directly from the Builder — calling builder.create()
-    // first can silently fail and produce no drops.
+    // Survival player breaks + non-player destruction
     @Override
     public List<ItemStack> getDrops(BlockState state, LootParams.Builder builder) {
         BlockEntity be = builder.getOptionalParameter(LootContextParams.BLOCK_ENTITY);

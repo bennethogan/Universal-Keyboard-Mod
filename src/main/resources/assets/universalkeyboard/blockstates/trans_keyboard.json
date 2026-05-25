@@ -1,8 +1,16 @@
 {
   "variants": {
-    "facing=north": { "model": "universalkeyboard:block/trans_keyboard" },
-    "facing=east":  { "model": "universalkeyboard:block/trans_keyboard", "y": 90 },
-    "facing=south": { "model": "universalkeyboard:block/trans_keyboard", "y": 180 },
-    "facing=west":  { "model": "universalkeyboard:block/trans_keyboard", "y": 270 }
+    "face=floor,facing=north":   { "model": "universalkeyboard:block/trans_keyboard" },
+    "face=floor,facing=east":    { "model": "universalkeyboard:block/trans_keyboard", "y": 90 },
+    "face=floor,facing=south":   { "model": "universalkeyboard:block/trans_keyboard", "y": 180 },
+    "face=floor,facing=west":    { "model": "universalkeyboard:block/trans_keyboard", "y": 270 },
+    "face=ceiling,facing=north": { "model": "universalkeyboard:block/trans_keyboard", "x": 180 },
+    "face=ceiling,facing=east":  { "model": "universalkeyboard:block/trans_keyboard", "x": 180, "y": 90 },
+    "face=ceiling,facing=south": { "model": "universalkeyboard:block/trans_keyboard", "x": 180, "y": 180 },
+    "face=ceiling,facing=west":  { "model": "universalkeyboard:block/trans_keyboard", "x": 180, "y": 270 },
+    "face=wall,facing=north":    { "model": "universalkeyboard:block/trans_keyboard_wall", "y": 180 },
+    "face=wall,facing=south":    { "model": "universalkeyboard:block/trans_keyboard_wall" },
+    "face=wall,facing=east":     { "model": "universalkeyboard:block/trans_keyboard_wall", "y": 270 },
+    "face=wall,facing=west":     { "model": "universalkeyboard:block/trans_keyboard_wall", "y": 90 }
   }
 }

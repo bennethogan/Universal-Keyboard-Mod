@@ -49,8 +49,17 @@ public class SequencerScreen extends Screen {
     private static final int COL_CTX  = 108;
     private static final int COL_DEL  = 394;
 
-    private static final String[]  MATH_OPS   = {"+", "-", "*", "/", "%", "min", "max", "abs", "neg", "round", "floor", "ceil"};
-    private static final boolean[] MATH_UNARY = {false, false, false, false, false, false, false, true, true, true, true, true};
+    private static final String[]   OP_CAT_LABELS = {"Binary", "Unary", "Trig"};
+    private static final String[][] OP_CAT_OPS    = {
+        {"+", "-", "*", "/", "%", "pow", "min", "max"},
+        {"abs", "neg", "round", "floor", "ceil"},
+        {"sin", "cos", "tan", "asin", "acos", "atan", "atan2"}
+    };
+    private static final boolean[][] OP_CAT_UNARY = {
+        {false, false, false, false, false, false, false, false},
+        {true,  true,  true,  true,  true},
+        {true,  true,  true,  true,  true,  true,  false}
+    };
     private static final String[]   IF_OPS    = {">", ">=", "=", "<=", "<", "!="};
     private static final Direction[] RS_DIRS  = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST};
 
@@ -84,6 +93,13 @@ public class SequencerScreen extends Screen {
     private boolean      loadDropdownOpen   = false;
     private List<String> loadDropdownFiles  = new ArrayList<>();
     private int          loadDropdownScroll = 0;
+
+    private int  mathOpDropdownRow  = -1;
+    private int  mathOpCatHover     = 0;
+
+    private int     regressMultiRow    = -1;
+    private boolean regressMultiIsA    = true;
+    private int     regressMultiScroll = 0;
 
     // Overwrite confirmation
     private String  confirmOverwriteName = null;
@@ -261,7 +277,8 @@ public class SequencerScreen extends Screen {
 
         // Compute insert-hover gap (which inter-row gap the mouse is near)
         insertHoverGap = -1;
-        if (typeDropdownRow < 0 && mathDropdownRow < 0 && !loadDropdownOpen
+        if (typeDropdownRow < 0 && mathDropdownRow < 0 && mathOpDropdownRow < 0
+                && regressMultiRow < 0 && !loadDropdownOpen
                 && confirmOverwriteName == null && !showNoNameDialog) {
             int count = Math.min(VISIBLE, steps.size() - scrollOffset);
             if (mx >= cx && mx < cx + rowW) {
@@ -308,6 +325,8 @@ public class SequencerScreen extends Screen {
         renderTypeDropdown(g, mx, my);
         renderMathSourceDropdown(g, mx, my);
         renderLoadDropdown(g, mx, my);
+        renderMathOpDropdown(g, mx, my);
+        renderRegressMultiDropdown(g, mx, my);
         if (confirmOverwriteName != null) renderConfirmDialog(g, mx, my);
         if (showNoNameDialog) renderNoNameDialog(g, mx, my);
         g.pose().popPose();
@@ -533,14 +552,15 @@ public class SequencerScreen extends Screen {
             if (t == Type.SET_VALUE && !ccPresent) continue;
             list.add(t);
         }
-        if (ccPresent && hasLinkedComputer()) {
+        if (ccPresent && hasTypeableTarget()) {
             list.add(Type.TYPE_TEXT);
             list.add(Type.TYPE_VARIABLE);
         }
         return list.toArray(new Type[0]);
     }
 
-    private boolean hasLinkedComputer() {
+    // TYPE steps work against CC computers (key/char events) and monitors (terminal writes).
+    private boolean hasTypeableTarget() {
         var mc = Minecraft.getInstance();
         if (mc.level == null) return false;
         var be = mc.level.getBlockEntity(keyboardPos);
@@ -548,7 +568,9 @@ public class SequencerScreen extends Screen {
         for (var positions : kb.getAllChannelTargets().values()) {
             for (BlockPos pos : positions) {
                 var target = mc.level.getBlockEntity(pos);
-                if (target != null && dev.bennethogan.universalkeyboard.compat.KeyboardMode.isCCComputer(target))
+                if (target == null) continue;
+                if (dev.bennethogan.universalkeyboard.compat.KeyboardMode.isCCComputer(target)
+                        || dev.bennethogan.universalkeyboard.compat.MonitorHelper.isMonitor(target))
                     return true;
             }
         }
@@ -617,17 +639,24 @@ public class SequencerScreen extends Screen {
             return true;
         }
 
-        if (insertHoverGap >= 0 && btn == 0) {
-            insertStep(scrollOffset + insertHoverGap);
+        if (loadDropdownOpen) {
+            handleLoadDropdownClick(mx, my);
             return true;
         }
 
-        if (loadDropdownOpen) {
-            if (handleLoadDropdownClick(mx, my)) return true;
+        if (mathDropdownRow >= 0) {
+            handleMathDropdownClick(mx, my);
+            return true;
         }
 
-        if (mathDropdownRow >= 0) {
-            if (handleMathDropdownClick(mx, my)) return true;
+        if (mathOpDropdownRow >= 0) {
+            handleMathOpDropdownClick(mx, my);
+            return true;
+        }
+
+        if (regressMultiRow >= 0) {
+            handleRegressMultiClick(mx, my);
+            return true;
         }
 
         if (typeDropdownRow >= 0) {
@@ -651,11 +680,16 @@ public class SequencerScreen extends Screen {
                     int si = scrollOffset + savedRow;
                     if (si < steps.size()) steps.get(si).type = available[idx];
                 }
-                refreshAllRows();
-                return true;
             }
             refreshAllRows();
+            return true;
         }
+
+        if (insertHoverGap >= 0 && btn == 0) {
+            insertStep(scrollOffset + insertHoverGap);
+            return true;
+        }
+
         return super.mouseClicked(mx, my, btn);
     }
 
@@ -691,11 +725,9 @@ public class SequencerScreen extends Screen {
                     else          { step.mathB = sel; step.mathBManual = false; }
                 }
             }
-            refreshAllRows();
-            return true;
         }
         refreshAllRows();
-        return false;
+        return true;
     }
 
     private boolean handleLoadDropdownClick(double mx, double my) {
@@ -716,16 +748,181 @@ public class SequencerScreen extends Screen {
             if (rel >= 0 && rel < vis && idx < loadDropdownFiles.size()) {
                 String name = loadDropdownFiles.get(idx);
                 if (running) {
-                    // Don't load while running — could be surprising; just set name
                     saveName.setValue(name);
                 } else {
                     loadFromFile(name);
                     saveName.setValue(name);
                 }
             }
+        }
+        return true;
+    }
+
+    private void renderMathOpDropdown(GuiGraphics g, int mx, int my) {
+        if (mathOpDropdownRow < 0 || mathOpDropdownRow >= VISIBLE) return;
+        int rowY = rowAreaY + mathOpDropdownRow * (ROW_H + ROW_GAP);
+        int catX = panelX + PAD + COL_CTX + 140;
+        int catW = 62;
+        int itemH = 12;
+        int catH  = OP_CAT_LABELS.length * itemH + 4;
+        int catY  = ddPos(rowY, catH);
+
+        drawDdBox(g, catX, catW, catY, catH);
+        for (int i = 0; i < OP_CAT_LABELS.length; i++) {
+            int ty = catY + 2 + i * itemH;
+            boolean hov = mx >= catX && mx < catX + catW && my >= ty && my < ty + itemH;
+            if (hov) mathOpCatHover = i;
+            boolean sel = mathOpCatHover == i;
+            if (sel || hov) g.fill(catX + 1, ty, catX + catW - 1, ty + itemH, 0xFF2A3A55);
+            g.drawString(font, OP_CAT_LABELS[i], catX + 4, ty + 2, sel ? 0xFFFFFF : 0xAAAAAA, false);
+            g.drawString(font, "›", catX + catW - 10, ty + 2, sel ? 0x88AAFF : 0x555555, false);
+        }
+
+        if (mathOpCatHover >= 0 && mathOpCatHover < OP_CAT_OPS.length) {
+            String[] ops = OP_CAT_OPS[mathOpCatHover];
+            int opX = catX + catW + 2;
+            int opW = 54;
+            int opH = ops.length * itemH + 4;
+            int opY = catY;
+            if (opY + opH > panelY + panelH - BTN_H - PAD)
+                opY = panelY + panelH - BTN_H - PAD - opH;
+            drawDdBox(g, opX, opW, opY, opH);
+            int si = scrollOffset + mathOpDropdownRow;
+            String cur = (si < steps.size()) ? steps.get(si).mathOp : "+";
+            for (int i = 0; i < ops.length; i++) {
+                int ty = opY + 2 + i * itemH;
+                boolean hov = mx >= opX && mx < opX + opW && my >= ty && my < ty + itemH;
+                boolean isCur = ops[i].equals(cur);
+                if (hov)   g.fill(opX + 1, ty, opX + opW - 1, ty + itemH, 0xFF2A3A55);
+                else if (isCur) g.fill(opX + 1, ty, opX + opW - 1, ty + itemH, 0xFF1E3A2A);
+                g.drawString(font, ops[i], opX + 4, ty + 2, (hov || isCur) ? 0xFFFFFF : 0xAAAAAA, false);
+            }
+        }
+    }
+
+    private boolean handleMathOpDropdownClick(double mx, double my) {
+        int rowY = rowAreaY + mathOpDropdownRow * (ROW_H + ROW_GAP);
+        int catX = panelX + PAD + COL_CTX + 140;
+        int catW = 62;
+        int itemH = 12;
+        int catH  = OP_CAT_LABELS.length * itemH + 4;
+        int catY  = ddPos(rowY, catH);
+        int savedRow = mathOpDropdownRow;
+
+        if (mathOpCatHover >= 0 && mathOpCatHover < OP_CAT_OPS.length) {
+            String[] ops = OP_CAT_OPS[mathOpCatHover];
+            int opX = catX + catW + 2;
+            int opW = 54;
+            int opH = ops.length * itemH + 4;
+            int opY = catY;
+            if (opY + opH > panelY + panelH - BTN_H - PAD)
+                opY = panelY + panelH - BTN_H - PAD - opH;
+            if (mx >= opX && mx < opX + opW && my >= opY && my < opY + opH) {
+                int rel = ((int) my - opY - 2) / itemH;
+                if (rel >= 0 && rel < ops.length) {
+                    mathOpDropdownRow = -1;
+                    int si = scrollOffset + savedRow;
+                    if (si < steps.size()) {
+                        steps.get(si).mathOp = ops[rel];
+                        refreshAllRows();
+                    }
+                    return true;
+                }
+            }
+        }
+
+        if (mx >= catX && mx < catX + catW && my >= catY && my < catY + catH) {
+            int rel = ((int) my - catY - 2) / itemH;
+            if (rel >= 0 && rel < OP_CAT_LABELS.length) mathOpCatHover = rel;
             return true;
         }
-        return false;
+
+        mathOpDropdownRow = -1;
+        refreshAllRows();
+        return true;
+    }
+
+    private void renderRegressMultiDropdown(GuiGraphics g, int mx, int my) {
+        if (regressMultiRow < 0 || regressMultiRow >= VISIBLE) return;
+        int si = scrollOffset + regressMultiRow;
+        if (si >= steps.size()) return;
+        SequencerStep step = steps.get(si);
+        int mCh = regressMultiIsA ? step.mathACh : step.mathBCh;
+        List<String> opts = buildMathSrcOptionsNoManual(mCh);
+        List<String> selected = parseMultiSrc(regressMultiIsA ? step.mathA : step.mathB);
+
+        int rowY  = rowAreaY + regressMultiRow * (ROW_H + ROW_GAP);
+        int ddX   = regressMultiIsA ? (panelX + PAD + COL_CTX + 48) : (panelX + PAD + COL_CTX + 180);
+        int ddW   = 90;
+        int itemH = 12;
+        int vis   = Math.min(DD_VIS + 2, opts.size());
+        int ddH   = vis * itemH + 4;
+        int ddY   = ddPos(rowY, ddH);
+
+        drawDdBox(g, ddX, ddW, ddY, ddH);
+        for (int i = 0; i < vis; i++) {
+            int idx = regressMultiScroll + i;
+            if (idx >= opts.size()) break;
+            String opt = opts.get(idx);
+            boolean isSel = selected.contains(opt);
+            int ty = ddY + 2 + i * itemH;
+            boolean hov = mx >= ddX && mx < ddX + ddW && my >= ty && my < ty + itemH;
+            if (isSel)  g.fill(ddX + 1, ty, ddX + ddW - 1, ty + itemH, 0xFF1E3A2A);
+            if (hov)    g.fill(ddX + 1, ty, ddX + ddW - 1, ty + itemH, 0xFF2A3A55);
+            g.drawString(font, (isSel ? "§a✓ " : "  ") + opt, ddX + 4, ty + 2,
+                    hov ? 0xFFFFFF : (isSel ? 0x88FF88 : 0xAAAAAA), false);
+        }
+        drawScrollArrows(g, ddX, ddW, ddY, ddH, regressMultiScroll, opts.size());
+    }
+
+    private boolean handleRegressMultiClick(double mx, double my) {
+        int si = scrollOffset + regressMultiRow;
+        int mCh = (si < steps.size()) ? (regressMultiIsA ? steps.get(si).mathACh : steps.get(si).mathBCh) : 1;
+        List<String> opts = buildMathSrcOptionsNoManual(mCh);
+
+        int rowY  = rowAreaY + regressMultiRow * (ROW_H + ROW_GAP);
+        int ddX   = regressMultiIsA ? (panelX + PAD + COL_CTX + 48) : (panelX + PAD + COL_CTX + 180);
+        int ddW   = 90;
+        int itemH = 12;
+        int vis   = Math.min(DD_VIS + 2, opts.size());
+        int ddH   = vis * itemH + 4;
+        int ddY   = ddPos(rowY, ddH);
+
+        if (mx >= ddX && mx < ddX + ddW && my >= ddY && my < ddY + ddH) {
+            int rel = ((int) my - ddY - 2) / itemH;
+            int idx = regressMultiScroll + rel;
+            if (rel >= 0 && rel < vis && idx < opts.size() && si < steps.size()) {
+                String opt = opts.get(idx);
+                SequencerStep step = steps.get(si);
+                String curSrc = regressMultiIsA ? step.mathA : step.mathB;
+                List<String> sel = parseMultiSrc(curSrc);
+                if (sel.contains(opt)) sel.remove(opt); else sel.add(opt);
+                String joined = String.join(",", sel);
+                if (regressMultiIsA) step.mathA = joined; else step.mathB = joined;
+                refreshAllRows();
+            }
+            return true;
+        }
+        regressMultiRow = -1;
+        refreshAllRows();
+        return true;
+    }
+
+    private List<String> buildMathSrcOptionsNoManual(int channel) {
+        List<String> opts = new ArrayList<>();
+        for (int v = 1; v <= SequencerStep.VAR_COUNT; v++) opts.add("V" + v);
+        opts.add("RS:N"); opts.add("RS:S"); opts.add("RS:E"); opts.add("RS:W");
+        int wc = getWirelessCount();
+        for (int w = 1; w <= wc; w++) opts.add("W" + w);
+        opts.addAll(gettersFor(channel));
+        return opts;
+    }
+
+    private List<String> parseMultiSrc(String src) {
+        List<String> result = new ArrayList<>();
+        if (src == null || src.isBlank()) return result;
+        for (String s : src.split(",")) { String t = s.trim(); if (!t.isEmpty()) result.add(t); }
+        return result;
     }
 
     @Override
@@ -744,6 +941,14 @@ public class SequencerScreen extends Screen {
             List<String> opts = buildMathSrcOptions(mch);
             int max = Math.max(0, opts.size() - DD_VIS);
             mathDropdownScroll = Math.max(0, Math.min(max, mathDropdownScroll + dir));
+            return true;
+        }
+        if (regressMultiRow >= 0) {
+            int msi = scrollOffset + regressMultiRow;
+            int mch = (msi < steps.size()) ? (regressMultiIsA ? steps.get(msi).mathACh : steps.get(msi).mathBCh) : 1;
+            List<String> opts = buildMathSrcOptionsNoManual(mch);
+            int max = Math.max(0, opts.size() - DD_VIS);
+            regressMultiScroll = Math.max(0, Math.min(max, regressMultiScroll + dir));
             return true;
         }
         if (typeDropdownRow >= 0) {
@@ -771,6 +976,8 @@ public class SequencerScreen extends Screen {
             if (confirmOverwriteName != null) { confirmOverwriteName = null; return true; }
             if (loadDropdownOpen)  { loadDropdownOpen  = false; return true; }
             if (mathDropdownRow >= 0) { mathDropdownRow = -1; return true; }
+            if (mathOpDropdownRow >= 0) { mathOpDropdownRow = -1; return true; }
+            if (regressMultiRow >= 0) { regressMultiRow = -1; return true; }
             if (typeDropdownRow >= 0) { typeDropdownRow = -1; return true; }
             onClose(); return true;
         }
@@ -966,19 +1173,31 @@ public class SequencerScreen extends Screen {
             mathDestBtn = DarkButton.make(Component.literal("V1"), b -> cycleMathDest(1),
                     ctx, rowY + 1, 36, BTN_H);
             addRenderableWidget(mathDestBtn);
-            mathASourceBtn = DarkButton.make(Component.literal("src A..."), b -> openMathDropdown(true),
-                    ctx + 48, rowY + 1, 64, BTN_H);
+            mathASourceBtn = DarkButton.make(Component.literal("src A..."), b -> {
+                int si2 = scrollOffset + rowIdx;
+                if (si2 < steps.size() && steps.get(si2).type == Type.REGRESS
+                        && steps.get(si2).regressMode.equals("SAMPLE"))
+                    openRegressMultiDropdown(true);
+                else
+                    openMathDropdown(true);
+            }, ctx + 48, rowY + 1, 64, BTN_H);
             addRenderableWidget(mathASourceBtn);
             mathAInput = makeBox(ctx + 48, rowY, 64, "A (# V1 RS:N getter)",
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).mathA = str; });
             mathAChBtn = DarkButton.make(Component.literal("1"), b -> cycleMathACh(1),
                     ctx + 114, rowY + 1, 22, BTN_H);
             addRenderableWidget(mathAChBtn);
-            mathOpBtn = DarkButton.make(Component.literal("+"), b -> cycleMathOp(1),
+            mathOpBtn = DarkButton.make(Component.literal("+"), b -> openMathOpDropdown(),
                     ctx + 140, rowY + 1, 36, BTN_H);
             addRenderableWidget(mathOpBtn);
-            mathBSourceBtn = DarkButton.make(Component.literal("src B..."), b -> openMathDropdown(false),
-                    ctx + 180, rowY + 1, 64, BTN_H);
+            mathBSourceBtn = DarkButton.make(Component.literal("src B..."), b -> {
+                int si2 = scrollOffset + rowIdx;
+                if (si2 < steps.size() && steps.get(si2).type == Type.REGRESS
+                        && steps.get(si2).regressMode.equals("SAMPLE"))
+                    openRegressMultiDropdown(false);
+                else
+                    openMathDropdown(false);
+            }, ctx + 180, rowY + 1, 64, BTN_H);
             addRenderableWidget(mathBSourceBtn);
             mathBInput = makeBox(ctx + 180, rowY, 64, I18n.get("gui.universalkeyboard.hint.math_src_b"),
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).mathB = str; });
@@ -1128,6 +1347,26 @@ public class SequencerScreen extends Screen {
             mathDropdownScroll = 0;
         }
 
+        private void openMathOpDropdown() {
+            typeDropdownRow   = -1;
+            mathDropdownRow   = -1;
+            regressMultiRow   = -1;
+            loadDropdownOpen  = false;
+            mathOpDropdownRow = (mathOpDropdownRow == rowIdx) ? -1 : rowIdx;
+            mathOpCatHover    = 0;
+        }
+
+        private void openRegressMultiDropdown(boolean isA) {
+            typeDropdownRow   = -1;
+            mathDropdownRow   = -1;
+            mathOpDropdownRow = -1;
+            loadDropdownOpen  = false;
+            boolean sameBtn = regressMultiRow == rowIdx && regressMultiIsA == isA;
+            regressMultiRow    = sameBtn ? -1 : rowIdx;
+            regressMultiIsA    = isA;
+            regressMultiScroll = 0;
+        }
+
         private List<String> buildIfGetterList(int channel) {
             List<String> list = new ArrayList<>(Arrays.asList(SequencerStep.RS_INPUT_GETTER_NAMES));
             for (int i = 1; i <= 8; i++) list.add("V" + i);
@@ -1204,10 +1443,13 @@ public class SequencerScreen extends Screen {
         private void cycleMathOp(int dir) {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
-            int next = wrapIdx(Arrays.asList(MATH_OPS).indexOf(step.mathOp), MATH_OPS.length, dir);
-            step.mathOp = MATH_OPS[next];
+            List<String> all = new ArrayList<>();
+            for (String[] cat : OP_CAT_OPS) all.addAll(Arrays.asList(cat));
+            int idx = all.indexOf(step.mathOp);
+            if (idx < 0) idx = 0;
+            step.mathOp = all.get(wrapIdx(idx, all.size(), dir));
             mathOpBtn.setMessage(Component.literal(step.mathOp));
-            boolean unary = MATH_UNARY[next];
+            boolean unary = isUnaryOp(step.mathOp);
             mathBInput.visible     = !unary && step.mathBManual;
             mathBSourceBtn.visible = !unary && !step.mathBManual;
             mathBChBtn.visible     = !unary;
@@ -1384,20 +1626,10 @@ public class SequencerScreen extends Screen {
                     regressModeBtn.visible = true;
                     regressModeBtn.setMessage(Component.literal(step.regressMode));
                     if (step.regressMode.equals("SAMPLE")) {
-                        boolean aManual = step.mathAManual;
-                        boolean bManual = step.mathBManual;
-                        mathAInput.visible     = aManual;
-                        mathASourceBtn.visible = !aManual;
-                        mathAChBtn.visible     = true;
-                        mathBInput.visible     = bManual;
-                        mathBSourceBtn.visible = !bManual;
-                        mathBChBtn.visible     = true;
-                        if (aManual) mathAInput.setValue(step.mathA);
-                        else mathASourceBtn.setMessage(Component.literal(step.mathA.isEmpty() ? "x..." : step.mathA));
-                        mathAChBtn.setMessage(Component.literal(String.valueOf(step.mathACh)));
-                        if (bManual) mathBInput.setValue(step.mathB);
-                        else mathBSourceBtn.setMessage(Component.literal(step.mathB.isEmpty() ? "y..." : step.mathB));
-                        mathBChBtn.setMessage(Component.literal(String.valueOf(step.mathBCh)));
+                        mathAInput.visible = true;
+                        mathBInput.visible = true;
+                        mathAInput.setValue(step.mathA);
+                        mathBInput.setValue(step.mathB);
                     } else if (step.regressMode.equals("SOLVE")) {
                         mathDestBtn.setX(ctx + 52);
                         mathDestBtn.visible = regressDest2Btn.visible = true;
@@ -1423,8 +1655,9 @@ public class SequencerScreen extends Screen {
     // ── Static helpers ────────────────────────────────────────────────────────
 
     private static boolean isUnaryOp(String op) {
-        for (int i = 0; i < MATH_OPS.length; i++)
-            if (MATH_OPS[i].equals(op)) return MATH_UNARY[i];
+        for (int c = 0; c < OP_CAT_OPS.length; c++)
+            for (int i = 0; i < OP_CAT_OPS[c].length; i++)
+                if (OP_CAT_OPS[c][i].equals(op)) return OP_CAT_UNARY[c][i];
         return false;
     }
 
