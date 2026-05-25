@@ -65,7 +65,8 @@ public class SequencerScreen extends Screen {
     private Map<Integer, List<String>>   gettersByChannel = new java.util.HashMap<>();
     private Map<Integer, List<String[]>> settersByChannel = new java.util.HashMap<>();
 
-    private int scrollOffset = 0;
+    private int scrollOffset  = 0;
+    private int activeRowIdx  = -1;
 
     // Insert-between hover: gap index 0 = before first visible row, 1 = between rows 0&1, etc.
     private int insertHoverGap = -1;
@@ -232,9 +233,6 @@ public class SequencerScreen extends Screen {
             g.fill(cx, rowY,              cx + rowW, rowY + 1,          borderClr);
             g.fill(cx, rowY + ROW_H - 1, cx + rowW, rowY + ROW_H,      borderClr);
 
-            // Extra white overlay for the running step
-            if (running && si == currentStep)
-                g.fill(cx + 2, rowY + 1, cx + rowW, rowY + ROW_H - 1, 0x33FFFFFF);
 
             g.drawString(font, "§8" + (si + 1), cx + COL_NUM, rowY + (ROW_H - 8) / 2, 0xAAAAAA, false);
 
@@ -288,18 +286,17 @@ public class SequencerScreen extends Screen {
         }
 
         int statusY = rowAreaY + VISIBLE * (ROW_H + ROW_GAP) + PAD;
-        if (running)
-            g.drawString(font, I18n.get("gui.universalkeyboard.msg.seq_running", currentStep + 1, steps.size()),
-                    cx, statusY, 0xFFFFFF, false);
-        else
+        if (!running)
             g.drawString(font, I18n.get("gui.universalkeyboard.msg.seq_stopped", steps.size(), steps.size() == 1 ? "" : "s"),
                     cx, statusY, 0xFFFFFF, false);
 
         for (var w : renderables) w.render(g, mx, my, pt);
 
-        // Dropdowns must render above all buttons. Button text is font-batched and can
-        // bleed through a plain fill drawn afterwards; elevating Z forces the dropdown
-        // geometry above the batched text layer.
+        if (running) {
+            g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, 0x55000000);
+            runStopBtn.render(g, mx, my, pt);
+        }
+
         g.pose().pushPose();
         g.pose().translate(0, 0, 400);
         renderTypeDropdown(g, mx, my);
@@ -582,6 +579,23 @@ public class SequencerScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mx, double my, int btn) {
+        if (running) {
+            if (runStopBtn.isMouseOver(mx, my)) runStopBtn.onClick(mx, my);
+            return true;
+        }
+
+        int cx   = panelX + PAD;
+        int rowW = PANEL_W - PAD * 2;
+        activeRowIdx = -1;
+        for (int r = 0; r < VISIBLE; r++) {
+            int rowY = rowAreaY + r * (ROW_H + ROW_GAP);
+            if (mx >= cx && mx < cx + rowW && my >= rowY && my < rowY + ROW_H) {
+                int si = scrollOffset + r;
+                if (si < steps.size()) activeRowIdx = r;
+                break;
+            }
+        }
+
         if (showNoNameDialog) { showNoNameDialog = false; return true; }
 
         // Confirm dialog blocks everything else
@@ -708,6 +722,7 @@ public class SequencerScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mx, double my, double dx, double dy) {
+        if (running) return true;
         int dir = (int) -Math.signum(dy);
 
         if (loadDropdownOpen) {
@@ -737,7 +752,7 @@ public class SequencerScreen extends Screen {
 
         int maxOff = Math.max(0, steps.size() - VISIBLE);
         int newOff = Math.max(0, Math.min(maxOff, scrollOffset + dir));
-        if (newOff != scrollOffset) { scrollOffset = newOff; refreshAllRows(); return true; }
+        if (newOff != scrollOffset) { scrollOffset = newOff; activeRowIdx = -1; refreshAllRows(); return true; }
         return super.mouseScrolled(mx, my, dx, dy);
     }
 
@@ -1189,6 +1204,7 @@ public class SequencerScreen extends Screen {
 
         /** If the mouse is over one of this row's cycle buttons, step it by dir. */
         boolean handleScrollCycle(double mx, double my, int dir) {
+            if (rowIdx != activeRowIdx) return false;
             int si = scrollOffset + rowIdx;
             if (si >= steps.size()) return false;
             if (hit(channelBtn, mx, my))     { cycleChannel(dir);           return true; }
