@@ -47,12 +47,26 @@ class SequencerEngine {
     }
 
     void tick(List<SequencerStep> steps) {
-        if (currentStep >= steps.size()) {
-            running = false;
-            be.setChanged();
-            mayBroadcastProgress();
-            return;
+        // I messed this up before and made it run only once per tick, so now we
+        // run as many steps as possible this tick; only stop on steps that need it
+        // This should make PID sequences work much better, I'm hoping
+        int budget = 512; // safety cap against infinite loops
+        while (running && budget-- > 0) {
+            if (currentStep >= steps.size()) {
+                running = false;
+                be.setChanged();
+                break;
+            }
+            if (tickOne(steps)) break;
         }
+        mayBroadcastProgress();
+    }
+
+    /**
+     * Executes the current step. Returns {@code true} if the engine should yield
+     * (stop processing further steps this game tick), {@code false} to continue.
+     */
+    private boolean tickOne(List<SequencerStep> steps) {
         SequencerStep step = steps.get(currentStep);
         switch (step.type) {
             case DELAY -> {
@@ -62,6 +76,7 @@ class SequencerEngine {
                     delayTicker = Math.max(1, Math.round(secs * 20));
                 }
                 if (--delayTicker <= 0) advance();
+                return true; // always yield on DELAY so it marks a real tick boundary
             }
             case IF -> {
                 if (evaluateIfCondition(step)) {
@@ -69,40 +84,38 @@ class SequencerEngine {
                         currentStep = Math.max(0, Math.min(step.jumpTarget - 1, steps.size() - 1));
                         delayTicker = 0;
                         be.setChanged();
-                        mayBroadcastProgress();
-                        return;
+                        return true; // jumped — yield to avoid runaway loops
                     } else {
                         currentStep += step.ifSkipCount;
                     }
                 }
                 advance();
+                return false;
             }
             case CONDITION -> {
                 if (evaluateCondition(step)) advance();
+                return true; // yield whether waiting or just passed
             }
-            case SET_VALUE -> {
-                applySetValue(step);
-                advance();
-            }
-            case SET_REDSTONE -> {
-                applySetRedstone(step);
-                advance();
-            }
+            case SET_VALUE -> { applySetValue(step);  advance(); return false; }
+            case SET_REDSTONE -> { applySetRedstone(step); advance(); return false; }
             case TYPE_TEXT -> {
-                if (!be.isTypeQueueEmpty()) break;
+                if (!be.isTypeQueueEmpty()) return true;
                 be.enqueueChars(step.typeTextStr, step.typeTextEnter);
                 advance();
+                return false;
             }
             case TYPE_VARIABLE -> {
-                if (!be.isTypeQueueEmpty()) break;
+                if (!be.isTypeQueueEmpty()) return true;
                 String src = step.setValueStr.matches("V[1-8]") ? step.setValueStr : "V1";
                 be.enqueueChars(formatVar(resolveSource(src, 1)), step.typeTextEnter);
                 advance();
+                return false;
             }
             case JUMP -> {
                 currentStep = Math.max(0, Math.min(step.jumpTarget - 1, steps.size() - 1));
                 delayTicker = 0;
                 be.setChanged();
+                return true; // yield after any jump to prevent tight-loop runaway
             }
             case MATH -> {
                 double a = resolveSource(step.mathA, step.mathACh);
@@ -111,18 +124,21 @@ class SequencerEngine {
                 String dest = step.mathDest != null ? step.mathDest.trim() : "V1";
                 if (dest.matches("V[1-8]")) vars[dest.charAt(1) - '1'] = result;
                 advance();
+                return false;
             }
             case CYCLE -> {
                 currentStep = 0;
                 delayTicker = 0;
                 be.setChanged();
+                return true; // yield so the next full pass starts on the next tick
             }
             case END -> {
                 running = false;
                 be.setChanged();
+                return true;
             }
+            default -> { advance(); return false; }
         }
-        mayBroadcastProgress();
     }
 
     double resolveSource(String src, int channel) {
