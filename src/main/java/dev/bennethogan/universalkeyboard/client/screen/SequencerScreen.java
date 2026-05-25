@@ -241,6 +241,12 @@ public class SequencerScreen extends Screen {
                 case DELAY -> g.drawString(font, "§7s",       ctx + 83, ly, 0xAAAAAA, false);
                 case JUMP  -> g.drawString(font, "§7→ step",  ctx,      ly, 0x888888, false);
                 case MATH  -> g.drawString(font, "§7=",       ctx + 40, ly, 0x888888, false);
+                case REGRESS -> {
+                    if (step.regressMode.equals("SAMPLE"))
+                        g.drawString(font, "§7y", ctx + 170, ly, 0x888888, false);
+                    else if (step.regressMode.equals("SOLVE"))
+                        g.drawString(font, "§7m,b", ctx + 136, ly, 0x888888, false);
+                }
                 default    -> {}
             }
         }
@@ -441,6 +447,7 @@ public class SequencerScreen extends Screen {
             case DELAY                  -> 0xFF777777;
             case JUMP                   -> 0xFFAAAAAA;
             case MATH                   -> 0xFF22BB22;
+            case REGRESS                -> 0xFF22AABB;
             case CYCLE                  -> 0xFF8822BB;
             case END                    -> 0xFF444444;
         };
@@ -457,6 +464,7 @@ public class SequencerScreen extends Screen {
             case DELAY                  -> 0x66111111;
             case JUMP                   -> 0x66222222;
             case MATH                   -> 0x66003300;
+            case REGRESS                -> 0x66002233;
             case CYCLE                  -> 0x66110033;
             case END                    -> 0x660D0D0D;
         };
@@ -558,7 +566,7 @@ public class SequencerScreen extends Screen {
     private List<String> buildMathSrcOptions(int channel) {
         List<String> opts = new ArrayList<>();
         opts.add(I18n.get("gui.universalkeyboard.label.manual_input"));
-        for (int v = 1; v <= 8; v++) opts.add("V" + v);
+        for (int v = 1; v <= SequencerStep.VAR_COUNT; v++) opts.add("V" + v);
         opts.add("RS:N"); opts.add("RS:S"); opts.add("RS:E"); opts.add("RS:W");
         int wc = getWirelessCount();
         for (int w = 1; w <= wc; w++) opts.add("W" + w);
@@ -862,6 +870,7 @@ public class SequencerScreen extends Screen {
         EditBox jumpInput;
         Button  mathDestBtn, mathASourceBtn, mathAChBtn, mathOpBtn, mathBSourceBtn, mathBChBtn;
         EditBox mathAInput, mathBInput;
+        Button  regressModeBtn, regressDest2Btn;
 
         RowWidgets(int rowIdx) {
             this.rowIdx = rowIdx;
@@ -976,6 +985,14 @@ public class SequencerScreen extends Screen {
             mathBChBtn = DarkButton.make(Component.literal("1"), b -> cycleMathBCh(1),
                     ctx + 246, rowY + 1, 22, BTN_H);
             addRenderableWidget(mathBChBtn);
+
+            // REGRESS
+            regressModeBtn = DarkButton.make(Component.literal("SAMPLE"), b -> cycleRegressMode(1),
+                    ctx, rowY + 1, 46, BTN_H);
+            addRenderableWidget(regressModeBtn);
+            regressDest2Btn = DarkButton.make(Component.literal("V2"), b -> cycleRegressDest2(1),
+                    ctx + 94, rowY + 1, 36, BTN_H);
+            addRenderableWidget(regressDest2Btn);
         }
 
         private EditBox makeBox(int x, int rowY, int w, String hint,
@@ -1017,8 +1034,8 @@ public class SequencerScreen extends Screen {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
             if (step.type == Type.TYPE_VARIABLE) {
-                String v = step.setValueStr.matches("V[1-8]") ? step.setValueStr : "V1";
-                step.setValueStr = "V" + (wrapIdx(v.charAt(1) - '1', 8, dir) + 1);
+                String v = SequencerStep.isVar(step.setValueStr) ? step.setValueStr : "V1";
+                step.setValueStr = "V" + (wrapIdx(SequencerStep.varIndex(v), SequencerStep.VAR_COUNT, dir) + 1);
                 methodBtn.setMessage(Component.literal(step.setValueStr));
                 return;
             }
@@ -1147,9 +1164,27 @@ public class SequencerScreen extends Screen {
         private void cycleMathDest(int dir) {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
-            String d = (step.mathDest != null && step.mathDest.matches("V[1-8]")) ? step.mathDest : "V1";
-            step.mathDest = "V" + (wrapIdx(d.charAt(1) - '1', 8, dir) + 1);
+            String d = SequencerStep.isVar(step.mathDest) ? step.mathDest : "V1";
+            step.mathDest = "V" + (wrapIdx(SequencerStep.varIndex(d), SequencerStep.VAR_COUNT, dir) + 1);
             mathDestBtn.setMessage(Component.literal(step.mathDest));
+        }
+
+        private void cycleRegressMode(int dir) {
+            int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
+            SequencerStep step = steps.get(si);
+            String[] modes = {"RESET", "SAMPLE", "SOLVE"};
+            int idx = 0;
+            for (int i = 0; i < modes.length; i++) if (modes[i].equals(step.regressMode)) { idx = i; break; }
+            step.regressMode = modes[wrapIdx(idx, modes.length, dir)];
+            refresh();
+        }
+
+        private void cycleRegressDest2(int dir) {
+            int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
+            SequencerStep step = steps.get(si);
+            String d = SequencerStep.isVar(step.regressDest2) ? step.regressDest2 : "V2";
+            step.regressDest2 = "V" + (wrapIdx(SequencerStep.varIndex(d), SequencerStep.VAR_COUNT, dir) + 1);
+            regressDest2Btn.setMessage(Component.literal(step.regressDest2));
         }
 
         private void cycleMathACh(int dir) {
@@ -1216,6 +1251,8 @@ public class SequencerScreen extends Screen {
             if (hit(ifSkipBtn, mx, my))      { cycleIfSkip(dir);            return true; }
             if (hit(sourceBtn, mx, my))      { cycleSource(dir);            return true; }
             if (hit(getterBtn, mx, my))      { cycleGetter(dir);            return true; }
+            if (hit(regressModeBtn, mx, my))  { cycleRegressMode(dir);       return true; }
+            if (hit(regressDest2Btn, mx, my)) { cycleRegressDest2(dir);      return true; }
             if (hit(mathDestBtn, mx, my))    { cycleMathDest(dir);          return true; }
             if (hit(mathASourceBtn, mx, my)) { cycleMathSource(true, dir);  return true; }
             if (hit(mathAChBtn, mx, my))     { cycleMathACh(dir);           return true; }
@@ -1246,6 +1283,7 @@ public class SequencerScreen extends Screen {
             mathDestBtn.visible = mathASourceBtn.visible = mathAInput.visible = false;
             mathAChBtn.visible = mathOpBtn.visible = false;
             mathBSourceBtn.visible = mathBInput.visible = mathBChBtn.visible = false;
+            regressModeBtn.visible = regressDest2Btn.visible = false;
 
             if (!has) return;
 
@@ -1312,6 +1350,7 @@ public class SequencerScreen extends Screen {
                 case DELAY -> { delayInput.visible = true; delayInput.setValue(step.delaySecondsStr); }
                 case JUMP  -> { jumpInput.visible  = true; jumpInput.setValue(String.valueOf(step.jumpTarget)); }
                 case MATH  -> {
+                    mathDestBtn.setX(panelX + PAD + COL_CTX);
                     mathDestBtn.visible = mathOpBtn.visible = mathAChBtn.visible = true;
                     boolean unary   = isUnaryOp(step.mathOp);
                     boolean aManual = step.mathAManual;
@@ -1336,9 +1375,38 @@ public class SequencerScreen extends Screen {
                 }
                 case TYPE_VARIABLE -> {
                     methodBtn.visible = typeEnterBtn.visible = true;
-                    if (!step.setValueStr.matches("V[1-8]")) step.setValueStr = "V1";
+                    if (!SequencerStep.isVar(step.setValueStr)) step.setValueStr = "V1";
                     methodBtn.setMessage(Component.literal(step.setValueStr));
                     typeEnterBtn.setMessage(Component.literal(step.typeTextEnter ? "↵ on" : "↵ off"));
+                }
+                case REGRESS -> {
+                    int ctx = panelX + PAD + COL_CTX;
+                    regressModeBtn.visible = true;
+                    regressModeBtn.setMessage(Component.literal(step.regressMode));
+                    if (step.regressMode.equals("SAMPLE")) {
+                        boolean aManual = step.mathAManual;
+                        boolean bManual = step.mathBManual;
+                        mathAInput.visible     = aManual;
+                        mathASourceBtn.visible = !aManual;
+                        mathAChBtn.visible     = true;
+                        mathBInput.visible     = bManual;
+                        mathBSourceBtn.visible = !bManual;
+                        mathBChBtn.visible     = true;
+                        if (aManual) mathAInput.setValue(step.mathA);
+                        else mathASourceBtn.setMessage(Component.literal(step.mathA.isEmpty() ? "x..." : step.mathA));
+                        mathAChBtn.setMessage(Component.literal(String.valueOf(step.mathACh)));
+                        if (bManual) mathBInput.setValue(step.mathB);
+                        else mathBSourceBtn.setMessage(Component.literal(step.mathB.isEmpty() ? "y..." : step.mathB));
+                        mathBChBtn.setMessage(Component.literal(String.valueOf(step.mathBCh)));
+                    } else if (step.regressMode.equals("SOLVE")) {
+                        mathDestBtn.setX(ctx + 52);
+                        mathDestBtn.visible = regressDest2Btn.visible = true;
+                        String slope = SequencerStep.isVar(step.mathDest) ? step.mathDest : "V1";
+                        step.mathDest = slope;
+                        if (!SequencerStep.isVar(step.regressDest2)) step.regressDest2 = "V2";
+                        mathDestBtn.setMessage(Component.literal(slope));
+                        regressDest2Btn.setMessage(Component.literal(step.regressDest2));
+                    }
                 }
                 case CYCLE, END -> {}
             }

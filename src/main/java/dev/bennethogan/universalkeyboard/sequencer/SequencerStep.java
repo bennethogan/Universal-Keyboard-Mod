@@ -17,6 +17,7 @@ public class SequencerStep {
         DELAY("Delay"),
         JUMP("Jump To"),
         MATH("Math / Var"),
+        REGRESS("Regression"),
         CYCLE("Loop"),
         END("End"),
         TYPE_VARIABLE("Type Var");
@@ -36,6 +37,7 @@ public class SequencerStep {
                 case DELAY          -> "§7"; // gray      — time
                 case JUMP           -> "§f"; // white     — goto
                 case MATH           -> "§a"; // green     — math/var
+                case REGRESS        -> "§3"; // teal      — regression
                 case CYCLE          -> "§5"; // purple    — loop
                 case END            -> "§8"; // dark gray — end
             };
@@ -66,6 +68,14 @@ public class SequencerStep {
     // Redstone input side names used as special IF getter values (shared client/server)
     public static final String[]    RS_INPUT_GETTER_NAMES = {"RS North", "RS South", "RS East", "RS West"};
     public static final Direction[] RS_INPUT_GETTER_DIRS  = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST};
+
+    // ── Variables ─────────────────────────────────────────────────────────────
+
+    public static final int VAR_COUNT = 16;
+    private static final java.util.regex.Pattern VAR_PATTERN = java.util.regex.Pattern.compile("V([1-9]|1[0-6])");
+
+    public static boolean isVar(String s) { return s != null && VAR_PATTERN.matcher(s).matches(); }
+    public static int     varIndex(String s) { return Integer.parseInt(s.substring(1)) - 1; }
 
     // ── Fields ────────────────────────────────────────────────────────────────
 
@@ -114,6 +124,10 @@ public class SequencerStep {
     public int     mathBCh     = 1;     // channel if B is a getter
     public boolean mathBManual = false;
 
+    // REGRESS  (reuses mathA/mathB as X/Y sources, mathDest as slope dest)
+    public String regressMode  = "SAMPLE"; // "RESET", "SAMPLE", or "SOLVE"
+    public String regressDest2 = "V2";     // intercept destination (SOLVE)
+
     // Channel (1-16) used by peripheral steps (SET_VALUE, TYPE_TEXT, IF, CONDITION)
     public int channel = 1;
 
@@ -156,6 +170,8 @@ public class SequencerStep {
         tag.putString("mathB",                 mathB);
         tag.putInt("mathBCh",                  mathBCh);
         tag.putBoolean("mathBManual",          mathBManual);
+        tag.putString("regressMode",           regressMode);
+        tag.putString("regressDest2",          regressDest2);
         tag.putInt("channel",                  channel);
         return tag;
     }
@@ -194,6 +210,8 @@ public class SequencerStep {
         s.mathB                 = tag.getString("mathB"); // empty default
         s.mathBCh               = tag.contains("mathBCh") ? Math.max(1, Math.min(16, tag.getInt("mathBCh"))) : 1;
         s.mathBManual           = tag.contains("mathBManual") && tag.getBoolean("mathBManual");
+        s.regressMode           = def(tag.getString("regressMode"),  "SAMPLE");
+        s.regressDest2          = def(tag.getString("regressDest2"), "V2");
         s.channel               = tag.contains("channel") ? Math.max(1, Math.min(16, tag.getInt("channel"))) : 1;
         return s;
     }
@@ -229,6 +247,8 @@ public class SequencerStep {
         buf.writeUtf(mathB);
         buf.writeByte(Math.max(1, Math.min(16, mathBCh)));
         buf.writeByte(mathBManual ? 1 : 0);
+        buf.writeUtf(regressMode);
+        buf.writeUtf(regressDest2);
     }
 
     public static SequencerStep decode(FriendlyByteBuf buf) {
@@ -266,6 +286,8 @@ public class SequencerStep {
         s.mathB       = buf.readUtf();
         s.mathBCh     = Math.max(1, Math.min(16, buf.readByte() & 0xFF));
         s.mathBManual = buf.readByte() != 0;
+        s.regressMode  = buf.readUtf();
+        s.regressDest2 = buf.readUtf();
         return s;
     }
 

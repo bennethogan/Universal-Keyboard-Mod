@@ -24,7 +24,9 @@ class SequencerEngine {
     private boolean running     = false;
     private int     currentStep = 0;
     private int     delayTicker = 0;
-    private final double[] vars = new double[8]; // V1-V8
+    private final double[] vars = new double[SequencerStep.VAR_COUNT];
+
+    private double rN, rSumX, rSumY, rSumXY, rSumXX;
 
     private int     lastBroadcastStep    = -1;
     private boolean lastBroadcastRunning = false;
@@ -39,6 +41,11 @@ class SequencerEngine {
         currentStep = 0;
         delayTicker = 0;
         Arrays.fill(vars, 0.0);
+        resetRegression();
+    }
+
+    private void resetRegression() {
+        rN = rSumX = rSumY = rSumXY = rSumXX = 0;
     }
 
     /** Marks the engine stopped; caller is responsible for clearing RS/wireless outputs. */
@@ -106,7 +113,7 @@ class SequencerEngine {
             }
             case TYPE_VARIABLE -> {
                 if (!be.isTypeQueueEmpty()) return true;
-                String src = step.setValueStr.matches("V[1-8]") ? step.setValueStr : "V1";
+                String src = SequencerStep.isVar(step.setValueStr) ? step.setValueStr : "V1";
                 be.enqueueChars(formatVar(resolveSource(src, 1)), step.typeTextEnter);
                 advance();
                 return false;
@@ -122,7 +129,12 @@ class SequencerEngine {
                 double b = resolveSource(step.mathB, step.mathBCh);
                 double result = applyMathOp(step.mathOp, a, b);
                 String dest = step.mathDest != null ? step.mathDest.trim() : "V1";
-                if (dest.matches("V[1-8]")) vars[dest.charAt(1) - '1'] = result;
+                if (SequencerStep.isVar(dest)) vars[SequencerStep.varIndex(dest)] = result;
+                advance();
+                return false;
+            }
+            case REGRESS -> {
+                applyRegress(step);
                 advance();
                 return false;
             }
@@ -144,7 +156,7 @@ class SequencerEngine {
     double resolveSource(String src, int channel) {
         if (src == null || src.isBlank()) return 0;
         src = src.trim();
-        if (src.matches("V[1-8]")) return vars[src.charAt(1) - '1'];
+        if (SequencerStep.isVar(src)) return vars[SequencerStep.varIndex(src)];
         if (src.startsWith("RS:")) {
             String d = src.substring(3).toUpperCase();
             Direction dir = switch (d) {
@@ -210,8 +222,8 @@ class SequencerEngine {
         if (rsIdx >= 0) {
             Direction dir = SequencerStep.RS_INPUT_GETTER_DIRS[rsIdx];
             actual = be.getLevel().getSignal(be.getBlockPos().relative(dir), dir);
-        } else if (step.ifGetter.matches("V[1-8]")) {
-            actual = vars[step.ifGetter.charAt(1) - '1'];
+        } else if (SequencerStep.isVar(step.ifGetter)) {
+            actual = vars[SequencerStep.varIndex(step.ifGetter)];
         } else if (step.ifGetter.matches("W([1-9]|1[0-2])")) {
             int idx = Integer.parseInt(step.ifGetter.substring(1)) - 1;
             actual = (WirelessPresence.isPresent() && idx < be.getWirelessCount())
@@ -267,11 +279,36 @@ class SequencerEngine {
         };
     }
 
+    private void applyRegress(SequencerStep step) {
+        switch (step.regressMode) {
+            case "RESET" -> resetRegression();
+            case "SAMPLE" -> {
+                double x = resolveSource(step.mathA, step.mathACh);
+                double y = resolveSource(step.mathB, step.mathBCh);
+                rN     += 1;
+                rSumX  += x;
+                rSumY  += y;
+                rSumXY += x * y;
+                rSumXX += x * x;
+            }
+            case "SOLVE" -> {
+                double denom = rN * rSumXX - rSumX * rSumX;
+                if (rN < 2 || denom == 0) return;
+                double slope     = (rN * rSumXY - rSumX * rSumY) / denom;
+                double intercept = (rSumY - slope * rSumX) / rN;
+                if (SequencerStep.isVar(step.mathDest))
+                    vars[SequencerStep.varIndex(step.mathDest)] = slope;
+                if (SequencerStep.isVar(step.regressDest2))
+                    vars[SequencerStep.varIndex(step.regressDest2)] = intercept;
+            }
+        }
+    }
+
     private void applySetValue(SequencerStep step) {
         if (step.setMethod.isEmpty()) return;
         double value = resolveSource(step.setValueStr, step.channel);
-        if (step.setMethod.matches("V[1-8]")) {
-            vars[step.setMethod.charAt(1) - '1'] = value;
+        if (SequencerStep.isVar(step.setMethod)) {
+            vars[SequencerStep.varIndex(step.setMethod)] = value;
             return;
         }
         List<BlockPos> targets = be.getLinkedTargetPositions(step.channel);
