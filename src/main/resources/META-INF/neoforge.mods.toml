@@ -25,7 +25,7 @@ Universal Keyboard — remotely control Create value panels, CC computers, and p
 [[dependencies.${mod_id}]]
     modId = "minecraft"
     type = "required"
-    versionRange = "[1.21.1,1.22)"
+    versionRange = "[1.21.1]"
     ordering = "NONE"
     side = "BOTH"
 
