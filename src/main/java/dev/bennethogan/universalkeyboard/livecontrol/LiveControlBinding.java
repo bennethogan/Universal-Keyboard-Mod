@@ -12,7 +12,8 @@ public class LiveControlBinding {
     public enum ActionType {
         REDSTONE,        // 0
         THRUSTER_POWER,  // 1
-        THRUSTER_VECTOR  // 2
+        THRUSTER_VECTOR, // 2
+        VARIABLE         // 3 — sets a sequencer variable
     }
 
     /** Activation mode for a binding. VEC does not support INC. */
@@ -53,6 +54,12 @@ public class LiveControlBinding {
     // INC mode — true = ++, false = --
     public boolean incPlus = true;
 
+    // VARIABLE
+    /** Target sequencer variable, 0-15 → V1..V16 */
+    public int varIndex   = 0;
+    /** HLD/TGL "on" value, 1-100; the variable switches between 0 and this */
+    public int varOnValue = 100;
+
     // ── Serialization ────────────────────────────────────────────────────────
 
     public void saveToTag(CompoundTag tag) {
@@ -67,6 +74,8 @@ public class LiveControlBinding {
         tag.putDouble("vectorX",     vectorX);
         tag.putDouble("vectorY",     vectorY);
         tag.putBoolean("incPlus",    incPlus);
+        tag.putInt("varIndex",       varIndex);
+        tag.putInt("varOnValue",     varOnValue);
     }
 
     public static LiveControlBinding fromTag(CompoundTag tag) {
@@ -104,6 +113,9 @@ public class LiveControlBinding {
         b.vectorY    = tag.getDouble("vectorY");
         b.incPlus    = !tag.contains("incPlus") || tag.getBoolean("incPlus");
 
+        b.varIndex   = Math.max(0, Math.min(15, tag.getInt("varIndex")));
+        b.varOnValue = tag.contains("varOnValue") ? Math.max(1, Math.min(100, tag.getInt("varOnValue"))) : 100;
+
         return b;
     }
 
@@ -121,6 +133,8 @@ public class LiveControlBinding {
         buf.writeDouble(vectorX);
         buf.writeDouble(vectorY);
         buf.writeBoolean(incPlus);
+        buf.writeByte(Math.max(0, Math.min(15, varIndex)));
+        buf.writeByte(Math.max(1, Math.min(100, varOnValue)));
     }
 
     public static LiveControlBinding decode(FriendlyByteBuf buf) {
@@ -151,6 +165,9 @@ public class LiveControlBinding {
         b.vectorX    = buf.readDouble();
         b.vectorY    = buf.readDouble();
         b.incPlus    = buf.readBoolean();
+        b.varIndex   = buf.readByte() & 0xFF;
+        b.varOnValue = buf.readByte() & 0xFF;
+        if (b.varOnValue < 1) b.varOnValue = 1;
 
         return b;
     }

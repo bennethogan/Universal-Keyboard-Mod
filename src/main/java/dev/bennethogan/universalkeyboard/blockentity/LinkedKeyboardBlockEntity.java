@@ -448,6 +448,10 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     public void addSequencerViewer(java.util.UUID uuid)    { sequencerViewers.add(uuid); }
     public void removeSequencerViewer(java.util.UUID uuid) { sequencerViewers.remove(uuid); }
 
+    /** Set a sequencer variable from an external source (live controller). */
+    public void setSequencerVariable(int idx, double value) { engine.setVar(idx, value); }
+    public double[] getSequencerVars() { return engine.getVars(); }
+
     public void setSequencerSteps(List<SequencerStep> steps) {
         sequencerSteps.clear();
         sequencerSteps.addAll(steps);

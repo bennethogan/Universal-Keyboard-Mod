@@ -141,6 +141,7 @@ public class ClientPacketHandlers {
                         new LiveControlScreen(
                                 packet.keyboardPos(), packet.bindings(), packet.wirelessCount(),
                                 packet.hasThrusters(), packet.hasVectorThrusters(),
-                                packet.localRsOutputs(), packet.wirelessPowers(), packet.thrusterPowers())));
+                                packet.localRsOutputs(), packet.wirelessPowers(), packet.thrusterPowers(),
+                                packet.varValues())));
     }
 }

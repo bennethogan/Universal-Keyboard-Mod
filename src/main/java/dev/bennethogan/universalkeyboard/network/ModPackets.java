@@ -1303,9 +1303,10 @@ public class ModPackets {
             int wirelessCount,
             boolean hasThrusters,
             boolean hasVectorThrusters,
-            int[] localRsOutputs,      // current redstone output per Direction ordinal (len 6)
-            int[] wirelessPowers,      // current wireless power per slot index (len = wirelessCount)
-            int[] thrusterPowers       // current thruster power 0-15 per channel; index = channel (1-16)
+            int[] localRsOutputs,
+            int[] wirelessPowers,
+            int[] thrusterPowers,
+            double[] varValues
     ) implements CustomPacketPayload {
         public static final Type<OpenLiveControlScreenPacket> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "open_live_control_screen"));
@@ -1320,6 +1321,8 @@ public class ModPackets {
                     buf.writeByteArray(toByteArray(p.localRsOutputs()));
                     buf.writeByteArray(toByteArray(p.wirelessPowers()));
                     buf.writeByteArray(toByteArray(p.thrusterPowers()));
+                    buf.writeInt(p.varValues().length);
+                    for (double v : p.varValues()) buf.writeDouble(v);
                 },
                 buf -> {
                     BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
@@ -1333,7 +1336,10 @@ public class ModPackets {
                     int[] lrs = fromByteArray(buf.readByteArray());
                     int[] wp  = fromByteArray(buf.readByteArray());
                     int[] tp  = fromByteArray(buf.readByteArray());
-                    return new OpenLiveControlScreenPacket(pos, binds, wc, ht, hvt, lrs, wp, tp);
+                    int vlen = buf.readInt();
+                    double[] vars = new double[vlen];
+                    for (int i = 0; i < vlen; i++) vars[i] = buf.readDouble();
+                    return new OpenLiveControlScreenPacket(pos, binds, wc, ht, hvt, lrs, wp, tp, vars);
                 });
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
 
@@ -1451,7 +1457,8 @@ public class ModPackets {
 
             PacketDistributor.sendToPlayer(sp, new OpenLiveControlScreenPacket(
                     packet.keyboardPos(), kb.getLiveControlBindings(),
-                    wc, hasThrusters, hasVector, localRs, wirelessPowers, thrusterPowers));
+                    wc, hasThrusters, hasVector, localRs, wirelessPowers, thrusterPowers,
+                    kb.getSequencerVars()));
         });
     }
 
@@ -1460,8 +1467,6 @@ public class ModPackets {
             if (!(ctx.player() instanceof ServerPlayer sp)) return;
             BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
             if (be instanceof LinkedKeyboardBlockEntity kb) {
-  
-                if (kb.isSequencerRunning()) kb.stopSequencer();
                 kb.setLiveControlBindings(packet.bindings());
             }
         });
@@ -1495,6 +1500,8 @@ public class ModPackets {
                             if (p != null) PeripheralHelper.callVectorSetter(p, a.v1(), a.v2());
                         }
                     }
+                    case 4 -> // sequencer variable (target = varIndex 0-15)
+                        kb.setSequencerVariable(a.target(), a.v1());
                 }
             }
         });

@@ -36,6 +36,13 @@ class SequencerEngine {
     boolean isRunning()      { return running; }
     int     getCurrentStep() { return currentStep; }
 
+    /** Externally set a variable from live controller. Applies whether or not running. */
+    void setVar(int idx, double value) {
+        if (idx >= 0 && idx < vars.length) vars[idx] = value;
+    }
+
+    double[] getVars() { return vars.clone(); }
+
     void start() {
         running     = true;
         currentStep = 0;
@@ -70,8 +77,8 @@ class SequencerEngine {
     }
 
     /**
-     * Executes the current step. Returns {@code true} if the engine should yield
-     * (stop processing further steps this game tick), {@code false} to continue.
+     * Executes the current step. Returns true if the engine should yield
+     * (stop processing further steps this game tick), false to continue.
      */
     private boolean tickOne(List<SequencerStep> steps) {
         SequencerStep step = steps.get(currentStep);
@@ -192,11 +199,19 @@ class SequencerEngine {
     void saveToTag(CompoundTag tag) {
         tag.putBoolean("sequencer_running",  running);
         tag.putInt("sequencer_current_step", currentStep);
+        long[] packed = new long[vars.length];
+        for (int i = 0; i < vars.length; i++) packed[i] = Double.doubleToLongBits(vars[i]);
+        tag.putLongArray("sequencer_vars", packed);
     }
 
     void loadFromTag(CompoundTag tag) {
         running     = tag.getBoolean("sequencer_running");
         currentStep = tag.getInt("sequencer_current_step");
+        if (tag.contains("sequencer_vars")) {
+            long[] packed = tag.getLongArray("sequencer_vars");
+            for (int i = 0; i < Math.min(packed.length, vars.length); i++)
+                vars[i] = Double.longBitsToDouble(packed[i]);
+        }
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────

@@ -53,6 +53,7 @@ public class LiveControlScreen extends Screen {
     private final int[] currentLocalRs;
     private final int[] currentWirelessPowers;
     private final int[] currentThrusterPowers;
+    private final double[] currentVarValues;
 
     private int panelX, panelY, panelH;
     private int firstRowY;
@@ -75,7 +76,8 @@ public class LiveControlScreen extends Screen {
                              boolean hasVectorThrusters,
                              int[] currentLocalRs,
                              int[] currentWirelessPowers,
-                             int[] currentThrusterPowers) {
+                             int[] currentThrusterPowers,
+                             double[] currentVarValues) {
         super(Component.empty());
         this.keyboardPos           = keyboardPos;
         this.wirelessCount         = wirelessCount;
@@ -84,6 +86,7 @@ public class LiveControlScreen extends Screen {
         this.currentLocalRs        = currentLocalRs;
         this.currentWirelessPowers = currentWirelessPowers;
         this.currentThrusterPowers = currentThrusterPowers;
+        this.currentVarValues      = currentVarValues;
         this.bindings = new ArrayList<>(MAX_SLOTS);
         for (int i = 0; i < MAX_SLOTS; i++)
             this.bindings.add(i < inBindings.size() ? copyBinding(inBindings.get(i)) : new LiveControlBinding());
@@ -102,6 +105,8 @@ public class LiveControlScreen extends Screen {
         b.vectorX        = src.vectorX;
         b.vectorY        = src.vectorY;
         b.incPlus        = src.incPlus;
+        b.varIndex       = src.varIndex;
+        b.varOnValue     = src.varOnValue;
         return b;
     }
 
@@ -143,7 +148,7 @@ public class LiveControlScreen extends Screen {
     private void doSave()  { ModPackets.sendSaveLiveBindings(keyboardPos, bindings); }
     private void doStart() {
         ModPackets.sendSaveLiveBindings(keyboardPos, bindings);
-        LiveControlManager.activate(keyboardPos, bindings, currentLocalRs, currentWirelessPowers, currentThrusterPowers);
+        LiveControlManager.activate(keyboardPos, bindings, currentLocalRs, currentWirelessPowers, currentThrusterPowers, currentVarValues);
         onClose();
     }
 
@@ -222,6 +227,7 @@ public class LiveControlScreen extends Screen {
             case REDSTONE        -> I18n.get("gui.universalkeyboard.label.action_rs");
             case THRUSTER_POWER  -> I18n.get("gui.universalkeyboard.label.action_thr");
             case THRUSTER_VECTOR -> I18n.get("gui.universalkeyboard.label.action_vec");
+            case VARIABLE        -> I18n.get("gui.universalkeyboard.label.action_var");
         };
         boolean tHov = isIn(mx, my, tx, ry, TYPE_W, ROW_H);
         g.fill(tx, ry, tx + TYPE_W, ry + ROW_H, tHov ? 0xFF333355 : 0xFF1F1F3A);
@@ -238,6 +244,7 @@ public class LiveControlScreen extends Screen {
             case REDSTONE        -> renderRsConfig(g, mx, my, b, x, y);
             case THRUSTER_POWER  -> renderPwrConfig(g, mx, my, b, x, y);
             case THRUSTER_VECTOR -> renderVecConfig(g, mx, my, b, idx, x, y);
+            case VARIABLE        -> renderVarConfig(g, mx, my, b, x, y);
         }
     }
 
@@ -335,6 +342,38 @@ public class LiveControlScreen extends Screen {
         double mag = Math.sqrt(b.vectorX * b.vectorX + b.vectorY * b.vectorY);
         String vecLabel = mag < 0.01 ? "§7---" : vecArrow(b.vectorX, b.vectorY);
         g.drawCenteredString(font, vecLabel, x + 14, y + 4, 0xFFFFFF);
+    }
+
+    // VARIABLE config — [var:40][mode:20][value:28] = 88px
+    private void renderVarConfig(GuiGraphics g, int mx, int my, LiveControlBinding b, int x, int y) {
+        boolean vHov = isIn(mx, my, x, y, 40, ROW_H);
+        g.fill(x, y, x + 40, y + ROW_H, vHov ? 0xFF353525 : 0xFF2A2A1A);
+        drawBorder(g, x, y, 40, ROW_H, 0xFF555533);
+        g.drawString(font, "§7◄", x + 1, y + 4, 0x999999, false);
+        g.drawCenteredString(font, "§eV" + (b.varIndex + 1), x + 20, y + 4, 0xFFFFFF);
+        g.drawString(font, "§7►", x + 31, y + 4, 0x999999, false);
+        x += 42;
+
+        boolean mHov = isIn(mx, my, x, y, 20, ROW_H);
+        String modeLabel = switch (b.mode) {
+            case HLD -> I18n.get("gui.universalkeyboard.label.mode_hld");
+            case TGL -> I18n.get("gui.universalkeyboard.label.mode_tog");
+            case INC -> I18n.get("gui.universalkeyboard.label.mode_inc");
+        };
+        g.fill(x, y, x + 20, y + ROW_H, mHov ? 0xFF253525 : 0xFF1A261A);
+        drawBorder(g, x, y, 20, ROW_H, 0xFF446644);
+        g.drawCenteredString(font, modeLabel, x + 10, y + 4, 0xFFFFFF);
+        x += 22;
+
+        boolean valHov = isIn(mx, my, x, y, 28, ROW_H);
+        g.fill(x, y, x + 28, y + ROW_H, valHov ? 0xFF353520 : 0xFF26260F);
+        if (b.mode == Mode.INC) {
+            drawBorder(g, x, y, 28, ROW_H, b.incPlus ? 0xFF448844 : 0xFF884444);
+            g.drawCenteredString(font, b.incPlus ? "§a++" : "§c--", x + 14, y + 4, 0xFFFFFF);
+        } else {
+            drawBorder(g, x, y, 28, ROW_H, 0xFF887733);
+            g.drawCenteredString(font, "§e" + b.varOnValue, x + 14, y + 4, 0xFFFFFF);
+        }
     }
 
     // ── Vector overlay ────────────────────────────────────────────────────────
@@ -499,6 +538,23 @@ public class LiveControlScreen extends Screen {
                 x += 22;
                 if (isIn(mx, my, x, y, 28, ROW_H)) { vectorOverlaySlot = (vectorOverlaySlot == idx) ? -1 : idx; return true; }
             }
+            case VARIABLE -> {
+                if (isIn(mx, my, x, y, 40, ROW_H)) {
+                    if (mx < x + 12)      b.varIndex = (b.varIndex + 15) % 16;
+                    else if (mx > x + 28) b.varIndex = (b.varIndex + 1)  % 16;
+                    return true;
+                }
+                x += 42;
+                if (isIn(mx, my, x, y, 20, ROW_H)) {
+                    b.mode = nextMode(b.actionType, b.mode, right ? -1 : 1); return true;
+                }
+                x += 22;
+                if (isIn(mx, my, x, y, 28, ROW_H)) {
+                    if (b.mode == Mode.INC) b.incPlus = !b.incPlus;
+                    else b.varOnValue = Math.max(1, Math.min(100, b.varOnValue + (right ? -1 : 1)));
+                    return true;
+                }
+            }
         }
         return false;
     }
@@ -522,6 +578,7 @@ public class LiveControlScreen extends Screen {
                 switch (b.actionType) {
                     case REDSTONE       -> b.signalStrength = Math.max(0, Math.min(15, b.signalStrength + dir));
                     case THRUSTER_POWER -> b.powerLevel = stepPower(b.powerLevel, dir);
+                    case VARIABLE       -> b.varOnValue = Math.max(1, Math.min(100, b.varOnValue + dir));
                     default -> {}
                 }
                 return true;
@@ -604,6 +661,7 @@ public class LiveControlScreen extends Screen {
             case REDSTONE        -> true;
             case THRUSTER_POWER  -> hasThrusters;
             case THRUSTER_VECTOR -> hasVectorThrusters;
+            case VARIABLE        -> true;
         };
     }
 

@@ -28,7 +28,9 @@ public class LiveControlManager {
     private static final Set<Integer>          toggledOn      = new HashSet<>();
     private static final Map<Long, Integer>    rsIncCounters  = new HashMap<>();
     private static final Map<Integer, Integer> thrIncCounters = new HashMap<>();
+    private static final Map<Integer, Integer> varIncCounters = new HashMap<>(); // varIndex → 0-100 counter
     private static final Map<Integer, Integer> incHoldTicks   = new HashMap<>();
+    private static final Set<Integer>          hldVarOn       = new HashSet<>(); // varIndex currently driven by a held HLD binding
 
     private static final int INC_REPEAT_DELAY_TICKS = 10; // 0.5 s before auto-repeat
     private static final int MAX_DISPLAY_KEYS        = 3;  // action-bar key labels before "+N more"
@@ -38,7 +40,8 @@ public class LiveControlManager {
     // ── Activation ───────────────────────────────────────────────────────────
 
     public static void activate(BlockPos pos, List<LiveControlBinding> binds,
-                                int[] localRsOutputs, int[] wirelessPowers, int[] thrusterPowers) {
+                                int[] localRsOutputs, int[] wirelessPowers, int[] thrusterPowers,
+                                double[] varValues) {
         active      = true;
         keyboardPos = pos;
         bindings    = new ArrayList<>(binds);
@@ -46,7 +49,9 @@ public class LiveControlManager {
         toggledOn.clear();
         rsIncCounters.clear();
         thrIncCounters.clear();
+        varIncCounters.clear();
         incHoldTicks.clear();
+        hldVarOn.clear();
 
         // Seed INC counters and TGL toggle state from current server values so the
         // first keypress doesn't overwrite persisted signals with zeros.
@@ -71,19 +76,36 @@ public class LiveControlManager {
                     thrIncCounters.putIfAbsent(b.channel, cur);
                 else if (b.mode == Mode.TGL && cur == (int) Math.round(b.powerLevel * 15))
                     toggledOn.add(i);
+            } else if (b.actionType == LiveControlBinding.ActionType.VARIABLE) {
+                int cur = (b.varIndex < varValues.length) ? (int) Math.round(varValues[b.varIndex]) : 0;
+                if (b.mode == Mode.INC)
+                    varIncCounters.putIfAbsent(b.varIndex, Math.max(0, Math.min(100, cur)));
+                else if (b.mode == Mode.TGL && cur == b.varOnValue)
+                    toggledOn.add(i);
             }
         }
     }
 
     public static void deactivate() {
         active = false;
+        // Release any HLD variable bindings still held so the sequencer regains ownership.
+        if (Minecraft.getInstance().getConnection() != null) {
+            List<ModPackets.LiveAction> varOff = new ArrayList<>();
+            for (LiveControlBinding b : bindings)
+                if (b.actionType == LiveControlBinding.ActionType.VARIABLE
+                        && b.mode == Mode.HLD && heldKeys.contains(b.keyCode))
+                    varOff.add(varAction(b.varIndex, 0));
+            if (!varOff.isEmpty()) ModPackets.sendLiveAction(keyboardPos, varOff);
+        }
         heldKeys.clear();
         incHoldTicks.clear();
+        hldVarOn.clear();
         // Send zero-state only when still connected — avoids NPE on disconnect.
         if (Minecraft.getInstance().getConnection() != null) computeAndSend();
         toggledOn.clear();
         rsIncCounters.clear();
         thrIncCounters.clear();
+        varIncCounters.clear();
     }
 
     public static boolean isActive()       { return active; }
@@ -105,16 +127,40 @@ public class LiveControlManager {
                     Component.literal(I18n.get("gui.universalkeyboard.msg.live_control_active")), true);
         }
 
-        // INC mode: auto-repeat after INC_REPEAT_DELAY_TICKS of holding
+        // INC mode: auto-repeat after INC_REPEAT_DELAY_TICKS of holding.
+        // VARIABLE bindings are handled separately (event-driven, re-asserted while held).
         boolean incFired = false;
         Set<Integer> countedThisTick = new java.util.HashSet<>();
+        List<ModPackets.LiveAction> varActions = new ArrayList<>();
         for (LiveControlBinding b : bindings) {
+            // HLD variable: re-assert the on-value every tick while held so the
+            // sequencer cannot overwrite it mid-hold. When the key is no longer held,
+            // bring it back to 0 from heldKeys state (not just the discrete key-up event),
+            // so a missed or repeat-superseded release can never leave it stuck on.
+            if (b.actionType == LiveControlBinding.ActionType.VARIABLE && b.mode == Mode.HLD) {
+                if (heldKeys.contains(b.keyCode)) {
+                    varActions.add(varAction(b.varIndex, b.varOnValue));
+                    hldVarOn.add(b.varIndex);
+                } else if (hldVarOn.contains(b.varIndex)) {
+                    varActions.add(varAction(b.varIndex, 0));
+                    hldVarOn.remove(b.varIndex);
+                }
+                continue;
+            }
             if (b.mode != Mode.INC || !heldKeys.contains(b.keyCode)) continue;
             // Advance the hold timer once per key per tick
             if (countedThisTick.add(b.keyCode))
                 incHoldTicks.merge(b.keyCode, 1, Integer::sum);
-            if (incHoldTicks.getOrDefault(b.keyCode, 0) < INC_REPEAT_DELAY_TICKS) continue;
+            boolean pastDelay = incHoldTicks.getOrDefault(b.keyCode, 0) >= INC_REPEAT_DELAY_TICKS;
             int delta = b.incPlus ? 1 : -1;
+            if (b.actionType == LiveControlBinding.ActionType.VARIABLE) {
+                // INC variable: step on auto-repeat, and re-assert every tick to own it while held.
+                if (pastDelay)
+                    varIncCounters.merge(b.varIndex, delta, (cur, d) -> Math.max(0, Math.min(100, cur + d)));
+                varActions.add(varAction(b.varIndex, varIncCounters.getOrDefault(b.varIndex, 0)));
+                continue;
+            }
+            if (!pastDelay) continue;
             switch (b.actionType) {
                 case REDSTONE -> rsIncCounters.merge(
                         rsKey(b.wirelessIdx, b.rsSide), delta,
@@ -126,6 +172,7 @@ public class LiveControlManager {
             }
             incFired = true;
         }
+        if (!varActions.isEmpty()) ModPackets.sendLiveAction(keyboardPos, varActions);
         if (incFired) computeAndSend();
     }
 
@@ -137,10 +184,13 @@ public class LiveControlManager {
             return;
         }
 
+        handleVariableKey(keyCode, glfw_action);
+
         // INC mode: step the counter immediately on press, then per-tick via heldKeys
         if (glfw_action == GLFW.GLFW_PRESS) {
             for (LiveControlBinding b : bindings) {
-                if (b.keyCode != keyCode || b.mode != Mode.INC) continue;
+                if (b.keyCode != keyCode || b.mode != Mode.INC
+                        || b.actionType == LiveControlBinding.ActionType.VARIABLE) continue;
                 heldKeys.add(keyCode);
                 // Only reset the delay timer if this is a genuine new press (key was not
                 // already tracked). On Wayland the OS key-repeat can generate rapid
@@ -165,7 +215,8 @@ public class LiveControlManager {
         // resetting the delay timer, so tick() eventually fires auto-repeat
         if (glfw_action == GLFW.GLFW_REPEAT) {
             for (LiveControlBinding b : bindings) {
-                if (b.keyCode != keyCode || b.mode != Mode.INC) continue;
+                if (b.keyCode != keyCode || b.mode != Mode.INC
+                        || b.actionType == LiveControlBinding.ActionType.VARIABLE) continue;
                 heldKeys.add(keyCode);
                 incHoldTicks.putIfAbsent(keyCode, 0);
             }
@@ -175,7 +226,8 @@ public class LiveControlManager {
         if (glfw_action == GLFW.GLFW_PRESS) {
             for (int i = 0; i < bindings.size(); i++) {
                 LiveControlBinding b = bindings.get(i);
-                if (b.keyCode != keyCode || b.mode == Mode.INC) continue;
+                if (b.keyCode != keyCode || b.mode == Mode.INC
+                        || b.actionType == LiveControlBinding.ActionType.VARIABLE) continue;
                 if (b.mode == Mode.HLD) {
                     heldKeys.add(keyCode);
                 } else { // TGL
@@ -189,6 +241,58 @@ public class LiveControlManager {
         }
 
         computeAndSend();
+    }
+
+    /**
+     * VARIABLE bindings are event-driven: they only write the variable at the moment of
+     * input, leaving the sequencer in sole control between presses.
+     *  - HLD: write the on-value on press; write 0 on release (re-asserted each tick while held).
+     *  - TGL: write the on-value or 0 on each toggle.
+     *  - INC: step the counter on press (and auto-repeat in tick); owns the variable only while held.
+     */
+    private static void handleVariableKey(int keyCode, int glfw_action) {
+        List<ModPackets.LiveAction> out = new ArrayList<>();
+        if (glfw_action == GLFW.GLFW_PRESS) {
+            for (int i = 0; i < bindings.size(); i++) {
+                LiveControlBinding b = bindings.get(i);
+                if (b.keyCode != keyCode || b.actionType != LiveControlBinding.ActionType.VARIABLE) continue;
+                switch (b.mode) {
+                    case HLD -> {
+                        heldKeys.add(keyCode);
+                        out.add(varAction(b.varIndex, b.varOnValue));
+                    }
+                    case INC -> {
+                        heldKeys.add(keyCode);
+                        if (!incHoldTicks.containsKey(keyCode)) incHoldTicks.put(keyCode, 0);
+                        int delta = b.incPlus ? 1 : -1;
+                        varIncCounters.merge(b.varIndex, delta, (cur, d) -> Math.max(0, Math.min(100, cur + d)));
+                        out.add(varAction(b.varIndex, varIncCounters.getOrDefault(b.varIndex, 0)));
+                    }
+                    case TGL -> {
+                        if (toggledOn.contains(i)) toggledOn.remove(i); else toggledOn.add(i);
+                        out.add(varAction(b.varIndex, toggledOn.contains(i) ? b.varOnValue : 0));
+                    }
+                }
+            }
+        } else if (glfw_action == GLFW.GLFW_REPEAT) {
+            for (LiveControlBinding b : bindings) {
+                if (b.keyCode != keyCode || b.actionType != LiveControlBinding.ActionType.VARIABLE
+                        || b.mode != Mode.INC) continue;
+                heldKeys.add(keyCode);
+                incHoldTicks.putIfAbsent(keyCode, 0);
+            }
+        } else if (glfw_action == GLFW.GLFW_RELEASE) {
+            for (LiveControlBinding b : bindings) {
+                if (b.keyCode != keyCode || b.actionType != LiveControlBinding.ActionType.VARIABLE) continue;
+                // HLD hands the variable back to the sequencer; INC leaves its last value in place.
+                if (b.mode == Mode.HLD) { out.add(varAction(b.varIndex, 0)); hldVarOn.remove(b.varIndex); }
+            }
+        }
+        if (!out.isEmpty()) ModPackets.sendLiveAction(keyboardPos, out);
+    }
+
+    private static ModPackets.LiveAction varAction(int varIndex, double value) {
+        return new ModPackets.LiveAction((byte) 4, varIndex, value, 0.0);
     }
 
     // ── Output computation ───────────────────────────────────────────────────
@@ -304,6 +408,11 @@ public class LiveControlManager {
 
     private static String keyLabel(int keyCode) {
         String name = keyDisplayName(keyCode);
+        // Variable bindings: show the raw value being written while held.
+        if (heldKeys.contains(keyCode)) {
+            Integer varVal = varValueForKey(keyCode);
+            if (varVal != null) return "§e[" + name + " =" + varVal + "]";
+        }
         // INC mode (only relevant while held): append current power level as a percent.
         if (heldKeys.contains(keyCode)) {
             Integer level = incLevelForKey(keyCode);
@@ -313,6 +422,17 @@ public class LiveControlManager {
         // Toggled-on keys render green so on/off state is obvious at a glance.
         if (isKeyToggledOn(keyCode)) return "§a[" + name + "]";
         return "§f[" + name + "]";
+    }
+
+    private static Integer varValueForKey(int keyCode) {
+        for (LiveControlBinding b : bindings) {
+            if (b.keyCode != keyCode || b.actionType != LiveControlBinding.ActionType.VARIABLE) continue;
+            return switch (b.mode) {
+                case INC -> varIncCounters.getOrDefault(b.varIndex, 0);
+                default  -> b.varOnValue;
+            };
+        }
+        return null;
     }
 
     private static Integer incLevelForKey(int keyCode) {
