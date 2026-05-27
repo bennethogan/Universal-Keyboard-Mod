@@ -48,7 +48,7 @@ public class LiveControlBinding {
 
     // THRUSTER_VECTOR
     public double vectorX = 0.0;
-    public double vectorY = 1.0;
+    public double vectorY = 0.0;
 
     // INC mode — true = ++, false = --
     public boolean incPlus = true;

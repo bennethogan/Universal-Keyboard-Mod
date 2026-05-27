@@ -54,6 +54,12 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     private @Nullable String inlineCaptureBuffer = null;
 
+    // ----- Sable ship mass -----
+    // The keyboard contributes only this fraction of a normal block's mass to its ship.
+    private static final double SHIP_MASS_FACTOR = 0.10;
+    private java.lang.ref.WeakReference<Object> massSublevelRef = null;
+    private double appliedMassDelta = 0.0;
+
     // ----- Live Control -----
 
     public static final int MAX_LIVE_BINDINGS = 40;
@@ -597,6 +603,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
         if (be.engine.isRunning()) be.engine.tick(be.sequencerSteps);
 
+        be.updateShipMass(level, pos, state);
+
         // Remove broken targets across all channels (only when loaded)
         if (level.getGameTime() % 100 == 0 && be.isLinked()) {
             boolean changed = false;
@@ -607,7 +615,39 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     }
 
     public void onRemoved() {
+        reverseShipMass();
         unlink();
+    }
+
+    // ------------------ sable weight compat -----------------
+    private void updateShipMass(Level level, BlockPos pos, BlockState state) {
+        if (!SableCompat.isPresent()) return;
+        Object sub  = SableCompat.getSublevel(level, pos);
+        Object prev = massSublevelRef == null ? null : massSublevelRef.get();
+        if (sub == prev) return;
+
+        if (sub == null) {
+            // Disassembled — the tracker is gone with the old sublevel, nothing to reverse.
+            massSublevelRef  = null;
+            appliedMassDelta = 0.0;
+            return;
+        }
+
+        double def   = SableCompat.getDefaultBlockMass(state);
+        double delta = def * SHIP_MASS_FACTOR - def; // negative: shed most of the weight
+        if (SableCompat.addBlockMass(level, pos, state, delta)) appliedMassDelta = delta;
+        else                                                    appliedMassDelta = 0.0;
+        massSublevelRef = new java.lang.ref.WeakReference<>(sub); // remember even on failure to avoid retry spam
+    }
+
+    
+    private void reverseShipMass() {
+        if (appliedMassDelta == 0.0 || level == null || level.isClientSide) return;
+        Object prev = massSublevelRef == null ? null : massSublevelRef.get();
+        if (prev != null && SableCompat.getSublevel(level, worldPosition) == prev)
+            SableCompat.addBlockMass(level, worldPosition, getBlockState(), -appliedMassDelta);
+        appliedMassDelta = 0.0;
+        massSublevelRef  = null;
     }
 
     // ----- CC computer interaction — broadcasts to active-channel targets in range -----

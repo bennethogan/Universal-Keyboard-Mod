@@ -28,12 +28,12 @@ public class SequencerStep {
         /** Minecraft formatting code for this step type (without the §). */
         public String colorCode() {
             return switch (this) {
-                case SET_VALUE      -> "§b"; // cyan      — peripheral setter
+                case SET_VALUE      -> "§6"; // gold      — peripheral setter
                 case SET_REDSTONE   -> "§c"; // red       — redstone output
                 case TYPE_TEXT,
                      TYPE_VARIABLE  -> "§d"; // pink      — keyboard typing
                 case IF             -> "§e"; // yellow    — branch
-                case CONDITION      -> "§6"; // gold      — wait/condition
+                case CONDITION      -> "§b"; // cyan      — wait/condition
                 case DELAY          -> "§7"; // gray      — time
                 case JUMP           -> "§f"; // white     — goto
                 case MATH           -> "§a"; // green     — math/var
@@ -50,11 +50,13 @@ public class SequencerStep {
     // ── Condition input sources ───────────────────────────────────────────────
 
     public enum ConditionSource {
-        REDSTONE_NORTH("RS North", Direction.NORTH),
-        REDSTONE_SOUTH("RS South", Direction.SOUTH),
-        REDSTONE_EAST( "RS East",  Direction.EAST),
-        REDSTONE_WEST( "RS West",  Direction.WEST),
-        PERIPHERAL(    "Periph",   null);
+        REDSTONE_NORTH("RS North",  Direction.NORTH),
+        REDSTONE_SOUTH("RS South",  Direction.SOUTH),
+        REDSTONE_EAST( "RS East",   Direction.EAST),
+        REDSTONE_WEST( "RS West",   Direction.WEST),
+        REDSTONE_UP(   "RS Top",    Direction.UP),
+        REDSTONE_DOWN( "RS Bottom", Direction.DOWN),
+        PERIPHERAL(    "Periph",    null);
 
         public final String    label;
         public final Direction direction; // null means read from peripheral getter
@@ -66,8 +68,8 @@ public class SequencerStep {
     }
 
     // Redstone input side names used as special IF getter values (shared client/server)
-    public static final String[]    RS_INPUT_GETTER_NAMES = {"RS North", "RS South", "RS East", "RS West"};
-    public static final Direction[] RS_INPUT_GETTER_DIRS  = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST};
+    public static final String[]    RS_INPUT_GETTER_NAMES = {"RS North", "RS South", "RS East", "RS West", "RS Top", "RS Bottom"};
+    public static final Direction[] RS_INPUT_GETTER_DIRS  = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP, Direction.DOWN};
 
     // ── Variables ─────────────────────────────────────────────────────────────
 

@@ -160,10 +160,12 @@ class SequencerEngine {
         if (src.startsWith("RS:")) {
             String d = src.substring(3).toUpperCase();
             Direction dir = switch (d) {
-                case "N", "NORTH" -> Direction.NORTH;
-                case "S", "SOUTH" -> Direction.SOUTH;
-                case "E", "EAST"  -> Direction.EAST;
-                case "W", "WEST"  -> Direction.WEST;
+                case "N", "NORTH"           -> Direction.NORTH;
+                case "S", "SOUTH"           -> Direction.SOUTH;
+                case "E", "EAST"            -> Direction.EAST;
+                case "W", "WEST"            -> Direction.WEST;
+                case "U", "UP", "T", "TOP"  -> Direction.UP;
+                case "D", "DOWN", "B", "BOTTOM" -> Direction.DOWN;
                 default -> null;
             };
             if (dir != null && be.getLevel() != null)

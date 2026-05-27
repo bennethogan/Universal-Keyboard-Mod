@@ -482,8 +482,7 @@ public class LiveControlScreen extends Screen {
                 x += 22;
                 if (isIn(mx, my, x, y, 28, ROW_H)) {
                     if (b.mode == Mode.INC) { b.incPlus = !b.incPlus; }
-                    else { double step = right ? -0.05 : 0.05;
-                        b.powerLevel = Math.max(0.0, Math.min(1.0, Math.round((b.powerLevel + step) * 20) / 20.0)); }
+                    else b.powerLevel = stepPower(b.powerLevel, right ? -1 : 1);
                     return true;
                 }
             }
@@ -522,8 +521,7 @@ public class LiveControlScreen extends Screen {
             if (isIn(imx, imy, cfgX, ry, CFG_W, ROW_H) && b.mode != Mode.INC) {
                 switch (b.actionType) {
                     case REDSTONE       -> b.signalStrength = Math.max(0, Math.min(15, b.signalStrength + dir));
-                    case THRUSTER_POWER -> b.powerLevel = Math.max(0.0, Math.min(1.0,
-                            Math.round((b.powerLevel + dir * 0.05) * 20) / 20.0));
+                    case THRUSTER_POWER -> b.powerLevel = stepPower(b.powerLevel, dir);
                     default -> {}
                 }
                 return true;
@@ -685,6 +683,12 @@ public class LiveControlScreen extends Screen {
         int textW = font.width(plain);
         if (textW <= maxW) g.drawCenteredString(font, text, x + maxW / 2, y, 0xFFFFFF);
         else               g.drawString(font, text, x + 1, y, 0xFFFFFF, false);
+    }
+
+    private static double stepPower(double current, int dir) {
+        double probe = dir > 0 ? current : current - 0.001;
+        double step  = probe < 0.10 ? 0.05 : 0.10;
+        return Math.max(0.0, Math.min(1.0, Math.round((current + dir * step) * 20) / 20.0));
     }
 
     private static String vecArrow(double vx, double vy) {

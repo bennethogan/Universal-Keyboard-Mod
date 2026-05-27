@@ -41,7 +41,9 @@ public class SequencerScreen extends Screen {
     private static final int ROW_GAP   = 1;
     private static final int VISIBLE   = 10;
     private static final int MAX_STEPS = 100;
-    private static final int DD_VIS    = 3;   // items visible in any dropdown at once
+    private static final int DD_VIS      = 3;
+    private static final int TYPE_DD_VIS = 4;
+    private static final int SRC_DD_VIS  = 6;
 
     private static final int COL_NUM  = 0;
     private static final int COL_CH   = 16;
@@ -61,7 +63,9 @@ public class SequencerScreen extends Screen {
         {true,  true,  true,  true,  true,  true,  false}
     };
     private static final String[]   IF_OPS    = {">", ">=", "=", "<=", "<", "!="};
-    private static final Direction[] RS_DIRS  = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST};
+    private static final Direction[] RS_DIRS  = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP, Direction.DOWN};
+
+    private record SrcCat(String label, List<String> items) {}
 
     // ── State ─────────────────────────────────────────────────────────────────
     final BlockPos keyboardPos;
@@ -100,6 +104,16 @@ public class SequencerScreen extends Screen {
     private int     regressMultiRow    = -1;
     private boolean regressMultiIsA    = true;
     private int     regressMultiScroll = 0;
+
+    // Source picker (nested dropdown: categories left, items right)
+    private int     srcPickRow        = -1;
+    private String  srcPickField      = "";
+    private int     srcPickCat        = 0;
+    private int     srcPickItemScroll = 0;
+    private int     srcPickCh         = 1;
+    private boolean srcPickManual     = false;
+    private boolean srcPickVarsOnly   = false;
+    private int     srcPickBtnX       = 0;
 
     // Overwrite confirmation
     private String  confirmOverwriteName = null;
@@ -278,7 +292,7 @@ public class SequencerScreen extends Screen {
         // Compute insert-hover gap (which inter-row gap the mouse is near)
         insertHoverGap = -1;
         if (typeDropdownRow < 0 && mathDropdownRow < 0 && mathOpDropdownRow < 0
-                && regressMultiRow < 0 && !loadDropdownOpen
+                && regressMultiRow < 0 && srcPickRow < 0 && !loadDropdownOpen
                 && confirmOverwriteName == null && !showNoNameDialog) {
             int count = Math.min(VISIBLE, steps.size() - scrollOffset);
             if (mx >= cx && mx < cx + rowW) {
@@ -327,6 +341,7 @@ public class SequencerScreen extends Screen {
         renderLoadDropdown(g, mx, my);
         renderMathOpDropdown(g, mx, my);
         renderRegressMultiDropdown(g, mx, my);
+        renderSrcPickDropdown(g, mx, my);
         if (confirmOverwriteName != null) renderConfirmDialog(g, mx, my);
         if (showNoNameDialog) renderNoNameDialog(g, mx, my);
         g.pose().popPose();
@@ -341,7 +356,7 @@ public class SequencerScreen extends Screen {
         int ddX   = panelX + PAD + COL_TYPE;
         int ddW   = 82;
         int itemH = 12;
-        int vis   = Math.min(DD_VIS, available.length);
+        int vis   = Math.min(TYPE_DD_VIS, available.length);
         int ddH   = vis * itemH + 4;
         int ddY   = ddPos(rowY, ddH);
 
@@ -457,12 +472,12 @@ public class SequencerScreen extends Screen {
 
     private static int stepAccentColor(Type type) {
         return switch (type) {
-            case SET_VALUE              -> 0xFF2299BB;
+            case SET_VALUE              -> 0xFFBB7700;
             case SET_REDSTONE           -> 0xFFBB2222;
             case TYPE_TEXT,
                  TYPE_VARIABLE          -> 0xFFBB22BB;
             case IF                     -> 0xFFBBAA00;
-            case CONDITION              -> 0xFFBB7700;
+            case CONDITION              -> 0xFF2299BB;
             case DELAY                  -> 0xFF777777;
             case JUMP                   -> 0xFFAAAAAA;
             case MATH                   -> 0xFF22BB22;
@@ -474,12 +489,12 @@ public class SequencerScreen extends Screen {
 
     private static int stepRowBg(Type type) {
         return switch (type) {
-            case SET_VALUE              -> 0x66003344;
+            case SET_VALUE              -> 0x66221100;
             case SET_REDSTONE           -> 0x66330000;
             case TYPE_TEXT,
                  TYPE_VARIABLE          -> 0x66330033;
             case IF                     -> 0x66332200;
-            case CONDITION              -> 0x66221100;
+            case CONDITION              -> 0x66003344;
             case DELAY                  -> 0x66111111;
             case JUMP                   -> 0x66222222;
             case MATH                   -> 0x66003300;
@@ -546,16 +561,19 @@ public class SequencerScreen extends Screen {
 
     private Type[] buildAvailableTypes() {
         boolean ccPresent = dev.bennethogan.universalkeyboard.compat.PeripheralHelper.isCCPresent();
+        boolean typeable  = ccPresent && hasTypeableTarget();
         List<Type> list = new ArrayList<>();
-        for (Type t : Type.values()) {
-            if (t == Type.TYPE_TEXT || t == Type.TYPE_VARIABLE) continue; // added conditionally below
-            if (t == Type.SET_VALUE && !ccPresent) continue;
-            list.add(t);
-        }
-        if (ccPresent && hasTypeableTarget()) {
-            list.add(Type.TYPE_TEXT);
-            list.add(Type.TYPE_VARIABLE);
-        }
+        list.add(Type.MATH);
+        if (typeable) { list.add(Type.TYPE_VARIABLE); list.add(Type.TYPE_TEXT); }
+        list.add(Type.SET_REDSTONE);
+        if (ccPresent) list.add(Type.SET_VALUE);
+        list.add(Type.REGRESS);
+        list.add(Type.IF);
+        list.add(Type.CONDITION);
+        list.add(Type.JUMP);
+        list.add(Type.DELAY);
+        list.add(Type.CYCLE);
+        list.add(Type.END);
         return list.toArray(new Type[0]);
     }
 
@@ -581,6 +599,20 @@ public class SequencerScreen extends Screen {
         return gettersByChannel.getOrDefault(channel, availableGetters);
     }
 
+    private String fitLabel(String s, int maxPx) {
+        if (font.width(s) <= maxPx) return s;
+        return font.plainSubstrByWidth(s, maxPx - font.width("…")) + "…";
+    }
+
+    private boolean srcNeedsChannel(String src, boolean isManual) {
+        if (isManual || src == null || src.isEmpty()) return false;
+        if (SequencerStep.isVar(src)) return false;
+        if (src.startsWith("RS:")) return false;
+        if (src.matches("W\\d+")) return false;
+        if (dev.bennethogan.universalkeyboard.compat.SableCompat.isSableGetter(src)) return false;
+        return true;
+    }
+
     private List<String[]> settersFor(int channel) {
         return settersByChannel.getOrDefault(channel, availableSetters);
     }
@@ -589,7 +621,7 @@ public class SequencerScreen extends Screen {
         List<String> opts = new ArrayList<>();
         opts.add(I18n.get("gui.universalkeyboard.label.manual_input"));
         for (int v = 1; v <= SequencerStep.VAR_COUNT; v++) opts.add("V" + v);
-        opts.add("RS:N"); opts.add("RS:S"); opts.add("RS:E"); opts.add("RS:W");
+        opts.add("RS:N"); opts.add("RS:S"); opts.add("RS:E"); opts.add("RS:W"); opts.add("RS:U"); opts.add("RS:D");
         int wc = getWirelessCount();
         for (int w = 1; w <= wc; w++) opts.add("W" + w);
         opts.addAll(gettersFor(channel));
@@ -659,13 +691,18 @@ public class SequencerScreen extends Screen {
             return true;
         }
 
+        if (srcPickRow >= 0) {
+            handleSrcPickClick(mx, my);
+            return true;
+        }
+
         if (typeDropdownRow >= 0) {
             Type[] available = buildAvailableTypes();
             int rowY  = rowAreaY + typeDropdownRow * (ROW_H + ROW_GAP);
             int ddX   = panelX + PAD + COL_TYPE;
             int ddW   = 82;
             int itemH = 12;
-            int vis   = Math.min(DD_VIS, available.length);
+            int vis   = Math.min(TYPE_DD_VIS, available.length);
             int ddH   = vis * itemH + 4;
             int ddY   = ddPos(rowY, ddH);
             int savedScroll = typeDropdownScroll;
@@ -911,7 +948,7 @@ public class SequencerScreen extends Screen {
     private List<String> buildMathSrcOptionsNoManual(int channel) {
         List<String> opts = new ArrayList<>();
         for (int v = 1; v <= SequencerStep.VAR_COUNT; v++) opts.add("V" + v);
-        opts.add("RS:N"); opts.add("RS:S"); opts.add("RS:E"); opts.add("RS:W");
+        opts.add("RS:N"); opts.add("RS:S"); opts.add("RS:E"); opts.add("RS:W"); opts.add("RS:U"); opts.add("RS:D");
         int wc = getWirelessCount();
         for (int w = 1; w <= wc; w++) opts.add("W" + w);
         opts.addAll(gettersFor(channel));
@@ -923,6 +960,213 @@ public class SequencerScreen extends Screen {
         if (src == null || src.isBlank()) return result;
         for (String s : src.split(",")) { String t = s.trim(); if (!t.isEmpty()) result.add(t); }
         return result;
+    }
+
+    private List<SrcCat> buildSrcCats(int ch, boolean includeManual, boolean varsOnly, boolean ifRsNames) {
+        List<SrcCat> cats = new ArrayList<>();
+        if (includeManual) {
+            cats.add(new SrcCat("Manual",
+                List.of(I18n.get("gui.universalkeyboard.label.manual_input"))));
+        }
+        List<String> vars = new ArrayList<>();
+        for (int v = 1; v <= SequencerStep.VAR_COUNT; v++) vars.add("V" + v);
+        cats.add(new SrcCat("Vars", vars));
+        if (varsOnly) return cats;
+        List<String> rsItems = ifRsNames
+            ? Arrays.asList(SequencerStep.RS_INPUT_GETTER_NAMES)
+            : List.of("RS:N", "RS:S", "RS:E", "RS:W", "RS:U", "RS:D");
+        cats.add(new SrcCat("RS", new ArrayList<>(rsItems)));
+        int wc = getWirelessCount();
+        if (wc > 0) {
+            List<String> wl = new ArrayList<>();
+            for (int w = 1; w <= wc; w++) wl.add("W" + w);
+            cats.add(new SrcCat("Wireless", wl));
+        }
+        List<String> allGetters = gettersFor(ch);
+        if (!allGetters.isEmpty()) {
+            List<String> sable = new ArrayList<>(), periph = new ArrayList<>();
+            for (String g : allGetters) {
+                if (dev.bennethogan.universalkeyboard.compat.SableCompat.isSableGetter(g)) sable.add(g);
+                else periph.add(g);
+            }
+            if (!sable.isEmpty())  cats.add(new SrcCat("Sable",   sable));
+            if (!periph.isEmpty()) cats.add(new SrcCat("Getters", periph));
+        }
+        return cats;
+    }
+
+    private List<SrcCat> buildConditionCats(int ch) {
+        List<SrcCat> cats = new ArrayList<>();
+        List<String> rsItems = new ArrayList<>();
+        for (ConditionSource src : ConditionSource.values())
+            if (src.direction != null) rsItems.add(src.label);
+        cats.add(new SrcCat("RS", rsItems));
+        int wc = getWirelessCount();
+        if (wc > 0) {
+            List<String> wl = new ArrayList<>();
+            for (int w = 1; w <= wc; w++) wl.add("W" + w);
+            cats.add(new SrcCat("Wireless", wl));
+        }
+        List<String> allGetters = gettersFor(ch);
+        if (!allGetters.isEmpty()) {
+            List<String> sable = new ArrayList<>(), periph = new ArrayList<>();
+            for (String g : allGetters) {
+                if (dev.bennethogan.universalkeyboard.compat.SableCompat.isSableGetter(g)) sable.add(g);
+                else periph.add(g);
+            }
+            if (!sable.isEmpty())  cats.add(new SrcCat("Sable",   sable));
+            if (!periph.isEmpty()) cats.add(new SrcCat("Getters", periph));
+        }
+        return cats;
+    }
+
+    private List<SrcCat> getSrcCatsForField(String field, int ch, boolean includeManual, boolean varsOnly) {
+        if (field.equals("CONDITION")) return buildConditionCats(ch);
+        return buildSrcCats(ch, includeManual, varsOnly, field.equals("IF_GETTER"));
+    }
+
+    private String getCurrentSrcValue(SequencerStep step, String field) {
+        String manualLabel = I18n.get("gui.universalkeyboard.label.manual_input");
+        return switch (field) {
+            case "IF_GETTER" -> step.ifGetter;
+            case "MATH_DEST" -> step.mathDest;
+            case "MATH_A"    -> step.mathAManual ? manualLabel : step.mathA;
+            case "MATH_B"    -> step.mathBManual ? manualLabel : step.mathB;
+            case "CONDITION" -> step.conditionSource == ConditionSource.PERIPHERAL
+                    ? step.conditionGetter : step.conditionSource.label;
+            default -> "";
+        };
+    }
+
+    private void renderSrcPickDropdown(GuiGraphics g, int mx, int my) {
+        if (srcPickRow < 0 || srcPickRow >= VISIBLE) return;
+        int si = scrollOffset + srcPickRow;
+        if (si >= steps.size()) return;
+        SequencerStep step = steps.get(si);
+        List<SrcCat> cats = getSrcCatsForField(srcPickField, srcPickCh, srcPickManual, srcPickVarsOnly);
+        if (cats.isEmpty()) return;
+        if (srcPickCat >= cats.size()) srcPickCat = 0;
+
+        int catW  = 54;
+        int itemH = 12;
+        List<String> items = cats.get(srcPickCat).items();
+        int maxTextPx = 0;
+        for (String item : items) maxTextPx = Math.max(maxTextPx, font.width(item));
+        int itemW = Math.max(80, Math.min(maxTextPx + 10, 180));
+        int catH  = cats.size() * itemH + 4;
+        int rowY  = rowAreaY + srcPickRow * (ROW_H + ROW_GAP);
+        int catY  = ddPos(rowY, catH);
+        int catX  = Math.max(panelX + itemW + 2, Math.min(srcPickBtnX, panelX + PANEL_W - catW - 2));
+        int itemX = catX - 2 - itemW;
+
+        drawDdBox(g, catX, catW, catY, catH);
+        for (int i = 0; i < cats.size(); i++) {
+            int ty = catY + 2 + i * itemH;
+            boolean hov = mx >= catX && mx < catX + catW && my >= ty && my < ty + itemH;
+            if (hov) srcPickCat = i;
+            boolean sel = srcPickCat == i;
+            if (sel || hov) g.fill(catX + 1, ty, catX + catW - 1, ty + itemH, 0xFF2A3A55);
+            g.drawString(font, "<", catX + 4, ty + 2, sel ? 0x88AAFF : 0x555555, false);
+            g.drawString(font, cats.get(i).label(), catX + 12, ty + 2, sel ? 0xFFFFFF : 0xAAAAAA, false);
+        }
+
+        int vis   = Math.min(SRC_DD_VIS, items.size());
+        int itemPanelH = vis * itemH + 4;
+        int itemY = catY;
+        if (itemY + itemPanelH > panelY + panelH - BTN_H - PAD)
+            itemY = panelY + panelH - BTN_H - PAD - itemPanelH;
+
+        drawDdBox(g, itemX, itemW, itemY, itemPanelH);
+        String curVal = getCurrentSrcValue(step, srcPickField);
+        for (int i = 0; i < vis; i++) {
+            int idx = srcPickItemScroll + i;
+            if (idx >= items.size()) break;
+            String item = items.get(idx);
+            int ty = itemY + 2 + i * itemH;
+            boolean hov = mx >= itemX && mx < itemX + itemW && my >= ty && my < ty + itemH;
+            boolean isCur = item.equals(curVal);
+            if (hov)       g.fill(itemX + 1, ty, itemX + itemW - 1, ty + itemH, 0xFF2A3A55);
+            else if (isCur) g.fill(itemX + 1, ty, itemX + itemW - 1, ty + itemH, 0xFF1E3A2A);
+            String display = item;
+            if (font.width(display) > itemW - 8) display = font.plainSubstrByWidth(display, itemW - 12) + "…";
+            g.drawString(font, display, itemX + 4, ty + 2, (hov || isCur) ? 0xFFFFFF : 0xAAAAAA, false);
+        }
+        if (items.size() > SRC_DD_VIS)
+            drawScrollArrows(g, itemX, itemW, itemY, itemPanelH, srcPickItemScroll, items.size());
+    }
+
+    private void handleSrcPickClick(double mx, double my) {
+        List<SrcCat> cats = getSrcCatsForField(srcPickField, srcPickCh, srcPickManual, srcPickVarsOnly);
+        if (cats.isEmpty() || srcPickCat >= cats.size()) { srcPickRow = -1; refreshAllRows(); return; }
+
+        int catW  = 54;
+        int itemH = 12;
+        List<String> items = cats.get(srcPickCat).items();
+        int maxTextPx = 0;
+        for (String item : items) maxTextPx = Math.max(maxTextPx, font.width(item));
+        int itemW = Math.max(80, Math.min(maxTextPx + 10, 180));
+        int catH  = cats.size() * itemH + 4;
+        int rowY  = rowAreaY + srcPickRow * (ROW_H + ROW_GAP);
+        int catY  = ddPos(rowY, catH);
+        int catX  = Math.max(panelX + itemW + 2, Math.min(srcPickBtnX, panelX + PANEL_W - catW - 2));
+        int itemX = catX - 2 - itemW;
+        int vis   = Math.min(SRC_DD_VIS, items.size());
+        int itemPanelH = vis * itemH + 4;
+        int itemY = catY;
+        if (itemY + itemPanelH > panelY + panelH - BTN_H - PAD)
+            itemY = panelY + panelH - BTN_H - PAD - itemPanelH;
+
+        if (mx >= itemX && mx < itemX + itemW && my >= itemY && my < itemY + itemPanelH) {
+            int rel = ((int) my - itemY - 2) / itemH;
+            int idx = srcPickItemScroll + rel;
+            if (rel >= 0 && rel < vis && idx < items.size()) {
+                String catLabel  = cats.get(srcPickCat).label();
+                int    savedRow  = srcPickRow;
+                String savedField = srcPickField;
+                int    savedCh   = srcPickCh;
+                srcPickRow = -1;
+                applySrcPickSelection(savedRow, savedField, savedCh, catLabel, items.get(idx));
+            }
+            return;
+        }
+
+        if (mx >= catX && mx < catX + catW && my >= catY && my < catY + catH) {
+            int rel = ((int) my - catY - 2) / itemH;
+            if (rel >= 0 && rel < cats.size()) { srcPickCat = rel; srcPickItemScroll = 0; }
+            return;
+        }
+
+        srcPickRow = -1;
+        refreshAllRows();
+    }
+
+    private void applySrcPickSelection(int rowIdx, String field, int ch, String catLabel, String value) {
+        int si = scrollOffset + rowIdx;
+        if (si >= steps.size()) return;
+        SequencerStep step = steps.get(si);
+        String manualLabel = I18n.get("gui.universalkeyboard.label.manual_input");
+        switch (field) {
+            case "IF_GETTER" -> step.ifGetter = value;
+            case "MATH_DEST" -> step.mathDest = value;
+            case "MATH_A" -> {
+                if (value.equals(manualLabel)) step.mathAManual = true;
+                else { step.mathA = value; step.mathAManual = false; }
+            }
+            case "MATH_B" -> {
+                if (value.equals(manualLabel)) step.mathBManual = true;
+                else { step.mathB = value; step.mathBManual = false; }
+            }
+            case "CONDITION" -> {
+                if (catLabel.equals("RS")) {
+                    for (ConditionSource src : ConditionSource.values())
+                        if (src.label.equals(value)) { step.conditionSource = src; break; }
+                } else {
+                    step.conditionSource = ConditionSource.PERIPHERAL;
+                    step.conditionGetter = value;
+                }
+            }
+        }
+        refreshAllRows();
     }
 
     @Override
@@ -951,8 +1195,16 @@ public class SequencerScreen extends Screen {
             regressMultiScroll = Math.max(0, Math.min(max, regressMultiScroll + dir));
             return true;
         }
+        if (srcPickRow >= 0) {
+            List<SrcCat> cats = getSrcCatsForField(srcPickField, srcPickCh, srcPickManual, srcPickVarsOnly);
+            if (srcPickCat < cats.size()) {
+                int max = Math.max(0, cats.get(srcPickCat).items().size() - SRC_DD_VIS);
+                srcPickItemScroll = Math.max(0, Math.min(max, srcPickItemScroll + dir));
+            }
+            return true;
+        }
         if (typeDropdownRow >= 0) {
-            int max = Math.max(0, buildAvailableTypes().length - DD_VIS);
+            int max = Math.max(0, buildAvailableTypes().length - TYPE_DD_VIS);
             typeDropdownScroll = Math.max(0, Math.min(max, typeDropdownScroll + dir));
             return true;
         }
@@ -978,6 +1230,7 @@ public class SequencerScreen extends Screen {
             if (mathDropdownRow >= 0) { mathDropdownRow = -1; return true; }
             if (mathOpDropdownRow >= 0) { mathOpDropdownRow = -1; return true; }
             if (regressMultiRow >= 0) { regressMultiRow = -1; return true; }
+            if (srcPickRow >= 0) { srcPickRow = -1; return true; }
             if (typeDropdownRow >= 0) { typeDropdownRow = -1; return true; }
             onClose(); return true;
         }
@@ -1124,8 +1377,12 @@ public class SequencerScreen extends Screen {
             addRenderableWidget(typeEnterBtn);
 
             // IF
-            ifGetterBtn = DarkButton.make(Component.literal(""), b -> cycleIfGetter(1),
-                    ctx, rowY + 1, 80, BTN_H);
+            ifGetterBtn = DarkButton.make(Component.literal(""), b -> {
+                int si2 = scrollOffset + rowIdx;
+                if (si2 < steps.size())
+                    openSrcPick("IF_GETTER", steps.get(si2).channel, false, false,
+                                panelX + PAD + COL_CTX);
+            }, ctx, rowY + 1, 80, BTN_H);
             addRenderableWidget(ifGetterBtn);
             ifOpBtn = DarkButton.make(Component.literal(">"), b -> cycleIfOp(1),
                     ctx + 84, rowY + 1, 28, BTN_H);
@@ -1147,8 +1404,12 @@ public class SequencerScreen extends Screen {
             ifJumpInput.setMaxLength(3);
 
             // CONDITION
-            sourceBtn = DarkButton.make(Component.literal(""), b -> cycleSource(1),
-                    ctx, rowY + 1, 66, BTN_H);
+            sourceBtn = DarkButton.make(Component.literal(""), b -> {
+                int si2 = scrollOffset + rowIdx;
+                if (si2 < steps.size())
+                    openSrcPick("CONDITION", steps.get(si2).channel, false, false,
+                                panelX + PAD + COL_CTX);
+            }, ctx, rowY + 1, 66, BTN_H);
             addRenderableWidget(sourceBtn);
             getterBtn = DarkButton.make(Component.literal(""), b -> cycleGetter(1),
                     ctx + 70, rowY + 1, 80, BTN_H);
@@ -1170,16 +1431,21 @@ public class SequencerScreen extends Screen {
             jumpInput.setMaxLength(3);
 
             // MATH
-            mathDestBtn = DarkButton.make(Component.literal("V1"), b -> cycleMathDest(1),
-                    ctx, rowY + 1, 36, BTN_H);
+            mathDestBtn = DarkButton.make(Component.literal("V1"), b -> {
+                int si2 = scrollOffset + rowIdx;
+                if (si2 < steps.size())
+                    openSrcPick("MATH_DEST", steps.get(si2).mathACh, false, true,
+                                panelX + PAD + COL_CTX);
+            }, ctx, rowY + 1, 36, BTN_H);
             addRenderableWidget(mathDestBtn);
             mathASourceBtn = DarkButton.make(Component.literal("src A..."), b -> {
                 int si2 = scrollOffset + rowIdx;
                 if (si2 < steps.size() && steps.get(si2).type == Type.REGRESS
                         && steps.get(si2).regressMode.equals("SAMPLE"))
                     openRegressMultiDropdown(true);
-                else
-                    openMathDropdown(true);
+                else if (si2 < steps.size())
+                    openSrcPick("MATH_A", steps.get(si2).mathACh, true, false,
+                                panelX + PAD + COL_CTX + 48);
             }, ctx + 48, rowY + 1, 64, BTN_H);
             addRenderableWidget(mathASourceBtn);
             mathAInput = makeBox(ctx + 48, rowY, 64, "A (# V1 RS:N getter)",
@@ -1195,8 +1461,9 @@ public class SequencerScreen extends Screen {
                 if (si2 < steps.size() && steps.get(si2).type == Type.REGRESS
                         && steps.get(si2).regressMode.equals("SAMPLE"))
                     openRegressMultiDropdown(false);
-                else
-                    openMathDropdown(false);
+                else if (si2 < steps.size())
+                    openSrcPick("MATH_B", steps.get(si2).mathBCh, true, false,
+                                panelX + PAD + COL_CTX + 180);
             }, ctx + 180, rowY + 1, 64, BTN_H);
             addRenderableWidget(mathBSourceBtn);
             mathBInput = makeBox(ctx + 180, rowY, 64, I18n.get("gui.universalkeyboard.hint.math_src_b"),
@@ -1313,7 +1580,7 @@ public class SequencerScreen extends Screen {
             int idx = list.indexOf(step.ifGetter);
             if (idx < 0) idx = 0;
             step.ifGetter = list.get(wrapIdx(idx, list.size(), dir));
-            ifGetterBtn.setMessage(Component.literal(step.ifGetter));
+            ifGetterBtn.setMessage(Component.literal(fitLabel(step.ifGetter, 72)));
         }
 
         private void cycleIfOp(int dir) {
@@ -1367,9 +1634,26 @@ public class SequencerScreen extends Screen {
             regressMultiScroll = 0;
         }
 
+        private void openSrcPick(String field, int ch, boolean includeManual, boolean varsOnly, int btnX) {
+            typeDropdownRow   = -1;
+            mathDropdownRow   = -1;
+            mathOpDropdownRow = -1;
+            regressMultiRow   = -1;
+            loadDropdownOpen  = false;
+            boolean same = srcPickRow == rowIdx && srcPickField.equals(field);
+            srcPickRow        = same ? -1 : rowIdx;
+            srcPickField      = field;
+            srcPickCat        = 0;
+            srcPickItemScroll = 0;
+            srcPickCh         = ch;
+            srcPickManual     = includeManual;
+            srcPickVarsOnly   = varsOnly;
+            srcPickBtnX       = btnX;
+        }
+
         private List<String> buildIfGetterList(int channel) {
             List<String> list = new ArrayList<>(Arrays.asList(SequencerStep.RS_INPUT_GETTER_NAMES));
-            for (int i = 1; i <= 8; i++) list.add("V" + i);
+            for (int i = 1; i <= SequencerStep.VAR_COUNT; i++) list.add("V" + i);
             int wc = getWirelessCount();
             for (int w = 1; w <= wc; w++) list.add("W" + w);
             list.addAll(gettersFor(channel));
@@ -1452,7 +1736,7 @@ public class SequencerScreen extends Screen {
             boolean unary = isUnaryOp(step.mathOp);
             mathBInput.visible     = !unary && step.mathBManual;
             mathBSourceBtn.visible = !unary && !step.mathBManual;
-            mathBChBtn.visible     = !unary;
+            mathBChBtn.visible     = !unary && !step.mathBManual && srcNeedsChannel(step.mathB, false);
         }
 
         /** Scroll over a math source button to cycle its selected source directly. */
@@ -1563,7 +1847,7 @@ public class SequencerScreen extends Screen {
                     ifJumpInput.visible = goTo;
                     List<String> list = buildIfGetterList(step.channel);
                     if (step.ifGetter.isEmpty() && !list.isEmpty()) step.ifGetter = list.get(0);
-                    ifGetterBtn.setMessage(Component.literal(step.ifGetter.isEmpty() ? I18n.get("gui.universalkeyboard.label.no_getter") : step.ifGetter));
+                    ifGetterBtn.setMessage(Component.literal(step.ifGetter.isEmpty() ? I18n.get("gui.universalkeyboard.label.no_getter") : fitLabel(step.ifGetter, 72)));
                     ifOpBtn.setMessage(Component.literal(step.ifOp));
                     ifValueInput.setValue(step.ifValueStr);
                     ifModeBtn.setMessage(Component.literal(goTo ? "→step" : "skip"));
@@ -1572,46 +1856,41 @@ public class SequencerScreen extends Screen {
                 }
                 case CONDITION -> {
                     sourceBtn.visible = opInput.visible = true;
-                    sourceBtn.setMessage(Component.literal(step.conditionSource.label));
+                    getterBtn.visible = false;
                     boolean periph = step.conditionSource == ConditionSource.PERIPHERAL;
-                    int cx = panelX + PAD;
-                    if (periph) {
-                        getterBtn.visible = true;
-                        List<String> stepGetters = gettersFor(step.channel);
-                        if (step.conditionGetter.isEmpty() && !stepGetters.isEmpty())
-                            step.conditionGetter = stepGetters.get(0);
-                        getterBtn.setMessage(Component.literal(
-                                step.conditionGetter.isEmpty() ? I18n.get("gui.universalkeyboard.label.no_getters") : step.conditionGetter));
-                        opInput.setX(cx + COL_CTX + 154); opInput.setWidth(124);
-                    } else {
-                        getterBtn.visible = false;
-                        opInput.setX(cx + COL_CTX + 70);  opInput.setWidth(208);
-                    }
+                    String condLabel = periph
+                            ? (step.conditionGetter.isEmpty() ? "source..." : fitLabel(step.conditionGetter, 58))
+                            : step.conditionSource.label;
+                    sourceBtn.setMessage(Component.literal(condLabel));
+                    int cx2 = panelX + PAD;
+                    opInput.setX(cx2 + COL_CTX + 70);
+                    opInput.setWidth(208);
                     opInput.setValue(step.conditionOp + step.conditionThresholdStr);
                 }
                 case DELAY -> { delayInput.visible = true; delayInput.setValue(step.delaySecondsStr); }
                 case JUMP  -> { jumpInput.visible  = true; jumpInput.setValue(String.valueOf(step.jumpTarget)); }
                 case MATH  -> {
                     mathDestBtn.setX(panelX + PAD + COL_CTX);
-                    mathDestBtn.visible = mathOpBtn.visible = mathAChBtn.visible = true;
+                    mathDestBtn.visible = mathOpBtn.visible = true;
                     boolean unary   = isUnaryOp(step.mathOp);
                     boolean aManual = step.mathAManual;
                     boolean bManual = step.mathBManual;
                     mathAInput.visible     = aManual;
                     mathASourceBtn.visible = !aManual;
+                    mathAChBtn.visible     = !aManual && srcNeedsChannel(step.mathA, false);
                     mathBInput.visible     = !unary && bManual;
                     mathBSourceBtn.visible = !unary && !bManual;
-                    mathBChBtn.visible     = !unary;
+                    mathBChBtn.visible     = !unary && !bManual && srcNeedsChannel(step.mathB, false);
                     String dest = (step.mathDest == null || step.mathDest.isEmpty()) ? "V1" : step.mathDest;
                     step.mathDest = dest;
                     mathDestBtn.setMessage(Component.literal(dest));
                     if (aManual) mathAInput.setValue(step.mathA);
-                    else mathASourceBtn.setMessage(Component.literal(step.mathA.isEmpty() ? "src A..." : step.mathA));
+                    else mathASourceBtn.setMessage(Component.literal(step.mathA.isEmpty() ? "src A..." : fitLabel(step.mathA, 56)));
                     mathAChBtn.setMessage(Component.literal(String.valueOf(step.mathACh)));
                     mathOpBtn.setMessage(Component.literal(step.mathOp));
                     if (!unary) {
                         if (bManual) mathBInput.setValue(step.mathB);
-                        else mathBSourceBtn.setMessage(Component.literal(step.mathB.isEmpty() ? "src B..." : step.mathB));
+                        else mathBSourceBtn.setMessage(Component.literal(step.mathB.isEmpty() ? "src B..." : fitLabel(step.mathB, 56)));
                         mathBChBtn.setMessage(Component.literal(String.valueOf(step.mathBCh)));
                     }
                 }

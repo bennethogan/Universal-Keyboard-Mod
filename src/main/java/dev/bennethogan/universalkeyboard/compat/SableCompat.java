@@ -5,6 +5,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -62,6 +63,15 @@ public class SableCompat {
     // Quaterniondc interface methods: w(), x(), y(), z()
     private static Method qdcW, qdcX, qdcY, qdcZ;
     private static volatile boolean poseResolved = false;
+
+    // ── Mass-tracker handles (resolved lazily from first server sublevel) ─────
+    private static Method getSelfMassTrackerMethod; // ServerSubLevel.getSelfMassTracker() → MassTracker
+    private static Method addBlockMassMethod;        // MassTracker.addBlockMass(BlockGetter, BlockState, BlockPos, double, Vec3)
+    private static Method getInertiaStaticMethod;    // PhysicsBlockPropertyHelper.getInertia(Level, BlockPos, BlockState) → Vec3 (static)
+    private static Method sableGetPropertyMethod;    // BlockState.sable$getProperty(propertyType)
+    private static Object massPropertyType;          // PhysicsBlockPropertyTypes.MASS.get()
+    private static volatile boolean massHandlesResolved = false;
+    private static boolean massSupported = false;
 
     // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -151,6 +161,94 @@ public class SableCompat {
 
     public static boolean isOnSublevel(Level level, BlockPos pos) {
         return getSublevel(level, pos) != null;
+    }
+
+    // ── Mass override ───────────────────────────────────────────────────────────
+
+
+    public static double getDefaultBlockMass(BlockState state) {
+        if (sableGetPropertyMethod == null || massPropertyType == null) return 1.0;
+        try {
+            Object v = sableGetPropertyMethod.invoke(state, massPropertyType);
+            if (v instanceof Number n) return n.doubleValue();
+        } catch (Throwable ignored) {}
+        return 1.0;
+    }
+
+  
+    public static boolean addBlockMass(Level level, BlockPos pos, BlockState state, double massDelta) {
+        init();
+        if (!present || level == null || level.isClientSide) return false;
+        Object sublevel = getSublevel(level, pos);
+        if (sublevel == null) return false;
+        ensureMassHandles(sublevel, state);
+        if (!massSupported) return false;
+        try {
+            Object tracker = getSelfMassTrackerMethod.invoke(sublevel);
+            if (tracker == null) return false;
+            Object inertia = getInertiaStaticMethod.invoke(null, level, pos, state);
+            addBlockMassMethod.invoke(tracker, level, state, pos, massDelta, inertia);
+            return true;
+        } catch (Throwable t) {
+            LOGGER.warn("SableCompat: addBlockMass failed: {} — mass override disabled.", t.toString());
+            massSupported = false;
+            return false;
+        }
+    }
+    // ------------------------------------------
+    private static void ensureMassHandles(Object sublevel, BlockState sampleState) {
+        if (massHandlesResolved) return;
+        synchronized (SableCompat.class) {
+            if (massHandlesResolved) return;
+            massHandlesResolved = true;
+            try {
+                // ServerSubLevel.getSelfMassTracker() — only present on the server sublevel type
+                try { getSelfMassTrackerMethod = sublevel.getClass().getMethod("getSelfMassTracker"); }
+                catch (NoSuchMethodException e) {
+                    LOGGER.info("SableCompat: getSelfMassTracker() not found on {}; mass override disabled.",
+                            sublevel.getClass().getName());
+                    return;
+                }
+                Object tracker = getSelfMassTrackerMethod.invoke(sublevel);
+                if (tracker == null) { LOGGER.info("SableCompat: mass tracker null; mass override disabled."); return; }
+
+                // MassTracker.addBlockMass(BlockGetter, BlockState, BlockPos, double, Vec3)
+                for (Method m : tracker.getClass().getMethods()) {
+                    if (m.getName().equals("addBlockMass") && m.getParameterCount() == 5) { addBlockMassMethod = m; break; }
+                }
+                if (addBlockMassMethod == null) {
+                    LOGGER.info("SableCompat: addBlockMass(5-arg) not found; mass override disabled.");
+                    return;
+                }
+
+                // PhysicsBlockPropertyHelper.getInertia(Level, BlockPos, BlockState) — static
+                Class<?> helper = Class.forName("dev.ryanhcode.sable.physics.config.block_properties.PhysicsBlockPropertyHelper");
+                for (Method m : helper.getMethods()) {
+                    if (m.getName().equals("getInertia") && m.getParameterCount() == 3) { getInertiaStaticMethod = m; break; }
+                }
+                if (getInertiaStaticMethod == null) {
+                    LOGGER.info("SableCompat: PhysicsBlockPropertyHelper.getInertia(3-arg) not found; mass override disabled.");
+                    return;
+                }
+
+                // Optional: read the default MASS property so the delta tracks Sable's real default.
+                try {
+                    Class<?> types = Class.forName("dev.ryanhcode.sable.physics.config.block_properties.PhysicsBlockPropertyTypes");
+                    Object massSupplier = types.getField("MASS").get(null);
+                    massPropertyType = massSupplier.getClass().getMethod("get").invoke(massSupplier);
+                    for (Method m : sampleState.getClass().getMethods()) {
+                        if (m.getName().equals("sable$getProperty") && m.getParameterCount() == 1) { sableGetPropertyMethod = m; break; }
+                    }
+                } catch (Throwable t) {
+                    LOGGER.debug("SableCompat: MASS property read unavailable ({}); assuming default 1.0.", t.toString());
+                }
+
+                massSupported = true;
+                LOGGER.info("SableCompat: block mass override enabled.");
+            } catch (Throwable t) {
+                LOGGER.warn("SableCompat: mass handle resolution failed: {}", t.toString());
+            }
+        }
     }
 
     public static boolean isSableGetter(String name) {
