@@ -28,12 +28,15 @@ public class LiveControlManager {
     private static final Set<Integer>          toggledOn      = new HashSet<>();
     private static final Map<Long, Integer>    rsIncCounters  = new HashMap<>();
     private static final Map<Integer, Integer> thrIncCounters = new HashMap<>();
-    private static final Map<Integer, Integer> varIncCounters = new HashMap<>(); // varIndex → 0-100 counter
+    private static final Map<Integer, Integer> varIncCounters = new HashMap<>();
+    private static final Map<Long, Double>     rsIncFrac      = new HashMap<>();
+    private static final Map<Integer, Double>  thrIncFrac     = new HashMap<>();
+    private static final Map<Integer, Double>  varIncFrac     = new HashMap<>();
     private static final Map<Integer, Integer> incHoldTicks   = new HashMap<>();
-    private static final Set<Integer>          hldVarOn       = new HashSet<>(); // varIndex currently driven by a held HLD binding
+    private static final Set<Integer>          hldVarOn       = new HashSet<>();
 
-    private static final int INC_REPEAT_DELAY_TICKS = 10; // 0.5 s before auto-repeat
-    private static final int MAX_DISPLAY_KEYS        = 3;  // action-bar key labels before "+N more"
+    private static final int INC_REPEAT_DELAY_TICKS = 10;
+    private static final int MAX_DISPLAY_KEYS        = 3;
 
     private static int actionBarTick = 0;
 
@@ -50,11 +53,12 @@ public class LiveControlManager {
         rsIncCounters.clear();
         thrIncCounters.clear();
         varIncCounters.clear();
+        rsIncFrac.clear();
+        thrIncFrac.clear();
+        varIncFrac.clear();
         incHoldTicks.clear();
         hldVarOn.clear();
 
-        // Seed INC counters and TGL toggle state from current server values so the
-        // first keypress doesn't overwrite persisted signals with zeros.
         for (int i = 0; i < bindings.size(); i++) {
             LiveControlBinding b = bindings.get(i);
             if (b.actionType == LiveControlBinding.ActionType.REDSTONE) {
@@ -88,24 +92,27 @@ public class LiveControlManager {
 
     public static void deactivate() {
         active = false;
-        // Release any HLD variable bindings still held so the sequencer regains ownership.
         if (Minecraft.getInstance().getConnection() != null) {
             List<ModPackets.LiveAction> varOff = new ArrayList<>();
-            for (LiveControlBinding b : bindings)
+            for (int i = 0; i < bindings.size(); i++) {
+                LiveControlBinding b = bindings.get(i);
                 if (b.actionType == LiveControlBinding.ActionType.VARIABLE
                         && b.mode == Mode.HLD && heldKeys.contains(b.keyCode))
-                    varOff.add(varAction(b.varIndex, 0));
+                    varOff.add(varActionOd(b.varIndex, 0, i));
+            }
             if (!varOff.isEmpty()) ModPackets.sendLiveAction(keyboardPos, varOff);
         }
         heldKeys.clear();
         incHoldTicks.clear();
         hldVarOn.clear();
-        // Send zero-state only when still connected — avoids NPE on disconnect.
         if (Minecraft.getInstance().getConnection() != null) computeAndSend();
         toggledOn.clear();
         rsIncCounters.clear();
         thrIncCounters.clear();
         varIncCounters.clear();
+        rsIncFrac.clear();
+        thrIncFrac.clear();
+        varIncFrac.clear();
     }
 
     public static boolean isActive()       { return active; }
@@ -127,47 +134,49 @@ public class LiveControlManager {
                     Component.literal(I18n.get("gui.universalkeyboard.msg.live_control_active")), true);
         }
 
-        // INC mode: auto-repeat after INC_REPEAT_DELAY_TICKS of holding.
-        // VARIABLE bindings are handled separately (event-driven, re-asserted while held).
         boolean incFired = false;
         Set<Integer> countedThisTick = new java.util.HashSet<>();
         List<ModPackets.LiveAction> varActions = new ArrayList<>();
-        for (LiveControlBinding b : bindings) {
-            // HLD variable: re-assert the on-value every tick while held so the
-            // sequencer cannot overwrite it mid-hold. When the key is no longer held,
-            // bring it back to 0 from heldKeys state (not just the discrete key-up event),
-            // so a missed or repeat-superseded release can never leave it stuck on.
+        for (int bi = 0; bi < bindings.size(); bi++) {
+            LiveControlBinding b = bindings.get(bi);
             if (b.actionType == LiveControlBinding.ActionType.VARIABLE && b.mode == Mode.HLD) {
                 if (heldKeys.contains(b.keyCode)) {
-                    varActions.add(varAction(b.varIndex, b.varOnValue));
+                    varActions.add(varActionOd(b.varIndex, b.varOnValue, bi));
                     hldVarOn.add(b.varIndex);
                 } else if (hldVarOn.contains(b.varIndex)) {
-                    varActions.add(varAction(b.varIndex, 0));
+                    varActions.add(varActionOd(b.varIndex, 0, bi));
                     hldVarOn.remove(b.varIndex);
                 }
                 continue;
             }
             if (b.mode != Mode.INC || !heldKeys.contains(b.keyCode)) continue;
-            // Advance the hold timer once per key per tick
             if (countedThisTick.add(b.keyCode))
                 incHoldTicks.merge(b.keyCode, 1, Integer::sum);
             boolean pastDelay = incHoldTicks.getOrDefault(b.keyCode, 0) >= INC_REPEAT_DELAY_TICKS;
-            int delta = b.incPlus ? 1 : -1;
+            int baseDelta = b.incPlus ? 1 : -1;
+            double odFactor = overdriveFactor(bi);
             if (b.actionType == LiveControlBinding.ActionType.VARIABLE) {
-                // INC variable: step on auto-repeat, and re-assert every tick to own it while held.
-                if (pastDelay)
-                    varIncCounters.merge(b.varIndex, delta, (cur, d) -> Math.max(0, Math.min(100, cur + d)));
+                if (pastDelay) {
+                    int scaled = varScaledStep(b.varIndex, baseDelta, odFactor);
+                    if (scaled != 0)
+                        varIncCounters.merge(b.varIndex, scaled, (cur, d) -> Math.max(0, Math.min(100, cur + d)));
+                }
                 varActions.add(varAction(b.varIndex, varIncCounters.getOrDefault(b.varIndex, 0)));
                 continue;
             }
             if (!pastDelay) continue;
             switch (b.actionType) {
-                case REDSTONE -> rsIncCounters.merge(
-                        rsKey(b.wirelessIdx, b.rsSide), delta,
-                        (cur, d) -> Math.max(0, Math.min(15, cur + d)));
-                case THRUSTER_POWER -> thrIncCounters.merge(
-                        b.channel, delta,
-                        (cur, d) -> Math.max(0, Math.min(15, cur + d)));
+                case REDSTONE -> {
+                    long key = rsKey(b.wirelessIdx, b.rsSide);
+                    int scaled = rsScaledStep(key, baseDelta, odFactor);
+                    if (scaled != 0)
+                        rsIncCounters.merge(key, scaled, (cur, d) -> Math.max(0, Math.min(15, cur + d)));
+                }
+                case THRUSTER_POWER -> {
+                    int scaled = thrScaledStep(b.channel, baseDelta, odFactor);
+                    if (scaled != 0)
+                        thrIncCounters.merge(b.channel, scaled, (cur, d) -> Math.max(0, Math.min(15, cur + d)));
+                }
                 default -> {}
             }
             incFired = true;
@@ -186,33 +195,35 @@ public class LiveControlManager {
 
         handleVariableKey(keyCode, glfw_action);
 
-        // INC mode: step the counter immediately on press, then per-tick via heldKeys
         if (glfw_action == GLFW.GLFW_PRESS) {
-            for (LiveControlBinding b : bindings) {
+            for (int i = 0; i < bindings.size(); i++) {
+                LiveControlBinding b = bindings.get(i);
                 if (b.keyCode != keyCode || b.mode != Mode.INC
                         || b.actionType == LiveControlBinding.ActionType.VARIABLE) continue;
                 heldKeys.add(keyCode);
-                // Only reset the delay timer if this is a genuine new press (key was not
-                // already tracked). On Wayland the OS key-repeat can generate rapid
-                // press/release pairs, in that case the key may still be in heldKeys
-                // from the previous press
                 if (!incHoldTicks.containsKey(keyCode))
                     incHoldTicks.put(keyCode, 0);
-                int delta = b.incPlus ? 1 : -1;
+                int baseDelta = b.incPlus ? 1 : -1;
+                double odFactor = overdriveFactor(i);
                 switch (b.actionType) {
-                    case REDSTONE -> rsIncCounters.merge(
-                            rsKey(b.wirelessIdx, b.rsSide), delta,
-                            (cur, d) -> Math.max(0, Math.min(15, cur + d)));
-                    case THRUSTER_POWER -> thrIncCounters.merge(
-                            b.channel, delta,
-                            (cur, d) -> Math.max(0, Math.min(15, cur + d)));
+                    case REDSTONE -> {
+                        long key = rsKey(b.wirelessIdx, b.rsSide);
+                        int scaled = rsScaledStep(key, baseDelta, odFactor);
+                        if (scaled != 0)
+                            rsIncCounters.merge(key, scaled,
+                                    (cur, d) -> Math.max(0, Math.min(15, cur + d)));
+                    }
+                    case THRUSTER_POWER -> {
+                        int scaled = thrScaledStep(b.channel, baseDelta, odFactor);
+                        if (scaled != 0)
+                            thrIncCounters.merge(b.channel, scaled,
+                                    (cur, d) -> Math.max(0, Math.min(15, cur + d)));
+                    }
                     default -> {}
                 }
             }
         }
 
-        // GLFW_REPEAT - OS key-repeat event: keep the key tracked as held without
-        // resetting the delay timer, so tick() eventually fires auto-repeat
         if (glfw_action == GLFW.GLFW_REPEAT) {
             for (LiveControlBinding b : bindings) {
                 if (b.keyCode != keyCode || b.mode != Mode.INC
@@ -222,7 +233,6 @@ public class LiveControlManager {
             }
         }
 
-        // HLD / TGL modes
         if (glfw_action == GLFW.GLFW_PRESS) {
             for (int i = 0; i < bindings.size(); i++) {
                 LiveControlBinding b = bindings.get(i);
@@ -230,7 +240,7 @@ public class LiveControlManager {
                         || b.actionType == LiveControlBinding.ActionType.VARIABLE) continue;
                 if (b.mode == Mode.HLD) {
                     heldKeys.add(keyCode);
-                } else { // TGL
+                } else {
                     if (toggledOn.contains(i)) toggledOn.remove(i);
                     else toggledOn.add(i);
                 }
@@ -243,13 +253,6 @@ public class LiveControlManager {
         computeAndSend();
     }
 
-    /**
-     * VARIABLE bindings are event-driven: they only write the variable at the moment of
-     * input, leaving the sequencer in sole control between presses.
-     *  - HLD: write the on-value on press; write 0 on release (re-asserted each tick while held).
-     *  - TGL: write the on-value or 0 on each toggle.
-     *  - INC: step the counter on press (and auto-repeat in tick); owns the variable only while held.
-     */
     private static void handleVariableKey(int keyCode, int glfw_action) {
         List<ModPackets.LiveAction> out = new ArrayList<>();
         if (glfw_action == GLFW.GLFW_PRESS) {
@@ -259,18 +262,20 @@ public class LiveControlManager {
                 switch (b.mode) {
                     case HLD -> {
                         heldKeys.add(keyCode);
-                        out.add(varAction(b.varIndex, b.varOnValue));
+                        out.add(varActionOd(b.varIndex, b.varOnValue, i));
                     }
                     case INC -> {
                         heldKeys.add(keyCode);
                         if (!incHoldTicks.containsKey(keyCode)) incHoldTicks.put(keyCode, 0);
-                        int delta = b.incPlus ? 1 : -1;
-                        varIncCounters.merge(b.varIndex, delta, (cur, d) -> Math.max(0, Math.min(100, cur + d)));
+                        int baseDelta = b.incPlus ? 1 : -1;
+                        int scaled = varScaledStep(b.varIndex, baseDelta, overdriveFactor(i));
+                        if (scaled != 0)
+                            varIncCounters.merge(b.varIndex, scaled, (cur, d) -> Math.max(0, Math.min(100, cur + d)));
                         out.add(varAction(b.varIndex, varIncCounters.getOrDefault(b.varIndex, 0)));
                     }
                     case TGL -> {
                         if (toggledOn.contains(i)) toggledOn.remove(i); else toggledOn.add(i);
-                        out.add(varAction(b.varIndex, toggledOn.contains(i) ? b.varOnValue : 0));
+                        out.add(varActionOd(b.varIndex, toggledOn.contains(i) ? b.varOnValue : 0, i));
                     }
                 }
             }
@@ -282,10 +287,10 @@ public class LiveControlManager {
                 incHoldTicks.putIfAbsent(keyCode, 0);
             }
         } else if (glfw_action == GLFW.GLFW_RELEASE) {
-            for (LiveControlBinding b : bindings) {
+            for (int i = 0; i < bindings.size(); i++) {
+                LiveControlBinding b = bindings.get(i);
                 if (b.keyCode != keyCode || b.actionType != LiveControlBinding.ActionType.VARIABLE) continue;
-                // HLD hands the variable back to the sequencer; INC leaves its last value in place.
-                if (b.mode == Mode.HLD) { out.add(varAction(b.varIndex, 0)); hldVarOn.remove(b.varIndex); }
+                if (b.mode == Mode.HLD) { out.add(varActionOd(b.varIndex, 0, i)); hldVarOn.remove(b.varIndex); }
             }
         }
         if (!out.isEmpty()) ModPackets.sendLiveAction(keyboardPos, out);
@@ -295,32 +300,93 @@ public class LiveControlManager {
         return new ModPackets.LiveAction((byte) 4, varIndex, value, 0.0);
     }
 
+    private static ModPackets.LiveAction varActionOd(int varIndex, double value, int bindingIdx) {
+        double od = (value == 0.0) ? 1.0 : overdriveFactor(bindingIdx);
+        double scaled = (value == 0.0) ? 0.0 : Math.min(100.0, value * od);
+        return new ModPackets.LiveAction((byte) 4, varIndex, scaled, 0.0);
+    }
+
+    private static double overdriveFactor(int bindingIdx) {
+        double factor = 1.0;
+        for (int i = 0; i < bindings.size(); i++) {
+            LiveControlBinding b = bindings.get(i);
+            if (b.actionType != LiveControlBinding.ActionType.OVERDRIVE) continue;
+            boolean odActive = (b.mode == Mode.HLD && heldKeys.contains(b.keyCode))
+                            || (b.mode == Mode.TGL && toggledOn.contains(i));
+            if (!odActive) continue;
+            if (bindingIdx >= 0 && isExcluded(b.odExcludes, bindingIdx + 1)) continue;
+            factor *= b.overdriveMultiplier;
+        }
+        return factor;
+    }
+
+    private static boolean isExcluded(String excludes, int slotNum) {
+        if (excludes == null || excludes.isEmpty()) return false;
+        for (String part : excludes.split(",")) {
+            try {
+                if (Integer.parseInt(part.trim()) == slotNum) return true;
+            } catch (NumberFormatException ignored) {}
+        }
+        return false;
+    }
+
+    private static int rsScaledStep(long key, int baseDelta, double factor) {
+        if (factor == 1.0) return baseDelta;
+        double want = baseDelta * factor + rsIncFrac.getOrDefault(key, 0.0);
+        int whole = (int) Math.round(want);
+        rsIncFrac.put(key, want - whole);
+        return whole;
+    }
+
+    private static int thrScaledStep(int channel, int baseDelta, double factor) {
+        if (factor == 1.0) return baseDelta;
+        double want = baseDelta * factor + thrIncFrac.getOrDefault(channel, 0.0);
+        int whole = (int) Math.round(want);
+        thrIncFrac.put(channel, want - whole);
+        return whole;
+    }
+
+    private static int varScaledStep(int varIndex, int baseDelta, double factor) {
+        if (factor == 1.0) return baseDelta;
+        double want = baseDelta * factor + varIncFrac.getOrDefault(varIndex, 0.0);
+        int whole = (int) Math.round(want);
+        varIncFrac.put(varIndex, want - whole);
+        return whole;
+    }
+
     // ── Output computation ───────────────────────────────────────────────────
 
     public static void computeAndSend() {
-        Map<Long, Integer>    rsTargetToSignal = new HashMap<>();
-        Map<Integer, Double>  powerByChannel   = new HashMap<>();
-        Map<Integer, double[]> vectorByChannel = new HashMap<>();
+        Map<Long, Integer>     rsTargetToSignal = new HashMap<>();
+        Map<Integer, Double>   powerByChannel   = new HashMap<>();
+        Map<Integer, double[]> vectorByChannel  = new HashMap<>();
+        Map<Integer, Integer>  linkSignals      = new HashMap<>();
 
         for (int i = 0; i < bindings.size(); i++) {
-            LiveControlBinding b           = bindings.get(i);
+            LiveControlBinding b            = bindings.get(i);
             boolean            bindingActive = isBindingActive(i);
+            double             odFactor     = overdriveFactor(i);
 
             switch (b.actionType) {
                 case REDSTONE -> {
-                    long key = rsKey(b.wirelessIdx, b.rsSide);
-                    if (b.mode == Mode.INC) {
-                        rsTargetToSignal.putIfAbsent(key, 0); // counter merged below
+                    if (b.linkIdx > 0) {
+                        int contribution = bindingActive ? Math.min(15, (int) Math.round(b.signalStrength * odFactor)) : 0;
+                        linkSignals.merge(b.linkIdx, contribution, Math::max);
                     } else {
-                        int contribution = bindingActive ? b.signalStrength : 0;
-                        rsTargetToSignal.merge(key, contribution, Math::max);
+                        long key = rsKey(b.wirelessIdx, b.rsSide);
+                        if (b.mode == Mode.INC) {
+                            rsTargetToSignal.putIfAbsent(key, 0);
+                        } else {
+                            int contribution = bindingActive ? Math.min(15, (int) Math.round(b.signalStrength * odFactor)) : 0;
+                            rsTargetToSignal.merge(key, contribution, Math::max);
+                        }
                     }
                 }
                 case THRUSTER_POWER -> {
                     if (b.mode == Mode.INC) {
-                        powerByChannel.putIfAbsent(b.channel, 0.0); // counter merged below
+                        powerByChannel.putIfAbsent(b.channel, 0.0);
                     } else {
-                        double contribution = bindingActive ? b.powerLevel : 0.0;
+                        double contribution = bindingActive ? Math.min(1.0, b.powerLevel * odFactor) : 0.0;
                         powerByChannel.merge(b.channel, contribution, Math::max);
                     }
                 }
@@ -333,10 +399,11 @@ public class LiveControlManager {
                         vectorByChannel.computeIfAbsent(b.channel, k -> new double[]{0.0, 0.0});
                     }
                 }
+                default -> {}
             }
         }
 
-        // Merge INC counters (always emitted to reflect current count on server)
+        // Merge INC counters (already OD-stepped at per-binding rate)
         for (Map.Entry<Long, Integer> e : rsIncCounters.entrySet())
             rsTargetToSignal.merge(e.getKey(), e.getValue(), Math::max);
         for (Map.Entry<Integer, Integer> e : thrIncCounters.entrySet())
@@ -348,16 +415,17 @@ public class LiveControlManager {
             if (mag > 1.0) { vec[0] /= mag; vec[1] /= mag; }
         }
 
-        // Build action list
         List<ModPackets.LiveAction> actions = new ArrayList<>();
         for (Map.Entry<Long, Integer> e : rsTargetToSignal.entrySet()) {
             long key    = e.getKey();
             int  signal = e.getValue();
             int  wIdx   = (int) (key >> 16);
             int  side   = (int) (key & 0xFFFF);
-            if (wIdx == 0) actions.add(new ModPackets.LiveAction((byte) 0, side,    signal,       0.0));
-            else           actions.add(new ModPackets.LiveAction((byte) 1, wIdx - 1, signal,      0.0));
+            if (wIdx == 0) actions.add(new ModPackets.LiveAction((byte) 0, side,     signal, 0.0));
+            else           actions.add(new ModPackets.LiveAction((byte) 1, wIdx - 1, signal, 0.0));
         }
+        for (Map.Entry<Integer, Integer> e : linkSignals.entrySet())
+            actions.add(new ModPackets.LiveAction((byte) 5, e.getKey() - 1, e.getValue(), 0.0));
         for (Map.Entry<Integer, Double>   e : powerByChannel.entrySet())
             actions.add(new ModPackets.LiveAction((byte) 2, e.getKey(), e.getValue(), 0.0));
         for (Map.Entry<Integer, double[]> e : vectorByChannel.entrySet()) {
@@ -375,7 +443,7 @@ public class LiveControlManager {
         return switch (b.mode) {
             case HLD -> heldKeys.contains(b.keyCode);
             case TGL -> toggledOn.contains(idx);
-            case INC -> false; // handled via counters, not hold/toggle state
+            case INC -> false;
         };
     }
 
@@ -385,12 +453,13 @@ public class LiveControlManager {
     }
 
     private static String buildKeyDisplay() {
-        // Toggled-on keys first (persistent state stays visible), then momentarily
-        // held keys. A key that is both held and toggled appears once, as a toggle.
         java.util.LinkedHashSet<Integer> keys = new java.util.LinkedHashSet<>();
         for (int idx : toggledOn)
             if (idx >= 0 && idx < bindings.size()) keys.add(bindings.get(idx).keyCode);
         keys.addAll(heldKeys);
+        // OD-only keys are silent in the action bar
+        keys.removeIf(k -> bindings.stream().noneMatch(b -> b.keyCode == k
+                && b.actionType != LiveControlBinding.ActionType.OVERDRIVE));
 
         StringBuilder sb = new StringBuilder("§c[Live] ");
         int shown = 0;
@@ -408,20 +477,34 @@ public class LiveControlManager {
 
     private static String keyLabel(int keyCode) {
         String name = keyDisplayName(keyCode);
-        // Variable bindings: show the raw value being written while held.
+        Double odMult = overdriveMultForKey(keyCode);
+        String suffix = odMult != null ? " §d" + formatOdMult(odMult) : "";
         if (heldKeys.contains(keyCode)) {
             Integer varVal = varValueForKey(keyCode);
-            if (varVal != null) return "§e[" + name + " =" + varVal + "]";
+            if (varVal != null) return "§e[" + name + " =" + varVal + suffix + "§e]";
         }
-        // INC mode (only relevant while held): append current power level as a percent.
         if (heldKeys.contains(keyCode)) {
             Integer level = incLevelForKey(keyCode);
             if (level != null)
-                return "§f[" + name + " " + Math.round(level / 15.0 * 100) + "%]";
+                return "§f[" + name + " " + Math.round(level / 15.0 * 100) + "%" + suffix + "§f]";
         }
-        // Toggled-on keys render green so on/off state is obvious at a glance.
-        if (isKeyToggledOn(keyCode)) return "§a[" + name + "]";
-        return "§f[" + name + "]";
+        if (isKeyToggledOn(keyCode)) return "§a[" + name + suffix + "§a]";
+        return "§f[" + name + suffix + "§f]";
+    }
+
+    private static Double overdriveMultForKey(int keyCode) {
+        for (int i = 0; i < bindings.size(); i++) {
+            LiveControlBinding b = bindings.get(i);
+            if (b.keyCode == keyCode && b.actionType != LiveControlBinding.ActionType.OVERDRIVE) {
+                double factor = overdriveFactor(i);
+                return factor > 1.0 ? factor : null;
+            }
+        }
+        return null;
+    }
+
+    private static String formatOdMult(double m) {
+        return (m == (int) m) ? ((int) m) + "x" : m + "x";
     }
 
     private static Integer varValueForKey(int keyCode) {
@@ -454,6 +537,7 @@ public class LiveControlManager {
     }
 
     private static String keyDisplayName(int keyCode) {
+        if (GamepadCodes.isGamepadCode(keyCode)) return GamepadCodes.name(keyCode);
         String name = org.lwjgl.glfw.GLFW.glfwGetKeyName(keyCode, 0);
         if (name != null && !name.isEmpty()) return name.toUpperCase();
         return switch (keyCode) {

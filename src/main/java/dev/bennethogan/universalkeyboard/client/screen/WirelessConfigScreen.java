@@ -31,13 +31,17 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
     @Override
     protected void init() {
         super.init();
+
         int btnY = topPos + 18 + WirelessConfigMenu.COL_ROWS * 18 + 6;
         addBtn = Button.builder(Component.translatable("gui.universalkeyboard.btn.add"),
                         b -> ModPackets.sendWirelessAddRemove(menu.getKeyboardPos(), true))
-                .pos(leftPos + 73, btnY).size(28, 12).build();
+                .pos(leftPos + 8, btnY).size(28, 12).build();
         removeBtn = Button.builder(Component.translatable("gui.universalkeyboard.btn.remove"),
                         b -> ModPackets.sendWirelessAddRemove(menu.getKeyboardPos(), false))
-                .pos(leftPos + 105, btnY).size(44, 12).build();
+                .pos(leftPos + 40, btnY).size(44, 12).build();
+        addRenderableWidget(Button.builder(Component.literal("Wireless Channels →"),
+                b -> { ModPackets.sendRequestLinkFreqScreen(menu.getKeyboardPos()); onClose(); })
+                .pos(leftPos + 90, btnY).size(90, 12).build());
         addRenderableWidget(addBtn);
         addRenderableWidget(removeBtn);
     }
@@ -102,7 +106,7 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
         int y = topPos + 18 + rowInCol * 18;
         boolean active = entryIdx < count;
         g.fill(rowFillX, y, rowFillXEnd, y + 17, active ? 0xFF2A2A2A : 0xFF181818);
-        g.drawString(font, "W" + (entryIdx + 1), rowFillX + 1, y + 5, active ? 0xFFFFFF : 0x555555, false);
+        g.drawString(font, "L" + (entryIdx + 1), rowFillX + 1, y + 5, active ? 0xFFFFFF : 0x555555, false);
         drawSlotBg(g, leftPos + slot1x, y, FREQ1_TINT);
         drawSlotBg(g, leftPos + slot2x, y, FREQ2_TINT);
     }

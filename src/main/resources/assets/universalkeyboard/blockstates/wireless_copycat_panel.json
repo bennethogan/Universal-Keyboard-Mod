@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "facing=up":    { "model": "universalkeyboard:block/wireless_copycat_panel" },
+    "facing=down":  { "model": "universalkeyboard:block/wireless_copycat_panel", "x": 180 },
+    "facing=north": { "model": "universalkeyboard:block/wireless_copycat_panel", "x": 90 },
+    "facing=south": { "model": "universalkeyboard:block/wireless_copycat_panel", "x": 270 },
+    "facing=east":  { "model": "universalkeyboard:block/wireless_copycat_panel", "x": 90, "y": 270 },
+    "facing=west":  { "model": "universalkeyboard:block/wireless_copycat_panel", "x": 90, "y": 90 }
+  }
+}

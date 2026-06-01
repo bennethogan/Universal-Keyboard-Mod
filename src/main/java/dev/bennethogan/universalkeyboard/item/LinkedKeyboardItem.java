@@ -220,6 +220,25 @@ public class LinkedKeyboardItem extends BlockItem {
 
     public static void setLinkingMode(ItemStack stack, boolean mode) {
         CompoundTag tag = getOrCreateTag(stack);
+        if (mode) {
+            // When entering linking mode, migrate saved channel data from BLOCK_ENTITY_DATA
+            // into CUSTOM_DATA so existing links are preserved during relinking
+            boolean hasChannels = false;
+            for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS && !hasChannels; ch++)
+                hasChannels = tag.contains("ch" + ch + "_targets");
+            if (!hasChannels) {
+                var beData = stack.get(DataComponents.BLOCK_ENTITY_DATA);
+                if (beData != null) {
+                    CompoundTag beTag = beData.copyTag();
+                    for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS; ch++) {
+                        String key = "ch" + ch + "_targets";
+                        if (beTag.contains(key)) tag.put(key, beTag.get(key).copy());
+                    }
+                    if (beTag.contains("active_channel") && !tag.contains("active_channel"))
+                        tag.putInt("active_channel", beTag.getInt("active_channel"));
+                }
+            }
+        }
         tag.putBoolean("linking_mode", mode);
         writeTag(stack, tag);
     }

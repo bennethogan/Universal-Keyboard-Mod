@@ -1,0 +1,12 @@
+{
+  "variants": {
+    "half=bottom,facing=south": { "model": "universalkeyboard:block/wireless_copycat_step" },
+    "half=bottom,facing=north": { "model": "universalkeyboard:block/wireless_copycat_step", "y": 180 },
+    "half=bottom,facing=east":  { "model": "universalkeyboard:block/wireless_copycat_step", "y": 270 },
+    "half=bottom,facing=west":  { "model": "universalkeyboard:block/wireless_copycat_step", "y": 90 },
+    "half=top,facing=south":    { "model": "universalkeyboard:block/wireless_copycat_step", "x": 180, "y": 180 },
+    "half=top,facing=north":    { "model": "universalkeyboard:block/wireless_copycat_step", "x": 180 },
+    "half=top,facing=east":     { "model": "universalkeyboard:block/wireless_copycat_step", "x": 180, "y": 270 },
+    "half=top,facing=west":     { "model": "universalkeyboard:block/wireless_copycat_step", "x": 180, "y": 90 }
+  }
+}

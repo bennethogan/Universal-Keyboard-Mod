@@ -179,11 +179,14 @@ class SequencerEngine {
                 return be.getLevel().getSignal(be.getBlockPos().relative(dir), dir);
             return 0;
         }
-        if (src.matches("W([1-9]|1[0-2])")) {
+        if (src.matches("L([1-9]|1[0-9]|20)")) {
             int idx = Integer.parseInt(src.substring(1)) - 1;
             if (WirelessPresence.isPresent() && idx < be.getWirelessCount())
                 return be.getWirelessEntries().get(idx).getReceivedPower();
             return 0;
+        }
+        if (src.matches("W([1-9]|[1-9][0-9]|100)")) {
+            return be.getLinkPower(Integer.parseInt(src.substring(1)) - 1);
         }
         try { return Double.parseDouble(src); } catch (NumberFormatException ignored) {}
         if (be.getLevel() == null) return 0;
@@ -241,7 +244,7 @@ class SequencerEngine {
             actual = be.getLevel().getSignal(be.getBlockPos().relative(dir), dir);
         } else if (SequencerStep.isVar(step.ifGetter)) {
             actual = vars[SequencerStep.varIndex(step.ifGetter)];
-        } else if (step.ifGetter.matches("W([1-9]|1[0-2])")) {
+        } else if (step.ifGetter.matches("L([1-9]|1[0-9]|20)")) {
             int idx = Integer.parseInt(step.ifGetter.substring(1)) - 1;
             actual = (WirelessPresence.isPresent() && idx < be.getWirelessCount())
                     ? be.getWirelessEntries().get(idx).getReceivedPower() : 0;
@@ -273,10 +276,12 @@ class SequencerEngine {
         Direction dir = step.conditionSource.direction;
         if (dir != null) {
             actual = be.getLevel().getSignal(be.getBlockPos().relative(dir), dir);
-        } else if (step.conditionGetter.matches("W([1-9]|1[0-2])")) {
+        } else if (step.conditionGetter.matches("L([1-9]|1[0-9]|20)")) {
             int idx = Integer.parseInt(step.conditionGetter.substring(1)) - 1;
             actual = (WirelessPresence.isPresent() && idx < be.getWirelessCount())
                     ? be.getWirelessEntries().get(idx).getReceivedPower() : 0;
+        } else if (step.conditionGetter.matches("W([1-9]|[1-9][0-9]|100)")) {
+            actual = be.getLinkPower(Integer.parseInt(step.conditionGetter.substring(1)) - 1);
         } else if (SableCompat.isPresent() && SableCompat.isSableGetter(step.conditionGetter)
                 && SableCompat.isOnSublevel(be.getLevel(), be.getBlockPos())) {
             actual = SableCompat.getValue(be.getLevel(), be.getBlockPos(), step.conditionGetter);
@@ -354,7 +359,9 @@ class SequencerEngine {
 
     private void applySetRedstone(SequencerStep step) {
         int signal = (int) Math.round(resolveSource(step.redstoneOutSignalStr, 1));
-        if (step.wirelessOutIdx > 0)
+        if (step.linkOutIdx > 0)
+            be.broadcastLinkChannel(step.linkOutIdx - 1, signal);
+        else if (step.wirelessOutIdx > 0)
             be.setWirelessOutput(step.wirelessOutIdx - 1, signal);
         else
             be.setRedstoneOutput(step.redstoneOutDir, signal);

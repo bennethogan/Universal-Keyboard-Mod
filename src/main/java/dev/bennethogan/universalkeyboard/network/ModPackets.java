@@ -2,10 +2,12 @@ package dev.bennethogan.universalkeyboard.network;
 
 import dev.bennethogan.universalkeyboard.UniversalKeyboardMod;
 import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
+import dev.bennethogan.universalkeyboard.blockentity.WirelessCopycatBlockEntity;
 import dev.bennethogan.universalkeyboard.compat.CreateValueHelper;
 import dev.bennethogan.universalkeyboard.compat.KeyboardMode;
 import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import dev.bennethogan.universalkeyboard.compat.SableCompat;
+import dev.bennethogan.universalkeyboard.wireless.rs.WirelessRSNetwork;
 import net.minecraft.world.level.Level;
 import dev.bennethogan.universalkeyboard.item.LinkedKeyboardItem;
 import dev.bennethogan.universalkeyboard.sequencer.SequencerStep;
@@ -393,6 +395,7 @@ public class ModPackets {
         registrar.playToServer(TypewriterScanPacket.TYPE,            TypewriterScanPacket.CODEC,            ModPackets::handleTypewriterScan);
         registrar.playToServer(TypewriterImportConfirmPacket.TYPE,   TypewriterImportConfirmPacket.CODEC,   ModPackets::handleTypewriterConfirm);
         registrar.playToServer(UnlinkKeyboardPacket.TYPE,            UnlinkKeyboardPacket.CODEC,            ModPackets::handleUnlinkKeyboard);
+        registrar.playToServer(ResetLinksPacket.TYPE,                ResetLinksPacket.CODEC,                ModPackets::handleResetLinks);
         registrar.playToServer(SetActiveChannelPacket.TYPE,       SetActiveChannelPacket.CODEC,       ModPackets::handleSetActiveChannel);
         registrar.playToServer(SetLinkingChannelPacket.TYPE,      SetLinkingChannelPacket.CODEC,      ModPackets::handleSetLinkingChannel);
         registrar.playToServer(CycleChannelAndReopenPacket.TYPE,    CycleChannelAndReopenPacket.CODEC,    ModPackets::handleCycleChannelAndReopen);
@@ -403,6 +406,11 @@ public class ModPackets {
         registrar.optional().playToServer(OpenWirelessConfigPacket.TYPE,       OpenWirelessConfigPacket.CODEC,       ModPackets::handleOpenWirelessConfig);
         registrar.optional().playToServer(WirelessAddRemovePacket.TYPE,        WirelessAddRemovePacket.CODEC,        ModPackets::handleWirelessAddRemove);
         registrar.optional().playToServer(WirelessGhostSetPacket.TYPE,         WirelessGhostSetPacket.CODEC,         ModPackets::handleWirelessGhostSet);
+        registrar.playToServer(SaveWirelessCopycatConfigPacket.TYPE,   SaveWirelessCopycatConfigPacket.STREAM_CODEC,   ModPackets::handleSaveWirelessCopycatConfig);
+        registrar.playToServer(TestWirelessCopycatFacePacket.TYPE,     TestWirelessCopycatFacePacket.STREAM_CODEC,     ModPackets::handleTestWirelessCopycatFace);
+        registrar.playToServer(LocateWirelessCopycatPacket.TYPE,       LocateWirelessCopycatPacket.STREAM_CODEC,       ModPackets::handleLocateWirelessCopycat);
+        registrar.playToServer(SaveLinkFreqsPacket.TYPE,               SaveLinkFreqsPacket.STREAM_CODEC,               ModPackets::handleSaveLinkFreqs);
+        registrar.playToServer(RequestLinkFreqScreenPacket.TYPE,       RequestLinkFreqScreenPacket.STREAM_CODEC,       ModPackets::handleRequestLinkFreqScreen);
 
         // playToClient — the server must declare these channels so the handshake succeeds.
         // Real handlers are registered by ClientPacketHandlers (client only); skip here on client
@@ -419,6 +427,8 @@ public class ModPackets {
             registrar.playToClient(TypewriterImportOfferPacket.TYPE,  TypewriterImportOfferPacket.CODEC,  (p, c) -> {});
             registrar.playToClient(ChannelChangedPacket.TYPE,          ChannelChangedPacket.CODEC,          (p, c) -> {});
             registrar.playToClient(OpenLiveControlScreenPacket.TYPE, OpenLiveControlScreenPacket.CODEC, (p, c) -> {});
+            registrar.playToClient(OpenWirelessCopycatScreenPacket.TYPE, OpenWirelessCopycatScreenPacket.STREAM_CODEC, (p, c) -> {});
+            registrar.playToClient(OpenLinkFreqScreenPacket.TYPE,        OpenLinkFreqScreenPacket.STREAM_CODEC,        (p, c) -> {});
         }
     }
 
@@ -821,6 +831,15 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
+    public record ResetLinksPacket(BlockPos keyboardPos) implements CustomPacketPayload {
+        public static final Type<ResetLinksPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "reset_links"));
+        public static final StreamCodec<FriendlyByteBuf, ResetLinksPacket> CODEC = StreamCodec.of(
+                (buf, pkt) -> BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos()),
+                buf -> new ResetLinksPacket(BlockPos.STREAM_CODEC.decode(buf)));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
     public record StopSequencerPacket(BlockPos keyboardPos) implements CustomPacketPayload {
         public static final Type<StopSequencerPacket> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "stop_sequencer"));
@@ -874,6 +893,10 @@ public class ModPackets {
 
     public static void sendUnlinkKeyboard(BlockPos keyboardPos) {
         PacketDistributor.sendToServer(new UnlinkKeyboardPacket(keyboardPos));
+    }
+
+    public static void sendResetLinks(BlockPos keyboardPos) {
+        PacketDistributor.sendToServer(new ResetLinksPacket(keyboardPos));
     }
 
     private static void handleSetThrusterValue(SetThrusterValuePacket packet, IPayloadContext ctx) {
@@ -950,6 +973,14 @@ public class ModPackets {
             if (!(ctx.player() instanceof ServerPlayer sp)) return;
             if (sp.serverLevel().getBlockEntity(packet.keyboardPos()) instanceof LinkedKeyboardBlockEntity be)
                 be.resetData();
+        });
+    }
+
+    private static void handleResetLinks(ResetLinksPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            if (sp.serverLevel().getBlockEntity(packet.keyboardPos()) instanceof LinkedKeyboardBlockEntity be)
+                be.unlink();
         });
     }
 
@@ -1282,6 +1313,7 @@ public class ModPackets {
         });
     }
 
+
     // ══════════════════════════════════════════════════════════════════════════
     // Live Control packets
     // ══════════════════════════════════════════════════════════════════════════
@@ -1502,8 +1534,222 @@ public class ModPackets {
                     }
                     case 4 -> // sequencer variable (target = varIndex 0-15)
                         kb.setSequencerVariable(a.target(), a.v1());
+                    case 5 -> // link channel broadcast (target = linkIdx 0-based)
+                        kb.broadcastLinkChannel(a.target(), (int) Math.round(a.v1()));
                 }
             }
         });
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Wireless Copycat packets
+    // ══════════════════════════════════════════════════════════════════════════
+
+    public record OpenWirelessCopycatScreenPacket(BlockPos pos, String[] freqs, boolean[] enabled)
+            implements CustomPacketPayload {
+        public static final Type<OpenWirelessCopycatScreenPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "open_wireless_copycat_screen"));
+        public static final StreamCodec<FriendlyByteBuf, OpenWirelessCopycatScreenPacket> STREAM_CODEC =
+                StreamCodec.of(
+                        (buf, pkt) -> {
+                            BlockPos.STREAM_CODEC.encode(buf, pkt.pos());
+                            for (int i = 0; i < 6; i++) buf.writeUtf(pkt.freqs()[i] != null ? pkt.freqs()[i] : "", 8);
+                            byte mask = 0;
+                            for (int i = 0; i < 6; i++) if (pkt.enabled()[i]) mask |= (byte)(1 << i);
+                            buf.writeByte(mask);
+                        },
+                        buf -> {
+                            BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
+                            String[] freqs = new String[6];
+                            for (int i = 0; i < 6; i++) freqs[i] = buf.readUtf(8);
+                            byte mask = buf.readByte();
+                            boolean[] enabled = new boolean[6];
+                            for (int i = 0; i < 6; i++) enabled[i] = (mask & (1 << i)) != 0;
+                            return new OpenWirelessCopycatScreenPacket(pos, freqs, enabled);
+                        });
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public record SaveWirelessCopycatConfigPacket(BlockPos pos, String[] freqs, boolean[] enabled)
+            implements CustomPacketPayload {
+        public static final Type<SaveWirelessCopycatConfigPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "save_wireless_copycat_config"));
+        public static final StreamCodec<FriendlyByteBuf, SaveWirelessCopycatConfigPacket> STREAM_CODEC =
+                StreamCodec.of(
+                        (buf, pkt) -> {
+                            BlockPos.STREAM_CODEC.encode(buf, pkt.pos());
+                            for (int i = 0; i < 6; i++) buf.writeUtf(pkt.freqs()[i] != null ? pkt.freqs()[i] : "", 8);
+                            byte mask = 0;
+                            for (int i = 0; i < 6; i++) if (pkt.enabled()[i]) mask |= (byte)(1 << i);
+                            buf.writeByte(mask);
+                        },
+                        buf -> {
+                            BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
+                            String[] freqs = new String[6];
+                            for (int i = 0; i < 6; i++) freqs[i] = buf.readUtf(8);
+                            byte mask = buf.readByte();
+                            boolean[] enabled = new boolean[6];
+                            for (int i = 0; i < 6; i++) enabled[i] = (mask & (1 << i)) != 0;
+                            return new SaveWirelessCopycatConfigPacket(pos, freqs, enabled);
+                        });
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public record TestWirelessCopycatFacePacket(BlockPos pos, int faceIdx) implements CustomPacketPayload {
+        public static final Type<TestWirelessCopycatFacePacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "test_wireless_copycat_face"));
+        public static final StreamCodec<FriendlyByteBuf, TestWirelessCopycatFacePacket> STREAM_CODEC =
+                StreamCodec.of(
+                        (buf, pkt) -> { BlockPos.STREAM_CODEC.encode(buf, pkt.pos()); buf.writeByte(pkt.faceIdx()); },
+                        buf -> new TestWirelessCopycatFacePacket(BlockPos.STREAM_CODEC.decode(buf), buf.readByte() & 0xFF));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public record LocateWirelessCopycatPacket(String freq) implements CustomPacketPayload {
+        public static final Type<LocateWirelessCopycatPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "locate_wireless_copycat"));
+        public static final StreamCodec<FriendlyByteBuf, LocateWirelessCopycatPacket> STREAM_CODEC =
+                StreamCodec.of(
+                        (buf, pkt) -> buf.writeUtf(pkt.freq(), 8),
+                        buf -> new LocateWirelessCopycatPacket(buf.readUtf(8)));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public record OpenLinkFreqScreenPacket(BlockPos pos, String[] freqs) implements CustomPacketPayload {
+        public static final Type<OpenLinkFreqScreenPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "open_link_freq_screen"));
+        public static final StreamCodec<FriendlyByteBuf, OpenLinkFreqScreenPacket> STREAM_CODEC =
+                StreamCodec.of(
+                        (buf, pkt) -> {
+                            BlockPos.STREAM_CODEC.encode(buf, pkt.pos());
+                            int count = 0;
+                            for (String f : pkt.freqs()) if (f != null && !f.isEmpty()) count++;
+                            buf.writeInt(count);
+                            int written = 0;
+                            for (String f : pkt.freqs()) {
+                                if (f != null && !f.isEmpty()) { buf.writeUtf(f, 8); written++; }
+                                if (written >= count) break;
+                            }
+                        },
+                        buf -> {
+                            BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
+                            int count = buf.readInt();
+                            String[] freqs = new String[LinkedKeyboardBlockEntity.MAX_LINK_FREQS];
+                            for (int i = 0; i < count && i < freqs.length; i++) freqs[i] = buf.readUtf(8);
+                            return new OpenLinkFreqScreenPacket(pos, freqs);
+                        });
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public record SaveLinkFreqsPacket(BlockPos pos, String[] freqs) implements CustomPacketPayload {
+        public static final Type<SaveLinkFreqsPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "save_link_freqs"));
+        public static final StreamCodec<FriendlyByteBuf, SaveLinkFreqsPacket> STREAM_CODEC =
+                StreamCodec.of(
+                        (buf, pkt) -> {
+                            BlockPos.STREAM_CODEC.encode(buf, pkt.pos());
+                            buf.writeInt(LinkedKeyboardBlockEntity.MAX_LINK_FREQS);
+                            for (int i = 0; i < LinkedKeyboardBlockEntity.MAX_LINK_FREQS; i++) {
+                                String f = (pkt.freqs() != null && i < pkt.freqs().length && pkt.freqs()[i] != null) ? pkt.freqs()[i] : "";
+                                buf.writeUtf(f, 8);
+                            }
+                        },
+                        buf -> {
+                            BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
+                            int count = buf.readInt();
+                            String[] freqs = new String[LinkedKeyboardBlockEntity.MAX_LINK_FREQS];
+                            for (int i = 0; i < count; i++) {
+                                String v = buf.readUtf(8);
+                                if (i < freqs.length) freqs[i] = v.isEmpty() ? null : v;
+                            }
+                            return new SaveLinkFreqsPacket(pos, freqs);
+                        });
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public record RequestLinkFreqScreenPacket(BlockPos keyboardPos) implements CustomPacketPayload {
+        public static final Type<RequestLinkFreqScreenPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "request_link_freq_screen"));
+        public static final StreamCodec<FriendlyByteBuf, RequestLinkFreqScreenPacket> STREAM_CODEC =
+                StreamCodec.of(
+                        (buf, pkt) -> BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos()),
+                        buf -> new RequestLinkFreqScreenPacket(BlockPos.STREAM_CODEC.decode(buf)));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    private static void handleSaveWirelessCopycatConfig(SaveWirelessCopycatConfigPacket pkt, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            net.minecraft.world.level.block.entity.BlockEntity be = sp.serverLevel().getBlockEntity(pkt.pos());
+            if (be instanceof WirelessCopycatBlockEntity cb) cb.setConfig(pkt.freqs(), pkt.enabled());
+        });
+    }
+
+    private static void handleTestWirelessCopycatFace(TestWirelessCopycatFacePacket pkt, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            net.minecraft.world.level.block.entity.BlockEntity be = sp.serverLevel().getBlockEntity(pkt.pos());
+            if (!(be instanceof WirelessCopycatBlockEntity cb)) return;
+            int i = pkt.faceIdx();
+            if (i < 0 || i >= 6) return;
+            cb.startPreview(i);
+        });
+    }
+
+    private static void handleLocateWirelessCopycat(LocateWirelessCopycatPacket pkt, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            dev.bennethogan.universalkeyboard.wireless.rs.WirelessRSNetwork
+                    .getPositions(sp.serverLevel(), pkt.freq())
+                    .forEach(pos -> {
+                        net.minecraft.world.level.block.entity.BlockEntity be = sp.serverLevel().getBlockEntity(pos);
+                        if (be instanceof WirelessCopycatBlockEntity cb) cb.startLocate();
+                    });
+        });
+    }
+
+    private static void handleSaveLinkFreqs(SaveLinkFreqsPacket pkt, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            net.minecraft.world.level.block.entity.BlockEntity be = sp.serverLevel().getBlockEntity(pkt.pos());
+            if (be instanceof LinkedKeyboardBlockEntity kb) kb.setLinkFreqs(pkt.freqs());
+        });
+    }
+
+    private static void handleRequestLinkFreqScreen(RequestLinkFreqScreenPacket pkt, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            net.minecraft.world.level.block.entity.BlockEntity be = sp.serverLevel().getBlockEntity(pkt.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            sendOpenLinkFreqScreen(sp, pkt.keyboardPos(), kb.getLinkFreqs());
+        });
+    }
+
+    public static void sendOpenWirelessCopycatScreen(ServerPlayer player, BlockPos pos, String[] freqs, boolean[] enabled) {
+        PacketDistributor.sendToPlayer(player, new OpenWirelessCopycatScreenPacket(pos, freqs, enabled));
+    }
+
+    public static void sendSaveWirelessCopycatConfig(BlockPos pos, String[] freqs, boolean[] enabled) {
+        PacketDistributor.sendToServer(new SaveWirelessCopycatConfigPacket(pos, freqs, enabled));
+    }
+
+    public static void sendTestWirelessCopycatFace(BlockPos pos, int faceIdx) {
+        PacketDistributor.sendToServer(new TestWirelessCopycatFacePacket(pos, faceIdx));
+    }
+
+    public static void sendLocateWirelessCopycat(String freq) {
+        PacketDistributor.sendToServer(new LocateWirelessCopycatPacket(freq));
+    }
+
+    public static void sendOpenLinkFreqScreen(ServerPlayer player, BlockPos pos, String[] freqs) {
+        PacketDistributor.sendToPlayer(player, new OpenLinkFreqScreenPacket(pos, freqs));
+    }
+
+    public static void sendSaveLinkFreqs(BlockPos pos, String[] freqs) {
+        PacketDistributor.sendToServer(new SaveLinkFreqsPacket(pos, freqs));
+    }
+
+    public static void sendRequestLinkFreqScreen(BlockPos keyboardPos) {
+        PacketDistributor.sendToServer(new RequestLinkFreqScreenPacket(keyboardPos));
     }
 }

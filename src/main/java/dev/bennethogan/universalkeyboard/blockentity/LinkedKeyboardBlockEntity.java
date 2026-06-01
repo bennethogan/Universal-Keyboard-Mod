@@ -157,6 +157,9 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     public static final int MAX_WIRELESS = 20;
     private final List<WirelessEntry> wirelessEntries = new ArrayList<>();
 
+    public static final int MAX_LINK_FREQS = 100;
+    private final String[] linkFreqs = new String[MAX_LINK_FREQS];
+
     // Cached peripheral getter values for Create display source
     private final Map<String, String> cachedGetterValues = new LinkedHashMap<>();
     private String cachedPeripheralType = "";
@@ -286,12 +289,14 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         autoTypeScript  = "";
         scriptLineIndex = 0;
         java.util.Arrays.fill(redstoneOutputs, 0);
+        java.util.Arrays.fill(linkFreqs, null);
         setChanged();
     }
 
     public boolean hasData() {
         return !channelTargets.isEmpty() || !sequencerSteps.isEmpty()
-                || !liveControlBindings.isEmpty() || !wirelessEntries.isEmpty();
+                || !liveControlBindings.isEmpty() || !wirelessEntries.isEmpty()
+                || getLinkFreqCount() > 0;
     }
 
     public boolean isTargetInRange() {
@@ -537,6 +542,40 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             CreateWirelessHelper.setEntryPower(level, e, 0);
     }
 
+    public String[] getLinkFreqs() { return linkFreqs.clone(); }
+
+    public void setLinkFreqs(String[] newFreqs) {
+        for (int i = 0; i < MAX_LINK_FREQS; i++) {
+            linkFreqs[i] = (i < newFreqs.length && newFreqs[i] != null) ? newFreqs[i] : null;
+        }
+        setChanged();
+        syncToClients();
+    }
+
+    public void broadcastLinkChannel(int idx, int power) {
+        if (idx < 0 || idx >= MAX_LINK_FREQS || level == null || level.isClientSide) return;
+        String freq = linkFreqs[idx];
+        if (freq == null || freq.isEmpty()) return;
+        dev.bennethogan.universalkeyboard.wireless.rs.WirelessRSNetwork.broadcast((Level) level, freq, power);
+    }
+
+    public String getLinkFreq(int idx) {
+        return (idx >= 0 && idx < MAX_LINK_FREQS) ? linkFreqs[idx] : null;
+    }
+
+    public int getLinkPower(int idx) {
+        if (idx < 0 || idx >= MAX_LINK_FREQS || level == null) return 0;
+        String freq = linkFreqs[idx];
+        if (freq == null || freq.isEmpty()) return 0;
+        return dev.bennethogan.universalkeyboard.wireless.rs.WirelessRSNetwork.getInputPower((Level) level, freq);
+    }
+
+    public int getLinkFreqCount() {
+        int count = 0;
+        for (String f : linkFreqs) if (f != null && !f.isEmpty()) count++;
+        return count;
+    }
+
     private void clearRedstoneOutputs() {
         boolean changed = false;
         for (int i = 0; i < redstoneOutputs.length; i++) {
@@ -767,6 +806,14 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             }
             tag.put("live_control_bindings", lcl);
         }
+        int lfCount = getLinkFreqCount();
+        if (lfCount > 0) {
+            net.minecraft.nbt.ListTag lfl = new net.minecraft.nbt.ListTag();
+            for (int i = 0; i < MAX_LINK_FREQS; i++) {
+                lfl.add(net.minecraft.nbt.StringTag.valueOf(linkFreqs[i] != null ? linkFreqs[i] : ""));
+            }
+            tag.put("link_freqs", lfl);
+        }
     }
 
     @Override
@@ -862,6 +909,14 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             net.minecraft.nbt.ListTag lcl = tag.getList("live_control_bindings", Tag.TAG_COMPOUND);
             for (int i = 0; i < lcl.size() && liveControlBindings.size() < MAX_LIVE_BINDINGS; i++)
                 liveControlBindings.add(LiveControlBinding.fromTag(lcl.getCompound(i)));
+        }
+        java.util.Arrays.fill(linkFreqs, null);
+        if (tag.contains("link_freqs", Tag.TAG_LIST)) {
+            net.minecraft.nbt.ListTag lfl = tag.getList("link_freqs", Tag.TAG_STRING);
+            for (int i = 0; i < lfl.size() && i < MAX_LINK_FREQS; i++) {
+                String v = lfl.getString(i);
+                linkFreqs[i] = v.isEmpty() ? null : v;
+            }
         }
     }
 

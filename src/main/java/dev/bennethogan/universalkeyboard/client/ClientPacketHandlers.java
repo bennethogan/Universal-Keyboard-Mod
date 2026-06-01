@@ -1,11 +1,13 @@
 package dev.bennethogan.universalkeyboard.client;
 
 import dev.bennethogan.universalkeyboard.client.screen.AutoTypeScreen;
+import dev.bennethogan.universalkeyboard.client.screen.LinkFrequencyScreen;
 import dev.bennethogan.universalkeyboard.client.screen.LiveControlScreen;
 import dev.bennethogan.universalkeyboard.client.screen.ModeSelectionScreen;
 import dev.bennethogan.universalkeyboard.client.screen.PeripheralMethodScreen;
 import dev.bennethogan.universalkeyboard.client.screen.SequencerScreen;
 import dev.bennethogan.universalkeyboard.client.screen.ThrusterControlScreen;
+import dev.bennethogan.universalkeyboard.client.screen.WirelessCopycatScreen;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlManager;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
 import dev.bennethogan.universalkeyboard.network.ModPackets.*;
@@ -30,6 +32,8 @@ public class ClientPacketHandlers {
         registrar.playToClient(ModPackets.TypewriterImportOfferPacket.TYPE,   ModPackets.TypewriterImportOfferPacket.CODEC,   ClientPacketHandlers::handleTypewriterOffer);
         registrar.playToClient(ChannelChangedPacket.TYPE,          ChannelChangedPacket.CODEC,          ClientPacketHandlers::handleChannelChanged);
         registrar.playToClient(OpenLiveControlScreenPacket.TYPE, OpenLiveControlScreenPacket.CODEC, ClientPacketHandlers::handleOpenLiveControlScreen);
+        registrar.playToClient(ModPackets.OpenWirelessCopycatScreenPacket.TYPE, ModPackets.OpenWirelessCopycatScreenPacket.STREAM_CODEC, ClientPacketHandlers::handleOpenWirelessCopycatScreen);
+        registrar.playToClient(ModPackets.OpenLinkFreqScreenPacket.TYPE,        ModPackets.OpenLinkFreqScreenPacket.STREAM_CODEC,        ClientPacketHandlers::handleOpenLinkFreqScreen);
     }
 
     private static void handleKeyboardCapture(KeyboardCapturePacket packet, IPayloadContext ctx) {
@@ -143,5 +147,17 @@ public class ClientPacketHandlers {
                                 packet.hasThrusters(), packet.hasVectorThrusters(),
                                 packet.localRsOutputs(), packet.wirelessPowers(), packet.thrusterPowers(),
                                 packet.varValues())));
+    }
+
+    private static void handleOpenWirelessCopycatScreen(ModPackets.OpenWirelessCopycatScreenPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() ->
+                Minecraft.getInstance().setScreen(
+                        new WirelessCopycatScreen(packet.pos(), packet.freqs(), packet.enabled())));
+    }
+
+    private static void handleOpenLinkFreqScreen(ModPackets.OpenLinkFreqScreenPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() ->
+                Minecraft.getInstance().setScreen(
+                        new LinkFrequencyScreen(packet.pos(), packet.freqs())));
     }
 }

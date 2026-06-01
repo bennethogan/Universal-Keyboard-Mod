@@ -6,6 +6,8 @@ import net.minecraft.world.item.Item;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
+import javax.annotation.Nullable;
+
 public class ModItems {
     public static final DeferredRegister.Items ITEMS =
             DeferredRegister.createItems(UniversalKeyboardMod.MOD_ID);
@@ -34,4 +36,20 @@ public class ModItems {
             ITEMS.register("bi_keyboard", () ->
                     new LinkedKeyboardItem(ModBlocks.BI_KEYBOARD.get(),
                             new Item.Properties().stacksTo(1).fireResistant()));
+
+    @Nullable public static DeferredItem<net.minecraft.world.item.BlockItem> WIRELESS_COPYCAT;
+    @Nullable public static DeferredItem<net.minecraft.world.item.BlockItem> WIRELESS_COPYCAT_PANEL;
+    @Nullable public static DeferredItem<net.minecraft.world.item.BlockItem> WIRELESS_COPYCAT_STEP;
+
+    public static void registerForCreate() {
+        WIRELESS_COPYCAT = ITEMS.register("wireless_copycat", () ->
+                new net.minecraft.world.item.BlockItem(ModBlocks.WIRELESS_COPYCAT.get(),
+                        new Item.Properties().stacksTo(64)));
+        WIRELESS_COPYCAT_PANEL = ITEMS.register("wireless_copycat_panel", () ->
+                new net.minecraft.world.item.BlockItem(ModBlocks.WIRELESS_COPYCAT_PANEL.get(),
+                        new Item.Properties().stacksTo(64)));
+        WIRELESS_COPYCAT_STEP = ITEMS.register("wireless_copycat_step", () ->
+                new net.minecraft.world.item.BlockItem(ModBlocks.WIRELESS_COPYCAT_STEP.get(),
+                        new Item.Properties().stacksTo(64)));
+    }
 }

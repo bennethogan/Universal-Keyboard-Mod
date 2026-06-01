@@ -25,10 +25,8 @@ public class ModeSelectionScreen extends Screen {
     private static final int SMALL_H   = 14;
     private static final int HEADER_H  = PAD + SMALL_H + 8;
 
-    private static final int CONF_W    = 200;
     private static final int CONF_PAD  = 6;
     private static final int CONF_GAP  = 2;
-    private static final int CONF_BTN_H = 14;
 
     private final BlockPos keyboardPos;
     private final int      availableBits;
@@ -36,7 +34,9 @@ public class ModeSelectionScreen extends Screen {
     private int panelX, panelY, panelH;
     private int firstRowY;
 
-    private boolean showResetConfirm = false;
+    private enum ResetState { NONE, MENU }
+    private ResetState   resetState   = ResetState.NONE;
+    private ConfirmDialog confirmDialog;
 
     public ModeSelectionScreen(BlockPos keyboardPos, String targetTypeName, int availableBits) {
         super(Component.empty());
@@ -53,11 +53,14 @@ public class ModeSelectionScreen extends Screen {
         panelX = (width  - PANEL_W) / 2;
         panelY = (height - panelH)  / 2;
 
+        confirmDialog = new ConfirmDialog(font);
+        confirmDialog.setParentBounds(panelX, panelY, PANEL_W, panelH);
+
         firstRowY = panelY + HEADER_H;
 
         // "Reset Data" button — top-left
         addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.reset_data"),
-                        b -> showResetConfirm = true)
+                        b -> resetState = ResetState.MENU)
                 .pos(panelX + PAD, panelY + PAD)
                 .size(SMALL_W, SMALL_H)
                 .build());
@@ -94,12 +97,17 @@ public class ModeSelectionScreen extends Screen {
     }
 
     private void onWireless() {
-        ModPackets.sendOpenWirelessConfig(keyboardPos);
+        ModPackets.sendRequestLinkFreqScreen(keyboardPos);
         onClose();
     }
 
-    private void doResetData() {
+    private void doDeleteAll() {
         ModPackets.sendUnlinkKeyboard(keyboardPos);
+        onClose();
+    }
+
+    private void doResetLinks() {
+        ModPackets.sendResetLinks(keyboardPos);
         onClose();
     }
 
@@ -122,7 +130,7 @@ public class ModeSelectionScreen extends Screen {
         int titleY = panelY + PAD + (SMALL_H - 8) / 2;
         g.drawCenteredString(font, I18n.get("gui.universalkeyboard.screen.mode_selection.title"), panelX + PANEL_W / 2, titleY, 0xFFFFFF);
 
-        if (!showResetConfirm) {
+        if (resetState == ResetState.NONE) {
             boolean ccMissing = !PeripheralHelper.isCCPresent();
             KeyboardMode[] modes = KeyboardMode.values();
             int y = firstRowY + BTN_H + ROW_GAP;
@@ -150,73 +158,100 @@ public class ModeSelectionScreen extends Screen {
                         Component.translatable("gui.universalkeyboard.tooltip.cc_modrinth_2").getVisualOrderText());
                 g.renderTooltip(font, lines, mx, my);
             }
-        } else {
-            renderResetConfirm(g, mx, my);
+        } else if (resetState == ResetState.MENU) {
+            renderResetMenu(g, mx, my);
         }
+        if (confirmDialog != null) confirmDialog.render(g, mx, my);
     }
 
-    // ── Reset confirm dialog ─────────────────────────────────────────────────
+    // ── Reset menu (pick which reset) ───────────────────────────────────────
 
-    private int resetDialogHeight() {
-        int textW = CONF_W - CONF_PAD * 2;
-        return CONF_PAD
-                + GuiText.wrappedHeight(font, I18n.get("gui.universalkeyboard.dialog.reset_title"), textW) + CONF_GAP
-                + GuiText.wrappedHeight(font, I18n.get("gui.universalkeyboard.dialog.reset_body"), textW) + CONF_GAP + 4
-                + CONF_BTN_H + CONF_PAD;
+    private static final int MENU_W   = 200;
+    private static final int MENU_BTN_H = 16;
+    private static final int MENU_GAP   = 4;
+
+    private int menuDialogHeight() {
+        return CONF_PAD + 8 + MENU_GAP + MENU_BTN_H + MENU_GAP + MENU_BTN_H + CONF_PAD;
     }
 
-    private void renderResetConfirm(GuiGraphics g, int mx, int my) {
-        int dh = resetDialogHeight();
-        int textW = CONF_W - CONF_PAD * 2;
-        int cx = panelX + (PANEL_W - CONF_W) / 2;
+    private void renderResetMenu(GuiGraphics g, int mx, int my) {
+        int dh = menuDialogHeight();
+        int cx = panelX + (PANEL_W - MENU_W) / 2;
         int cy = panelY + (panelH - dh) / 2;
 
-        g.fill(cx, cy, cx + CONF_W, cy + dh, 0xFF0A0A14);
-        g.fill(cx, cy, cx + CONF_W, cy + 1, 0xFFCC4444);
-        g.fill(cx, cy + dh - 1, cx + CONF_W, cy + dh, 0xFFCC4444);
+        g.fill(cx, cy, cx + MENU_W, cy + dh, 0xFF0A0A14);
+        g.fill(cx, cy, cx + MENU_W, cy + 1, 0xFFCC4444);
+        g.fill(cx, cy + dh - 1, cx + MENU_W, cy + dh, 0xFFCC4444);
         g.fill(cx, cy, cx + 1, cy + dh, 0xFFCC4444);
-        g.fill(cx + CONF_W - 1, cy, cx + CONF_W, cy + dh, 0xFFCC4444);
+        g.fill(cx + MENU_W - 1, cy, cx + MENU_W, cy + dh, 0xFFCC4444);
 
-        int centerX = cx + CONF_W / 2;
-        int y = cy + CONF_PAD;
-        y += GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.reset_title"), centerX, y, textW, 0xFFFFFF) + CONF_GAP;
-        GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.reset_body"), centerX, y, textW, 0xAAAAAA);
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.dialog.reset_options_title"),
+                cx + MENU_W / 2, cy + CONF_PAD, 0xFFFFFF);
 
-        int btnW = 54;
-        int yesX = cx + CONF_W / 2 - btnW - 4;
-        int noX  = cx + CONF_W / 2 + 4;
-        int btnY = cy + dh - CONF_PAD - CONF_BTN_H;
-        boolean yesHov = isIn(mx, my, yesX, btnY, btnW, CONF_BTN_H);
-        boolean noHov  = isIn(mx, my, noX,  btnY, btnW, CONF_BTN_H);
-        g.fill(yesX, btnY, yesX + btnW, btnY + CONF_BTN_H, yesHov ? 0xFF882222 : 0xFF551111);
-        g.fill(noX,  btnY, noX  + btnW, btnY + CONF_BTN_H, noHov  ? 0xFF334433 : 0xFF223322);
-        g.fill(yesX, btnY, yesX + btnW, btnY + 1, 0xFFCC4444);
-        g.fill(noX,  btnY, noX  + btnW, btnY + 1, 0xFF448844);
-        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.yes_reset"), yesX + btnW / 2, btnY + 3, 0xFFFFFF);
-        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.cancel"), noX + btnW / 2, btnY + 3, 0xFFFFFF);
+        int btnW  = MENU_W - CONF_PAD * 2;
+        int btnX  = cx + CONF_PAD;
+        int btn1Y = cy + CONF_PAD + 8 + MENU_GAP;
+        int btn2Y = btn1Y + MENU_BTN_H + MENU_GAP;
+
+        boolean hov1 = isIn(mx, my, btnX, btn1Y, btnW, MENU_BTN_H);
+        boolean hov2 = isIn(mx, my, btnX, btn2Y, btnW, MENU_BTN_H);
+
+        g.fill(btnX, btn1Y, btnX + btnW, btn1Y + MENU_BTN_H, hov1 ? 0xFF882222 : 0xFF551111);
+        g.fill(btnX, btn1Y, btnX + btnW, btn1Y + 1, 0xFFCC4444);
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.delete_all_data"),
+                btnX + btnW / 2, btn1Y + 4, 0xFFFFFF);
+
+        g.fill(btnX, btn2Y, btnX + btnW, btn2Y + MENU_BTN_H, hov2 ? 0xFF224422 : 0xFF112211);
+        g.fill(btnX, btn2Y, btnX + btnW, btn2Y + 1, 0xFF448844);
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.reset_links"),
+                btnX + btnW / 2, btn2Y + 4, 0xFFFFFF);
     }
+
+    // ── Confirm dialog  ──────
 
     @Override
     public boolean mouseClicked(double mx, double my, int btn) {
-        if (showResetConfirm && btn == 0) {
-            int dh   = resetDialogHeight();
-            int cx   = panelX + (PANEL_W - CONF_W) / 2;
-            int cy   = panelY + (panelH  - dh)  / 2;
-            int btnW = 54;
-            int yesX = cx + CONF_W / 2 - btnW - 4;
-            int noX  = cx + CONF_W / 2 + 4;
-            int btnY = cy + dh - CONF_PAD - CONF_BTN_H;
-            if (isIn((int) mx, (int) my, yesX, btnY, btnW, CONF_BTN_H)) { doResetData();          return true; }
-            if (isIn((int) mx, (int) my, noX,  btnY, btnW, CONF_BTN_H)) { showResetConfirm = false; return true; }
+        if (btn != 0) return super.mouseClicked(mx, my, btn);
+
+        if (confirmDialog != null && confirmDialog.isOpen())
+            return confirmDialog.mouseClicked(mx, my, btn);
+
+        if (resetState == ResetState.MENU) {
+            int dh   = menuDialogHeight();
+            int cx   = panelX + (PANEL_W - MENU_W) / 2;
+            int cy   = panelY + (panelH - dh) / 2;
+            int btnW = MENU_W - CONF_PAD * 2;
+            int btnX = cx + CONF_PAD;
+            int btn1Y = cy + CONF_PAD + 8 + MENU_GAP;
+            int btn2Y = btn1Y + MENU_BTN_H + MENU_GAP;
+            if (isIn((int) mx, (int) my, btnX, btn1Y, btnW, MENU_BTN_H)) {
+                confirmDialog.open(
+                        "gui.universalkeyboard.dialog.delete_all_title",
+                        "gui.universalkeyboard.dialog.delete_all_body",
+                        "gui.universalkeyboard.btn.yes_reset",
+                        this::doDeleteAll);
+                return true;
+            }
+            if (isIn((int) mx, (int) my, btnX, btn2Y, btnW, MENU_BTN_H)) {
+                confirmDialog.open(
+                        "gui.universalkeyboard.dialog.reset_links_title",
+                        "gui.universalkeyboard.dialog.reset_links_body",
+                        "gui.universalkeyboard.btn.yes_reset",
+                        this::doResetLinks);
+                return true;
+            }
             return true;
         }
+
         return super.mouseClicked(mx, my, btn);
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-            if (showResetConfirm) { showResetConfirm = false; return true; }
+            if (confirmDialog != null && confirmDialog.isOpen())
+                return confirmDialog.keyPressed(keyCode);
+            if (resetState == ResetState.MENU) { resetState = ResetState.NONE; return true; }
             onClose();
             return true;
         }

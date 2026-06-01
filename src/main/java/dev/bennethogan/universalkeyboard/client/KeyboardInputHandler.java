@@ -1,6 +1,7 @@
 package dev.bennethogan.universalkeyboard.client;
 
 import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
+import dev.bennethogan.universalkeyboard.client.gamepad.GamepadLiveDriver;
 import dev.bennethogan.universalkeyboard.item.LinkedKeyboardItem;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlManager;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
@@ -21,7 +22,10 @@ public class KeyboardInputHandler {
             KeyboardCaptureManager.tickHud();
         }
         if (LiveControlManager.isActive()) {
+            GamepadLiveDriver.pollLive();
             LiveControlManager.tick();
+        } else {
+            GamepadLiveDriver.resetLive();
         }
 
         // Persistent linking-mode action bar

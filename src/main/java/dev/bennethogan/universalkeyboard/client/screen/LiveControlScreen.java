@@ -1,12 +1,14 @@
 package dev.bennethogan.universalkeyboard.client.screen;
 
 import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
+import dev.bennethogan.universalkeyboard.client.gamepad.GamepadLiveDriver;
 import dev.bennethogan.universalkeyboard.compat.SableCompat;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.ActionType;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.Mode;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlManager;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -55,10 +57,18 @@ public class LiveControlScreen extends Screen {
     private final int[] currentThrusterPowers;
     private final double[] currentVarValues;
 
+    // Autosave/revert state
+    private final List<LiveControlBinding> originalBindings; // state when menu opened (for Revert)
+    private List<LiveControlBinding>       savedSnapshot;    // last state pushed to the server
+    private List<LiveControlBinding>       lastTickSnapshot; // previous tick, to debounce mid-edit autosaves
+
     private int panelX, panelY, panelH;
     private int firstRowY;
-    private int listeningSlot   = -1;
+    private ConfirmDialog confirmDialog;
+    private int listeningSlot     = -1;
     private int vectorOverlaySlot = -1;
+    private int exclOverlaySlot   = -1;
+    private String exclInput      = "";
     private int page = 0; // 0 = slots 0–19, 1 = slots 20–39
 
     // Typewriter import state
@@ -90,6 +100,41 @@ public class LiveControlScreen extends Screen {
         this.bindings = new ArrayList<>(MAX_SLOTS);
         for (int i = 0; i < MAX_SLOTS; i++)
             this.bindings.add(i < inBindings.size() ? copyBinding(inBindings.get(i)) : new LiveControlBinding());
+        this.originalBindings = deepCopy(bindings);
+        this.savedSnapshot    = deepCopy(bindings);
+        this.lastTickSnapshot = deepCopy(bindings);
+    }
+
+    private static List<LiveControlBinding> deepCopy(List<LiveControlBinding> src) {
+        List<LiveControlBinding> out = new ArrayList<>(src.size());
+        for (LiveControlBinding b : src) out.add(copyBinding(b));
+        return out;
+    }
+
+    private static boolean bindingEquals(LiveControlBinding a, LiveControlBinding b) {
+        return a.keyCode == b.keyCode
+                && a.actionType == b.actionType
+                && a.mode == b.mode
+                && a.wirelessIdx == b.wirelessIdx
+                && a.linkIdx == b.linkIdx
+                && a.rsSide == b.rsSide
+                && a.signalStrength == b.signalStrength
+                && a.channel == b.channel
+                && a.powerLevel == b.powerLevel
+                && a.vectorX == b.vectorX
+                && a.vectorY == b.vectorY
+                && a.incPlus == b.incPlus
+                && a.varIndex == b.varIndex
+                && a.varOnValue == b.varOnValue
+                && a.overdriveMultiplier == b.overdriveMultiplier
+                && java.util.Objects.equals(a.odExcludes, b.odExcludes);
+    }
+
+    private static boolean listsEqual(List<LiveControlBinding> a, List<LiveControlBinding> b) {
+        if (a.size() != b.size()) return false;
+        for (int i = 0; i < a.size(); i++)
+            if (!bindingEquals(a.get(i), b.get(i))) return false;
+        return true;
     }
 
     private static LiveControlBinding copyBinding(LiveControlBinding src) {
@@ -98,6 +143,7 @@ public class LiveControlScreen extends Screen {
         b.actionType     = src.actionType;
         b.mode           = src.mode;
         b.wirelessIdx    = src.wirelessIdx;
+        b.linkIdx        = src.linkIdx;
         b.rsSide         = src.rsSide;
         b.signalStrength = src.signalStrength;
         b.channel        = src.channel;
@@ -106,7 +152,9 @@ public class LiveControlScreen extends Screen {
         b.vectorY        = src.vectorY;
         b.incPlus        = src.incPlus;
         b.varIndex       = src.varIndex;
-        b.varOnValue     = src.varOnValue;
+        b.varOnValue          = src.varOnValue;
+        b.overdriveMultiplier = src.overdriveMultiplier;
+        b.odExcludes          = src.odExcludes;
         return b;
     }
 
@@ -118,12 +166,21 @@ public class LiveControlScreen extends Screen {
         panelY    = (height - panelH)  / 2;
         firstRowY = panelY + PAD + TITLE_H + 4;
 
+        confirmDialog = new ConfirmDialog(font);
+        confirmDialog.setParentBounds(panelX, panelY, PANEL_W, panelH);
+
         int btnY = panelY + panelH - PAD - BTN_H;
         boolean sablePresent = SableCompat.isPresent();
-        // Bottom button row: Save | Start | [Import Typewriter if Sable present]
+        // Bottom button row: Revert | Start | [Import Typewriter if Sable present]
+        // Edits autosave continuously; Revert discards back to how the menu opened.
         int bottomBtnCount = sablePresent ? 3 : 2;
         int btnW = (PANEL_W - PAD * 2 - 4 * (bottomBtnCount - 1)) / bottomBtnCount;
-        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.save"),  b -> doSave())
+        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.revert"),
+                        b -> confirmDialog.open(
+                                "gui.universalkeyboard.dialog.revert_title",
+                                "gui.universalkeyboard.dialog.revert_body",
+                                "gui.universalkeyboard.btn.yes_revert",
+                                this::doRevert))
                 .pos(panelX + PAD, btnY).size(btnW, BTN_H).build());
         addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.start"), b -> doStart())
                 .pos(panelX + PAD + (btnW + 4), btnY).size(btnW, BTN_H).build());
@@ -145,9 +202,23 @@ public class LiveControlScreen extends Screen {
 
     public BlockPos getKeyboardPos() { return keyboardPos; }
 
-    private void doSave()  { ModPackets.sendSaveLiveBindings(keyboardPos, bindings); }
-    private void doStart() {
+    /** Push the current bindings to the server if they differ from what was last saved. */
+    private void autosave() {
+        if (listsEqual(bindings, savedSnapshot)) return;
         ModPackets.sendSaveLiveBindings(keyboardPos, bindings);
+        savedSnapshot = deepCopy(bindings);
+    }
+
+    /** Discard all edits made since the menu was opened. */
+    private void doRevert() {
+        bindings.clear();
+        bindings.addAll(deepCopy(originalBindings));
+        listeningSlot = vectorOverlaySlot = exclOverlaySlot = -1;
+        autosave(); // push the reverted state to the server immediately
+    }
+
+    private void doStart() {
+        autosave();
         LiveControlManager.activate(keyboardPos, bindings, currentLocalRs, currentWirelessPowers, currentThrusterPowers, currentVarValues);
         onClose();
     }
@@ -195,6 +266,7 @@ public class LiveControlScreen extends Screen {
         }
         for (var r : this.renderables) r.render(g, mx, my, pt);
         if (vectorOverlaySlot >= 0) renderVectorOverlay(g, mx, my, vectorOverlaySlot);
+        if (exclOverlaySlot >= 0) renderExclOverlay(g, mx, my);
 
         // Brief status/error message below title
         if (twMessage != null && twMessageTick > 0) {
@@ -205,6 +277,8 @@ public class LiveControlScreen extends Screen {
         if (twOfferPos != null) {
             renderTypewriterDialog(g, mx, my);
         }
+
+        if (confirmDialog != null) confirmDialog.render(g, mx, my);
     }
 
     // ── Slot rendering ────────────────────────────────────────────────────────
@@ -228,6 +302,7 @@ public class LiveControlScreen extends Screen {
             case THRUSTER_POWER  -> I18n.get("gui.universalkeyboard.label.action_thr");
             case THRUSTER_VECTOR -> I18n.get("gui.universalkeyboard.label.action_vec");
             case VARIABLE        -> I18n.get("gui.universalkeyboard.label.action_var");
+            case OVERDRIVE       -> I18n.get("gui.universalkeyboard.label.action_od");
         };
         boolean tHov = isIn(mx, my, tx, ry, TYPE_W, ROW_H);
         g.fill(tx, ry, tx + TYPE_W, ry + ROW_H, tHov ? 0xFF333355 : 0xFF1F1F3A);
@@ -245,13 +320,45 @@ public class LiveControlScreen extends Screen {
             case THRUSTER_POWER  -> renderPwrConfig(g, mx, my, b, x, y);
             case THRUSTER_VECTOR -> renderVecConfig(g, mx, my, b, idx, x, y);
             case VARIABLE        -> renderVarConfig(g, mx, my, b, x, y);
+            case OVERDRIVE       -> renderOdConfig(g, mx, my, b, x, y);
         }
+    }
+
+    // OVERDRIVE config — [mode:20][gap:2][mult:40][gap:2][excl:26] = 90px
+    private void renderOdConfig(GuiGraphics g, int mx, int my, LiveControlBinding b, int x, int y) {
+        boolean mHov = isIn(mx, my, x, y, 20, ROW_H);
+        String modeLabel = b.mode == Mode.TGL
+                ? I18n.get("gui.universalkeyboard.label.mode_tog")
+                : I18n.get("gui.universalkeyboard.label.mode_hld");
+        g.fill(x, y, x + 20, y + ROW_H, mHov ? 0xFF253525 : 0xFF1A261A);
+        drawBorder(g, x, y, 20, ROW_H, 0xFF446644);
+        g.drawCenteredString(font, modeLabel, x + 10, y + 4, 0xFFFFFF);
+        x += 22;
+
+        boolean vHov = isIn(mx, my, x, y, 40, ROW_H);
+        g.fill(x, y, x + 40, y + ROW_H, vHov ? 0xFF402030 : 0xFF2A1525);
+        drawBorder(g, x, y, 40, ROW_H, 0xFF884466);
+        String mult = formatMultiplier(b.overdriveMultiplier);
+        g.drawCenteredString(font, "§d" + mult, x + 20, y + 4, 0xFFFFFF);
+        x += 42;
+
+        boolean hasExcl = b.odExcludes != null && !b.odExcludes.isEmpty();
+        boolean eHov = isIn(mx, my, x, y, 26, ROW_H);
+        g.fill(x, y, x + 26, y + ROW_H, eHov ? 0xFF302030 : (hasExcl ? 0xFF221222 : 0xFF1A1020));
+        drawBorder(g, x, y, 26, ROW_H, hasExcl ? 0xFF884488 : 0xFF553355);
+        g.drawCenteredString(font, hasExcl ? "§dExcl" : "§8Excl", x + 13, y + 4, 0xFFFFFF);
+    }
+
+    private static String formatMultiplier(double m) {
+        if (m == (int) m) return ((int) m) + "x";
+        return m + "x";
     }
 
     // REDSTONE config — [side:50][mode:20][signal:20] = 90px
     private void renderRsConfig(GuiGraphics g, int mx, int my, LiveControlBinding b, int x, int y) {
-        String sideLabel = b.wirelessIdx == 0
-                ? b.rsSide.getSerializedName().toUpperCase() : "W" + b.wirelessIdx;
+        String sideLabel = b.linkIdx > 0 ? "W" + b.linkIdx
+                : b.wirelessIdx > 0 ? "L" + b.wirelessIdx
+                : b.rsSide.getSerializedName().toUpperCase();
         boolean sHov = isIn(mx, my, x, y, 50, ROW_H);
         g.fill(x, y, x + 50, y + ROW_H, sHov ? 0xFF252535 : 0xFF1A1A2A);
         drawBorder(g, x, y, 50, ROW_H, 0xFF333355);
@@ -414,9 +521,79 @@ public class LiveControlScreen extends Screen {
         g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.ok"), okX + 18, okY + 2, 0xFFFFFF);
     }
 
+    // ── Excl overlay ─────────────────────────────────────────────────────────
+    private static final int EXCL_OV_W = 220;
+    private static final int EXCL_OV_H = 78;
+
+    private void renderExclOverlay(GuiGraphics g, int mx, int my) {
+        int ox = width  / 2 - EXCL_OV_W / 2;
+        int oy = height / 2 - EXCL_OV_H / 2;
+        g.pose().pushPose();
+        g.pose().translate(0, 0, 500);
+        g.fill(ox, oy, ox + EXCL_OV_W, oy + EXCL_OV_H, 0xFF0D0A14);
+        drawBorder(g, ox, oy, EXCL_OV_W, EXCL_OV_H, 0xFF884488);
+        g.drawCenteredString(font, "§dExclude Slots from OD", ox + EXCL_OV_W / 2, oy + 4, 0xFFFFFF);
+        g.drawCenteredString(font, "§8slot numbers, comma-separated", ox + EXCL_OV_W / 2, oy + 13, 0x888888);
+
+        int inX = ox + 8, inY = oy + 24, inW = EXCL_OV_W - 16, inH = 13;
+        g.fill(inX, inY, inX + inW, inY + inH, 0xFF111111);
+        drawBorder(g, inX, inY, inW, inH, 0xFF664466);
+        g.drawString(font, exclInput + "§7|", inX + 3, inY + 3, 0xFFFFFF, false);
+
+        int btnY = oy + EXCL_OV_H - 16, btnH = 13;
+        boolean okH  = isIn(mx, my, ox + 16,            btnY, 72, btnH);
+        boolean caH  = isIn(mx, my, ox + EXCL_OV_W - 88, btnY, 72, btnH);
+        g.fill(ox + 16,            btnY, ox + 88,            btnY + btnH, okH ? 0xFF2A4A2A : 0xFF1E3A1E);
+        g.fill(ox + EXCL_OV_W - 88, btnY, ox + EXCL_OV_W - 16, btnY + btnH, caH ? 0xFF4A2A2A : 0xFF3A1E1E);
+        drawBorder(g, ox + 16,            btnY, 72, btnH, 0xFF448844);
+        drawBorder(g, ox + EXCL_OV_W - 88, btnY, 72, btnH, 0xFF884444);
+        g.drawCenteredString(font, "§aOK",     ox + 52,            btnY + 3, 0xFFFFFF);
+        g.drawCenteredString(font, "§cCancel", ox + EXCL_OV_W - 52, btnY + 3, 0xFFFFFF);
+        g.pose().popPose();
+    }
+
+    private void handleExclOverlayClick(int mx, int my) {
+        int ox = width  / 2 - EXCL_OV_W / 2;
+        int oy = height / 2 - EXCL_OV_H / 2;
+        int btnY = oy + EXCL_OV_H - 16, btnH = 13;
+        if (isIn(mx, my, ox + 16, btnY, 72, btnH)) {
+            commitExclInput();
+        } else {
+            exclOverlaySlot = -1;
+            exclInput = "";
+        }
+    }
+
+    private void commitExclInput() {
+        if (exclOverlaySlot >= 0 && exclOverlaySlot < bindings.size())
+            bindings.get(exclOverlaySlot).odExcludes = normalizeExclInput(exclInput);
+        exclOverlaySlot = -1;
+        exclInput = "";
+    }
+
+    private String normalizeExclInput(String raw) {
+        if (raw == null || raw.isEmpty()) return "";
+        java.util.LinkedHashSet<Integer> slots = new java.util.LinkedHashSet<>();
+        for (String part : raw.split(",")) {
+            try {
+                int n = Integer.parseInt(part.trim());
+                if (n >= 1 && n <= MAX_SLOTS) slots.add(n);
+            } catch (NumberFormatException ignored) {}
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int slot : slots) {
+            if (sb.length() > 0) sb.append(",");
+            sb.append(slot);
+        }
+        return sb.toString();
+    }
+
     // ── Mouse handling ────────────────────────────────────────────────────────
     @Override
     public boolean mouseClicked(double mx, double my, int btn) {
+        if (confirmDialog != null && confirmDialog.isOpen())
+            return confirmDialog.mouseClicked(mx, my, btn);
+
         int imx = (int) mx, imy = (int) my;
 
         // Typewriter import dialog intercepts all clicks
@@ -434,6 +611,7 @@ public class LiveControlScreen extends Screen {
             return true;
         }
 
+        if (exclOverlaySlot >= 0) { handleExclOverlayClick(imx, imy); return true; }
         if (vectorOverlaySlot >= 0) { handleVectorOverlayClick(imx, imy, vectorOverlaySlot, btn); return true; }
         if (listeningSlot >= 0) listeningSlot = -1;
         int pageStart = page * (ROWS * 2);
@@ -471,7 +649,10 @@ public class LiveControlScreen extends Screen {
         int kx = rx + NUM_W;
         if (isIn(mx, my, kx, ry, KEY_W, ROW_H)) {
             if (btn == 1) { b.keyCode = -1; listeningSlot = -1; }
-            else listeningSlot = (listeningSlot == idx) ? -1 : idx;
+            else {
+                listeningSlot = (listeningSlot == idx) ? -1 : idx;
+                if (listeningSlot >= 0) GamepadLiveDriver.beginCapture();
+            }
             return true;
         }
 
@@ -479,8 +660,10 @@ public class LiveControlScreen extends Screen {
         if (isIn(mx, my, tx, ry, TYPE_W, ROW_H)) {
             int dir = (btn == 1) ? -1 : 1;
             b.actionType = nextAvailableType(b.actionType, dir);
-            // VEC doesn't support INC — reset to HLD
-            if (b.mode == Mode.INC && b.actionType == ActionType.THRUSTER_VECTOR) b.mode = Mode.HLD;
+            // VEC and OD don't support INC — reset to HLD
+            if (b.mode == Mode.INC
+                    && (b.actionType == ActionType.THRUSTER_VECTOR || b.actionType == ActionType.OVERDRIVE))
+                b.mode = Mode.HLD;
             return true;
         }
 
@@ -555,8 +738,33 @@ public class LiveControlScreen extends Screen {
                     return true;
                 }
             }
+            case OVERDRIVE -> {
+                if (isIn(mx, my, x, y, 20, ROW_H)) {
+                    b.mode = nextMode(b.actionType, b.mode, right ? -1 : 1); return true;
+                }
+                x += 22;
+                if (isIn(mx, my, x, y, 40, ROW_H)) {
+                    b.overdriveMultiplier = cycleOverdrive(b.overdriveMultiplier, right ? -1 : 1);
+                    return true;
+                }
+                x += 42;
+                if (isIn(mx, my, x, y, 26, ROW_H)) {
+                    listeningSlot = -1;
+                    vectorOverlaySlot = -1;
+                    exclOverlaySlot = idx;
+                    exclInput = b.odExcludes == null ? "" : b.odExcludes;
+                    return true;
+                }
+            }
         }
         return false;
+    }
+
+    private static double cycleOverdrive(double current, int dir) {
+        double[] vals = LiveControlBinding.OVERDRIVE_VALUES;
+        int idx = 0;
+        for (int i = 0; i < vals.length; i++) if (vals[i] == current) { idx = i; break; }
+        return vals[((idx + dir) % vals.length + vals.length) % vals.length];
     }
 
     // ── Scroll wheel ──────────────────────────────────────────────────────────
@@ -579,6 +787,7 @@ public class LiveControlScreen extends Screen {
                     case REDSTONE       -> b.signalStrength = Math.max(0, Math.min(15, b.signalStrength + dir));
                     case THRUSTER_POWER -> b.powerLevel = stepPower(b.powerLevel, dir);
                     case VARIABLE       -> b.varOnValue = Math.max(1, Math.min(100, b.varOnValue + dir));
+                    case OVERDRIVE      -> b.overdriveMultiplier = cycleOverdrive(b.overdriveMultiplier, dir);
                     default -> {}
                 }
                 return true;
@@ -590,7 +799,29 @@ public class LiveControlScreen extends Screen {
 
     // ── Key handling ──────────────────────────────────────────────────────────
     @Override
+    public boolean charTyped(char c, int modifiers) {
+        if (exclOverlaySlot >= 0) {
+            if ((Character.isDigit(c) || c == ',' || c == ' ') && exclInput.length() < 100)
+                exclInput += c;
+            return true;
+        }
+        return super.charTyped(c, modifiers);
+    }
+
+    @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (confirmDialog != null && confirmDialog.isOpen())
+            return confirmDialog.keyPressed(keyCode);
+        if (exclOverlaySlot >= 0) {
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                commitExclInput();
+            } else if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                exclOverlaySlot = -1; exclInput = "";
+            } else if (keyCode == GLFW.GLFW_KEY_BACKSPACE && !exclInput.isEmpty()) {
+                exclInput = exclInput.substring(0, exclInput.length() - 1);
+            }
+            return true;
+        }
         if (listeningSlot >= 0) {
             if (keyCode != GLFW.GLFW_KEY_ESCAPE) bindings.get(listeningSlot).keyCode = keyCode;
             listeningSlot = -1;
@@ -604,15 +835,34 @@ public class LiveControlScreen extends Screen {
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
-    @Override public boolean isPauseScreen() { return false; }
-
     @Override
     public void tick() {
         super.tick();
         if (twMessageTick > 0) { if (--twMessageTick == 0) twMessage = null; }
+        // While a slot is "listening", a gamepad button press binds it just like a key press.
+        if (listeningSlot >= 0 && exclOverlaySlot < 0) {
+            int code = GamepadLiveDriver.pollCapture();
+            if (code >= 0 && listeningSlot < bindings.size()) {
+                bindings.get(listeningSlot).keyCode = code;
+                listeningSlot = -1;
+            }
+        }
+
+        // Debounced autosave: flush one tick after the last edit, so continuous
+        // edits don't spam a packet every tick.
+        if (listsEqual(bindings, lastTickSnapshot)) autosave();
+        else lastTickSnapshot = deepCopy(bindings);
     }
 
-    /** Layout for the typewriter dialog: {dx, dy, dw, dh, btnY, btnH}. */
+    @Override
+    public void removed() {
+        autosave(); // flush any edit made in the final tick before the menu closed
+        super.removed();
+    }
+
+    @Override public boolean isPauseScreen() { return false; }
+
+    // Layout for the typewriter dialog: [dx, dy, dw, dh, btnY, btnH]
     private int[] twDialogLayout() {
         int dw = 300, pad = 8, gap = 3, btnH = 14;
         int textW = dw - pad * 2;
@@ -662,6 +912,7 @@ public class LiveControlScreen extends Screen {
             case THRUSTER_POWER  -> hasThrusters;
             case THRUSTER_VECTOR -> hasVectorThrusters;
             case VARIABLE        -> true;
+            case OVERDRIVE       -> true;
         };
     }
 
@@ -675,9 +926,9 @@ public class LiveControlScreen extends Screen {
         return current;
     }
 
-    /** Cycle through modes. VEC only supports HLD and TGL (no INC). */
+    /** Cycle through modes. VEC and OD only support HLD and TGL (no INC). */
     private static Mode nextMode(ActionType type, Mode current, int dir) {
-        Mode[] available = (type == ActionType.THRUSTER_VECTOR)
+        Mode[] available = (type == ActionType.THRUSTER_VECTOR || type == ActionType.OVERDRIVE)
                 ? new Mode[]{Mode.HLD, Mode.TGL}
                 : Mode.values();
         int idx = 0;
@@ -686,13 +937,31 @@ public class LiveControlScreen extends Screen {
     }
 
     // ── Side cycling (RS target) ───────────────────────────────────────────────
+    private int getLinkFreqCount() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return 0;
+        var be = mc.level.getBlockEntity(keyboardPos);
+        if (be instanceof dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity kb)
+            return kb.getLinkFreqCount();
+        return 0;
+    }
+
     private void cycleSide(LiveControlBinding b, int dir) {
-        Direction[] dirs  = Direction.values();
-        int total   = dirs.length + wirelessCount;
-        int current = b.wirelessIdx > 0 ? dirs.length + (b.wirelessIdx - 1) : b.rsSide.ordinal();
+        Direction[] dirs = Direction.values();
+        int linkCount = getLinkFreqCount();
+        int total = dirs.length + wirelessCount + linkCount;
+        int current;
+        if (b.linkIdx > 0) current = dirs.length + wirelessCount + (b.linkIdx - 1);
+        else if (b.wirelessIdx > 0) current = dirs.length + (b.wirelessIdx - 1);
+        else current = b.rsSide.ordinal();
         current = ((current + dir) % total + total) % total;
-        if (current < dirs.length) { b.wirelessIdx = 0; b.rsSide = dirs[current]; }
-        else                       { b.wirelessIdx = current - dirs.length + 1; }
+        if (current < dirs.length) {
+            b.wirelessIdx = 0; b.linkIdx = 0; b.rsSide = dirs[current];
+        } else if (current < dirs.length + wirelessCount) {
+            b.wirelessIdx = current - dirs.length + 1; b.linkIdx = 0;
+        } else {
+            b.linkIdx = current - dirs.length - wirelessCount + 1; b.wirelessIdx = 0;
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

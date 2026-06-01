@@ -13,7 +13,8 @@ public class LiveControlBinding {
         REDSTONE,        // 0
         THRUSTER_POWER,  // 1
         THRUSTER_VECTOR, // 2
-        VARIABLE         // 3 — sets a sequencer variable
+        VARIABLE,        // 3 — sets a sequencer variable
+        OVERDRIVE        // 4 — multiplies output of other active bindings (RS/Thr/Var)
     }
 
     /** Activation mode for a binding. VEC does not support INC. */
@@ -34,6 +35,8 @@ public class LiveControlBinding {
     // REDSTONE fields
     /** 0 = local RS side; 1-12 = wireless slot W1..W12 */
     public int       wirelessIdx    = 0;
+    /** 0 = not a link channel; 1-100 = link freq slot L1..L100 */
+    public int       linkIdx        = 0;
     /** Used when wirelessIdx == 0 */
     public Direction rsSide         = Direction.NORTH;
     /** 0-15 */
@@ -60,6 +63,12 @@ public class LiveControlBinding {
     /** HLD/TGL "on" value, 1-100; the variable switches between 0 and this */
     public int varOnValue = 100;
 
+    // OVERDRIVE
+    public static final double[] OVERDRIVE_VALUES = {1.5, 2.0, 3.0, 5.0, 10.0};
+    public double overdriveMultiplier = 2.0;
+    /** Comma-separated 1-based slot numbers excluded from this OD binding's effect. */
+    public String odExcludes = "";
+
     // ── Serialization ────────────────────────────────────────────────────────
 
     public void saveToTag(CompoundTag tag) {
@@ -67,6 +76,7 @@ public class LiveControlBinding {
         tag.putInt("actionType",     actionType.ordinal());
         tag.putInt("mode",           mode.ordinal());
         tag.putInt("wirelessIdx",    wirelessIdx);
+        tag.putInt("linkIdx",        linkIdx);
         tag.putInt("rsSide",         rsSide.ordinal());
         tag.putInt("signalStrength", signalStrength);
         tag.putInt("channel",        channel);
@@ -76,6 +86,8 @@ public class LiveControlBinding {
         tag.putBoolean("incPlus",    incPlus);
         tag.putInt("varIndex",       varIndex);
         tag.putInt("varOnValue",     varOnValue);
+        tag.putDouble("overdriveMultiplier", overdriveMultiplier);
+        tag.putString("odExcludes",          odExcludes == null ? "" : odExcludes);
     }
 
     public static LiveControlBinding fromTag(CompoundTag tag) {
@@ -98,6 +110,7 @@ public class LiveControlBinding {
         }
 
         b.wirelessIdx = Math.max(0, Math.min(12, tag.getInt("wirelessIdx")));
+        b.linkIdx     = Math.max(0, Math.min(100, tag.contains("linkIdx") ? tag.getInt("linkIdx") : 0));
 
         int sideOrd = tag.getInt("rsSide");
         Direction[] dirs = Direction.values();
@@ -116,6 +129,9 @@ public class LiveControlBinding {
         b.varIndex   = Math.max(0, Math.min(15, tag.getInt("varIndex")));
         b.varOnValue = tag.contains("varOnValue") ? Math.max(1, Math.min(100, tag.getInt("varOnValue"))) : 100;
 
+        b.overdriveMultiplier = tag.contains("overdriveMultiplier") ? tag.getDouble("overdriveMultiplier") : 2.0;
+        b.odExcludes          = tag.contains("odExcludes") ? tag.getString("odExcludes") : "";
+
         return b;
     }
 
@@ -126,6 +142,7 @@ public class LiveControlBinding {
         buf.writeByte(actionType.ordinal());
         buf.writeByte(mode.ordinal());
         buf.writeInt(wirelessIdx);
+        buf.writeShort(Math.max(0, Math.min(100, linkIdx)));
         buf.writeByte(rsSide.ordinal());
         buf.writeByte(Math.max(0, Math.min(15, signalStrength)));
         buf.writeByte(Math.max(1, Math.min(16, channel)));
@@ -135,6 +152,8 @@ public class LiveControlBinding {
         buf.writeBoolean(incPlus);
         buf.writeByte(Math.max(0, Math.min(15, varIndex)));
         buf.writeByte(Math.max(1, Math.min(100, varOnValue)));
+        buf.writeDouble(overdriveMultiplier);
+        buf.writeUtf(odExcludes == null ? "" : odExcludes, 256);
     }
 
     public static LiveControlBinding decode(FriendlyByteBuf buf) {
@@ -152,6 +171,7 @@ public class LiveControlBinding {
         b.mode = (mOrd < mValues.length) ? mValues[mOrd] : Mode.HLD;
 
         b.wirelessIdx = buf.readInt();
+        b.linkIdx     = buf.readShort() & 0xFFFF;
 
         int sideOrd = buf.readByte() & 0xFF;
         Direction[] dirs = Direction.values();
@@ -169,6 +189,9 @@ public class LiveControlBinding {
         b.varOnValue = buf.readByte() & 0xFF;
         if (b.varOnValue < 1) b.varOnValue = 1;
 
+        b.overdriveMultiplier = buf.readDouble();
+        b.odExcludes          = buf.readUtf(256);
+
         return b;
     }
 
@@ -176,6 +199,7 @@ public class LiveControlBinding {
 
     public static String keyName(int keyCode) {
         if (keyCode < 0) return "(none)";
+        if (GamepadCodes.isGamepadCode(keyCode)) return GamepadCodes.name(keyCode);
         String glfwName = GLFW.glfwGetKeyName(keyCode, 0);
         if (glfwName != null && !glfwName.isEmpty()) return glfwName.toUpperCase();
         return switch (keyCode) {

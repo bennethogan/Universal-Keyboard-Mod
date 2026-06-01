@@ -8,6 +8,7 @@ import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
+import javax.annotation.Nullable;
 import java.util.function.Supplier;
 
 public class ModBlockEntities {
@@ -29,6 +30,20 @@ public class ModBlockEntities {
                                 : LinkedKeyboardBlockEntity::new;
                 return BlockEntityType.Builder.of(factory, blocks).build(null);
             });
+
+    @Nullable
+    public static Supplier<BlockEntityType<WirelessCopycatBlockEntity>> WIRELESS_COPYCAT;
+
+    public static void registerForCreate() {
+        WIRELESS_COPYCAT = BLOCK_ENTITIES.register("wireless_copycat", () ->
+                BlockEntityType.Builder.of(
+                        (pos, state) -> new WirelessCopycatBlockEntity(
+                                ModBlockEntities.WIRELESS_COPYCAT.get(), pos, state),
+                        ModBlocks.WIRELESS_COPYCAT.get(),
+                        ModBlocks.WIRELESS_COPYCAT_PANEL.get(),
+                        ModBlocks.WIRELESS_COPYCAT_STEP.get()
+                ).build(null));
+    }
 
     public static void registerCapabilities(RegisterCapabilitiesEvent event) {
         try {

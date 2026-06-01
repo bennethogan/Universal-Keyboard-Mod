@@ -70,6 +70,10 @@ public class SequencerScreen extends Screen {
     // ── State ─────────────────────────────────────────────────────────────────
     final BlockPos keyboardPos;
     private final List<SequencerStep> steps;
+    // Autosave/revert state
+    private final List<SequencerStep> originalSteps;     // state when menu opened (for Revert)
+    private List<CompoundTag>         savedSnapshot;     // last steps pushed to the server
+    private List<CompoundTag>         lastTickSnapshot;  // previous tick, to debounce mid-edit autosaves
     private boolean running;
     private int     currentStep;
     private List<String>   availableGetters;
@@ -119,6 +123,8 @@ public class SequencerScreen extends Screen {
     private String  confirmOverwriteName = null;
     // No-name dialog
     private boolean showNoNameDialog = false;
+    // Revert confirmation
+    private ConfirmDialog revertDialog;
 
     // Layout cache (set in init)
     private int panelX, panelY, panelH, rowAreaY;
@@ -146,6 +152,25 @@ public class SequencerScreen extends Screen {
         this.availableSetters  = new ArrayList<>(availableSetters);
         this.gettersByChannel  = new java.util.HashMap<>(gettersByChannel);
         this.settersByChannel  = new java.util.HashMap<>(settersByChannel);
+        this.originalSteps     = deepCopySteps(this.steps);
+        this.savedSnapshot     = snapshot(this.steps);
+        this.lastTickSnapshot  = snapshot(this.steps);
+    }
+
+    private static SequencerStep copyStep(SequencerStep s) {
+        return SequencerStep.load(s.save());
+    }
+
+    private static List<SequencerStep> deepCopySteps(List<SequencerStep> src) {
+        List<SequencerStep> out = new ArrayList<>(src.size());
+        for (SequencerStep s : src) out.add(copyStep(s));
+        return out;
+    }
+
+    private static List<CompoundTag> snapshot(List<SequencerStep> src) {
+        List<CompoundTag> out = new ArrayList<>(src.size());
+        for (SequencerStep s : src) out.add(s.save());
+        return out;
     }
 
     public BlockPos getKeyboardPos() { return keyboardPos; }
@@ -185,6 +210,9 @@ public class SequencerScreen extends Screen {
         panelY   = (height - panelH)  / 2;
         rowAreaY = panelY + titleH;
 
+        revertDialog = new ConfirmDialog(font);
+        revertDialog.setParentBounds(panelX, panelY, PANEL_W, panelH);
+
         // Save-name input centred under title text
         int nameW = 200;
         saveName  = new EditBox(font, panelX + (PANEL_W - nameW) / 2,
@@ -204,7 +232,13 @@ public class SequencerScreen extends Screen {
                 .pos(panelX + PAD, bottomBtnY).size(bottomBtnW, BTN_H).build();
         addRenderableWidget(runStopBtn);
 
-        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.save"), b -> onSave())
+        // Steps autosave continuously; Revert discards back to how the menu opened.
+        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.revert"),
+                        b -> revertDialog.open(
+                                "gui.universalkeyboard.dialog.revert_title",
+                                "gui.universalkeyboard.dialog.revert_body",
+                                "gui.universalkeyboard.btn.yes_revert",
+                                this::onRevert))
                 .pos(panelX + PAD + (bottomBtnW + gap), bottomBtnY).size(bottomBtnW, BTN_H).build());
 
         addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.save_file"), b -> onSaveFile())
@@ -225,6 +259,39 @@ public class SequencerScreen extends Screen {
     public void onClose() {
         ModPackets.sendSequencerWatch(keyboardPos, false);
         super.onClose();
+    }
+
+    @Override
+    public void removed() {
+        autosave(); // flush any edit made in the final tick, for every teardown path
+        super.removed();
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        // Debounced autosave: flush one tick after the last edit, so continuous
+        // edits don't spam a packet every tick
+        List<CompoundTag> now = snapshot(steps);
+        if (now.equals(lastTickSnapshot)) autosave();
+        else lastTickSnapshot = now;
+    }
+
+    // Push the current steps to the server if they differ from what was last saved.
+    private void autosave() {
+        List<CompoundTag> now = snapshot(steps);
+        if (now.equals(savedSnapshot)) return;
+        ModPackets.sendSaveAndRunSequencer(keyboardPos, steps, false);
+        savedSnapshot = now;
+    }
+
+    // Discard all edits made since the menu was opened
+    private void onRevert() {
+        steps.clear();
+        steps.addAll(deepCopySteps(originalSteps));
+        scrollOffset = Math.min(scrollOffset, Math.max(0, steps.size() - VISIBLE));
+        refreshAllRows();
+        autosave(); // push the reverted state to the server immediately
     }
 
     // ── render ────────────────────────────────────────────────────────────────
@@ -344,6 +411,7 @@ public class SequencerScreen extends Screen {
         renderSrcPickDropdown(g, mx, my);
         if (confirmOverwriteName != null) renderConfirmDialog(g, mx, my);
         if (showNoNameDialog) renderNoNameDialog(g, mx, my);
+        if (revertDialog != null) revertDialog.render(g, mx, my);
         g.pose().popPose();
     }
 
@@ -608,7 +676,7 @@ public class SequencerScreen extends Screen {
         if (isManual || src == null || src.isEmpty()) return false;
         if (SequencerStep.isVar(src)) return false;
         if (src.startsWith("RS:")) return false;
-        if (src.matches("W\\d+")) return false;
+        if (src.matches("L\\d+")) return false;
         if (dev.bennethogan.universalkeyboard.compat.SableCompat.isSableGetter(src)) return false;
         return true;
     }
@@ -623,7 +691,7 @@ public class SequencerScreen extends Screen {
         for (int v = 1; v <= SequencerStep.VAR_COUNT; v++) opts.add("V" + v);
         opts.add("RS:N"); opts.add("RS:S"); opts.add("RS:E"); opts.add("RS:W"); opts.add("RS:U"); opts.add("RS:D");
         int wc = getWirelessCount();
-        for (int w = 1; w <= wc; w++) opts.add("W" + w);
+        for (int w = 1; w <= wc; w++) opts.add("L" + w);
         opts.addAll(gettersFor(channel));
         return opts;
     }
@@ -637,10 +705,22 @@ public class SequencerScreen extends Screen {
         return 0;
     }
 
+    int getLinkFreqCount() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return 0;
+        var be = mc.level.getBlockEntity(keyboardPos);
+        if (be instanceof dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity kb)
+            return kb.getLinkFreqCount();
+        return 0;
+    }
+
     // ── Input ─────────────────────────────────────────────────────────────────
 
     @Override
     public boolean mouseClicked(double mx, double my, int btn) {
+        if (revertDialog != null && revertDialog.isOpen())
+            return revertDialog.mouseClicked(mx, my, btn);
+
         if (running) {
             if (runStopBtn.isMouseOver(mx, my)) runStopBtn.onClick(mx, my);
             return true;
@@ -950,7 +1030,9 @@ public class SequencerScreen extends Screen {
         for (int v = 1; v <= SequencerStep.VAR_COUNT; v++) opts.add("V" + v);
         opts.add("RS:N"); opts.add("RS:S"); opts.add("RS:E"); opts.add("RS:W"); opts.add("RS:U"); opts.add("RS:D");
         int wc = getWirelessCount();
-        for (int w = 1; w <= wc; w++) opts.add("W" + w);
+        for (int w = 1; w <= wc; w++) opts.add("L" + w);
+        int lc = getLinkFreqCount();
+        for (int w = 1; w <= lc; w++) opts.add("W" + w);
         opts.addAll(gettersFor(channel));
         return opts;
     }
@@ -979,8 +1061,14 @@ public class SequencerScreen extends Screen {
         int wc = getWirelessCount();
         if (wc > 0) {
             List<String> wl = new ArrayList<>();
-            for (int w = 1; w <= wc; w++) wl.add("W" + w);
+            for (int w = 1; w <= wc; w++) wl.add("L" + w);
             cats.add(new SrcCat("Wireless", wl));
+        }
+        int lc = getLinkFreqCount();
+        if (lc > 0) {
+            List<String> wl = new ArrayList<>();
+            for (int w = 1; w <= lc; w++) wl.add("W" + w);
+            cats.add(new SrcCat("W-Channels", wl));
         }
         List<String> allGetters = gettersFor(ch);
         if (!allGetters.isEmpty()) {
@@ -1004,8 +1092,14 @@ public class SequencerScreen extends Screen {
         int wc = getWirelessCount();
         if (wc > 0) {
             List<String> wl = new ArrayList<>();
-            for (int w = 1; w <= wc; w++) wl.add("W" + w);
+            for (int w = 1; w <= wc; w++) wl.add("L" + w);
             cats.add(new SrcCat("Wireless", wl));
+        }
+        int lc = getLinkFreqCount();
+        if (lc > 0) {
+            List<String> wl = new ArrayList<>();
+            for (int w = 1; w <= lc; w++) wl.add("W" + w);
+            cats.add(new SrcCat("W-Channels", wl));
         }
         List<String> allGetters = gettersFor(ch);
         if (!allGetters.isEmpty()) {
@@ -1223,6 +1317,8 @@ public class SequencerScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (revertDialog != null && revertDialog.isOpen())
+            return revertDialog.keyPressed(keyCode);
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             if (showNoNameDialog) { showNoNameDialog = false; return true; }
             if (confirmOverwriteName != null) { confirmOverwriteName = null; return true; }
@@ -1241,7 +1337,6 @@ public class SequencerScreen extends Screen {
 
     // ── Actions ───────────────────────────────────────────────────────────────
 
-    private void onSave()    { ModPackets.sendSaveAndRunSequencer(keyboardPos, steps, false); }
     private void onRunStop() {
         if (running) ModPackets.sendStopSequencer(keyboardPos);
         else         ModPackets.sendSaveAndRunSequencer(keyboardPos, steps, true);
@@ -1544,13 +1639,14 @@ public class SequencerScreen extends Screen {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
 
-            // Cycle order: N, S, E, W, W1, W2, ..., W{wirelessCount}, then wrap to N.
             int wirelessCount = getWirelessCount();
-            int totalSlots = RS_DIRS.length + wirelessCount;
+            int linkCount = getLinkFreqCount();
+            int totalSlots = RS_DIRS.length + wirelessCount + linkCount;
 
-            // Determine current position in the cycle
             int currentPos;
-            if (step.wirelessOutIdx > 0 && step.wirelessOutIdx <= wirelessCount) {
+            if (step.linkOutIdx > 0 && step.linkOutIdx <= linkCount) {
+                currentPos = RS_DIRS.length + wirelessCount + step.linkOutIdx - 1;
+            } else if (step.wirelessOutIdx > 0 && step.wirelessOutIdx <= wirelessCount) {
                 currentPos = RS_DIRS.length + step.wirelessOutIdx - 1;
             } else {
                 currentPos = 0;
@@ -1560,15 +1656,21 @@ public class SequencerScreen extends Screen {
 
             if (nextPos < RS_DIRS.length) {
                 step.wirelessOutIdx = 0;
+                step.linkOutIdx = 0;
                 step.redstoneOutDir = RS_DIRS[nextPos];
-            } else {
+            } else if (nextPos < RS_DIRS.length + wirelessCount) {
                 step.wirelessOutIdx = nextPos - RS_DIRS.length + 1;
+                step.linkOutIdx = 0;
+            } else {
+                step.linkOutIdx = nextPos - RS_DIRS.length - wirelessCount + 1;
+                step.wirelessOutIdx = 0;
             }
             rsDirBtn.setMessage(Component.literal("→ " + redstoneTargetLabel(step)));
         }
 
         private String redstoneTargetLabel(SequencerStep step) {
-            if (step.wirelessOutIdx > 0) return "W" + step.wirelessOutIdx;
+            if (step.linkOutIdx > 0) return "W" + step.linkOutIdx;
+            if (step.wirelessOutIdx > 0) return "L" + step.wirelessOutIdx;
             return step.redstoneOutDir.getName().toUpperCase();
         }
 
@@ -1655,7 +1757,7 @@ public class SequencerScreen extends Screen {
             List<String> list = new ArrayList<>(Arrays.asList(SequencerStep.RS_INPUT_GETTER_NAMES));
             for (int i = 1; i <= SequencerStep.VAR_COUNT; i++) list.add("V" + i);
             int wc = getWirelessCount();
-            for (int w = 1; w <= wc; w++) list.add("W" + w);
+            for (int w = 1; w <= wc; w++) list.add("L" + w);
             list.addAll(gettersFor(channel));
             return list;
         }

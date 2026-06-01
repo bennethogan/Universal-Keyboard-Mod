@@ -98,6 +98,8 @@ public class SequencerStep {
     public String    redstoneOutSignalStr = "0";
     // 0 = use redstoneOutDir (a side); 1..12 = wireless slot W1..W12
     public int       wirelessOutIdx       = 0;
+    // 0 = not a link channel; 1..100 = link freq slot L1..L100
+    public int       linkOutIdx           = 0;
 
     // TYPE_TEXT
     public String  typeTextStr   = "";
@@ -151,6 +153,7 @@ public class SequencerStep {
         tag.putString("redstoneOutDir",        redstoneOutDir.name());
         tag.putString("redstoneOutSignalStr",  redstoneOutSignalStr);
         tag.putInt("wirelessOutIdx",           wirelessOutIdx);
+        tag.putInt("link_out_idx",             linkOutIdx);
         tag.putString("typeTextStr",           typeTextStr);
         tag.putBoolean("typeTextEnter",        typeTextEnter);
         tag.putString("conditionSource",       conditionSource.name());
@@ -190,6 +193,7 @@ public class SequencerStep {
         catch (Exception e)     { s.redstoneOutDir = Direction.NORTH; }
         s.redstoneOutSignalStr  = def(tag.getString("redstoneOutSignalStr"),  "0");
         s.wirelessOutIdx        = tag.contains("wirelessOutIdx") ? Math.max(0, Math.min(12, tag.getInt("wirelessOutIdx"))) : 0;
+        s.linkOutIdx            = tag.contains("link_out_idx") ? Math.max(0, Math.min(100, tag.getInt("link_out_idx"))) : 0;
         s.typeTextStr           = tag.getString("typeTextStr");
         s.typeTextEnter         = !tag.contains("typeTextEnter") || tag.getBoolean("typeTextEnter");
         try { s.conditionSource = ConditionSource.valueOf(tag.getString("conditionSource")); }
@@ -227,6 +231,7 @@ public class SequencerStep {
         buf.writeByte(redstoneOutDir.ordinal());
         buf.writeUtf(redstoneOutSignalStr);
         buf.writeByte(Math.max(0, Math.min(12, wirelessOutIdx)));
+        buf.writeByte(Math.min(100, linkOutIdx));
         buf.writeUtf(typeTextStr);
         buf.writeBoolean(typeTextEnter);
         buf.writeByte(conditionSource.ordinal());
@@ -264,6 +269,7 @@ public class SequencerStep {
         s.redstoneOutDir        = di < dirs.length ? dirs[di] : Direction.NORTH;
         s.redstoneOutSignalStr  = buf.readUtf();
         s.wirelessOutIdx        = Math.max(0, Math.min(12, buf.readByte() & 0xFF));
+        s.linkOutIdx            = buf.readByte() & 0xFF;
         s.typeTextStr           = buf.readUtf();
         s.typeTextEnter         = buf.readBoolean();
         ConditionSource[] cs = ConditionSource.values();
