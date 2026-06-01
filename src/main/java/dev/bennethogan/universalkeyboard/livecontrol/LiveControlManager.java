@@ -1,5 +1,8 @@
 package dev.bennethogan.universalkeyboard.livecontrol;
 
+import dev.bennethogan.universalkeyboard.client.gamepad.GamepadLiveDriver;
+import dev.bennethogan.universalkeyboard.config.ModConfig;
+import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.ActionType;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.Mode;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
 import net.minecraft.client.Minecraft;
@@ -182,7 +185,7 @@ public class LiveControlManager {
             incFired = true;
         }
         if (!varActions.isEmpty()) ModPackets.sendLiveAction(keyboardPos, varActions);
-        if (incFired) computeAndSend();
+        if (incFired || hasActiveAnalogOutput()) computeAndSend();
     }
 
     // ── Key handling ─────────────────────────────────────────────────────────
@@ -301,8 +304,10 @@ public class LiveControlManager {
     }
 
     private static ModPackets.LiveAction varActionOd(int varIndex, double value, int bindingIdx) {
-        double od = (value == 0.0) ? 1.0 : overdriveFactor(bindingIdx);
-        double scaled = (value == 0.0) ? 0.0 : Math.min(100.0, value * od);
+        double od  = (value == 0.0) ? 1.0 : overdriveFactor(bindingIdx);
+        double mag = (value == 0.0 || bindingIdx < 0 || bindingIdx >= bindings.size())
+                ? 1.0 : joystickMagnitude(bindings.get(bindingIdx));
+        double scaled = (value == 0.0) ? 0.0 : Math.min(100.0, value * od * mag);
         return new ModPackets.LiveAction((byte) 4, varIndex, scaled, 0.0);
     }
 
@@ -366,18 +371,19 @@ public class LiveControlManager {
             LiveControlBinding b            = bindings.get(i);
             boolean            bindingActive = isBindingActive(i);
             double             odFactor     = overdriveFactor(i);
+            double             mag          = joystickMagnitude(b);
 
             switch (b.actionType) {
                 case REDSTONE -> {
                     if (b.linkIdx > 0) {
-                        int contribution = bindingActive ? Math.min(15, (int) Math.round(b.signalStrength * odFactor)) : 0;
+                        int contribution = bindingActive ? Math.min(15, (int) Math.round(b.signalStrength * odFactor * mag)) : 0;
                         linkSignals.merge(b.linkIdx, contribution, Math::max);
                     } else {
                         long key = rsKey(b.wirelessIdx, b.rsSide);
                         if (b.mode == Mode.INC) {
                             rsTargetToSignal.putIfAbsent(key, 0);
                         } else {
-                            int contribution = bindingActive ? Math.min(15, (int) Math.round(b.signalStrength * odFactor)) : 0;
+                            int contribution = bindingActive ? Math.min(15, (int) Math.round(b.signalStrength * odFactor * mag)) : 0;
                             rsTargetToSignal.merge(key, contribution, Math::max);
                         }
                     }
@@ -386,15 +392,15 @@ public class LiveControlManager {
                     if (b.mode == Mode.INC) {
                         powerByChannel.putIfAbsent(b.channel, 0.0);
                     } else {
-                        double contribution = bindingActive ? Math.min(1.0, b.powerLevel * odFactor) : 0.0;
+                        double contribution = bindingActive ? Math.min(1.0, b.powerLevel * odFactor * mag) : 0.0;
                         powerByChannel.merge(b.channel, contribution, Math::max);
                     }
                 }
                 case THRUSTER_VECTOR -> {
                     if (bindingActive) {
                         double[] vec = vectorByChannel.computeIfAbsent(b.channel, k -> new double[]{0.0, 0.0});
-                        vec[0] += b.vectorX;
-                        vec[1] += b.vectorY;
+                        vec[0] += b.vectorX * mag;
+                        vec[1] += b.vectorY * mag;
                     } else {
                         vectorByChannel.computeIfAbsent(b.channel, k -> new double[]{0.0, 0.0});
                     }
@@ -445,6 +451,36 @@ public class LiveControlManager {
             case TGL -> toggledOn.contains(idx);
             case INC -> false;
         };
+    }
+
+    // ── Joystick power scaling ─────────────────────────────────────────────────
+
+
+    private static boolean scalingOn() {
+        try { return ModConfig.CLIENT.joystickScaling.get(); }
+        catch (Exception e) { return false; }
+    }
+
+    private static boolean isScaledAnalog(LiveControlBinding b) {
+        return scalingOn()
+                && b.mode == Mode.HLD
+                && b.actionType != ActionType.OVERDRIVE
+                && GamepadCodes.isAnalogCode(b.keyCode);
+    }
+
+    private static double joystickMagnitude(LiveControlBinding b) {
+        if (!isScaledAnalog(b)) return 1.0;
+        return GamepadLiveDriver.analogMagnitude(b.keyCode);
+    }
+    
+    private static boolean hasActiveAnalogOutput() {
+        for (int i = 0; i < bindings.size(); i++) {
+            LiveControlBinding b = bindings.get(i);
+            if (b.actionType == ActionType.VARIABLE) continue; // variables resend each tick already
+            if (!isScaledAnalog(b)) continue;
+            if (isBindingActive(i)) return true;
+        }
+        return false;
     }
 
     private static long rsKey(int wirelessIdx, Direction rsSide) {

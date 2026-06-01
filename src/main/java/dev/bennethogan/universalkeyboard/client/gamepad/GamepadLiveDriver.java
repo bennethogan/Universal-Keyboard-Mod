@@ -70,6 +70,32 @@ public final class GamepadLiveDriver {
         return enabled() && POLLER.hasGamepad();
     }
 
+    // Analog support
+
+    public static float analogMagnitude(int code) {
+        if (!enabled()) return 1.0f;
+        double stickThr = ModConfig.CLIENT.stickThreshold.get();
+        double trigThr  = ModConfig.CLIENT.triggerThreshold.get();
+        float raw;
+        double thr;
+        switch (code) {
+            case GamepadCodes.TRIGGER_LT -> { raw = (POLLER.axis(4) + 1) / 2f; thr = trigThr; }
+            case GamepadCodes.TRIGGER_RT -> { raw = (POLLER.axis(5) + 1) / 2f; thr = trigThr; }
+            case GamepadCodes.LS_RIGHT   -> { raw = Math.max(0,  POLLER.axis(0)); thr = stickThr; }
+            case GamepadCodes.LS_LEFT    -> { raw = Math.max(0, -POLLER.axis(0)); thr = stickThr; }
+            case GamepadCodes.LS_DOWN    -> { raw = Math.max(0,  POLLER.axis(1)); thr = stickThr; }
+            case GamepadCodes.LS_UP      -> { raw = Math.max(0, -POLLER.axis(1)); thr = stickThr; }
+            case GamepadCodes.RS_RIGHT   -> { raw = Math.max(0,  POLLER.axis(2)); thr = stickThr; }
+            case GamepadCodes.RS_LEFT    -> { raw = Math.max(0, -POLLER.axis(2)); thr = stickThr; }
+            case GamepadCodes.RS_DOWN    -> { raw = Math.max(0,  POLLER.axis(3)); thr = stickThr; }
+            case GamepadCodes.RS_UP      -> { raw = Math.max(0, -POLLER.axis(3)); thr = stickThr; }
+            default -> { return 1.0f; }
+        }
+        if (raw <= thr) return 0f;
+        float m = (float) ((raw - thr) / (1.0 - thr));
+        return Math.max(0f, Math.min(1f, m));
+    }
+
     // State -> synthetic code set
 
     private static Set<Integer> pressedSet() {

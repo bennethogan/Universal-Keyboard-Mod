@@ -50,6 +50,7 @@ public class ModConfig {
         public final ModConfigSpec.BooleanValue enableGamepad;
         public final ModConfigSpec.DoubleValue  stickThreshold;
         public final ModConfigSpec.DoubleValue  triggerThreshold;
+        public final ModConfigSpec.BooleanValue joystickScaling;
 
         Client(ModConfigSpec.Builder builder) {
             builder.comment("Universal Keyboard — Client Settings").push("gamepad");
@@ -70,6 +71,16 @@ public class ModConfig {
                     .comment("How far a trigger (LT/RT) must be pulled before it counts as a press.",
                              "Range: 0.1–1.0. Default: 0.5.")
                     .defineInRange("triggerThreshold", 0.5, 0.1, 1.0);
+
+            joystickScaling = builder
+                    .comment("Scale a binding's output by how far the stick/trigger is pushed.",
+                             "When on, an analog input bound to e.g. 50% power outputs proportionally:",
+                             "pushing the stick halfway sends 25%, fully sends 50%.",
+                             "Applies to RS, Thruster Power, Vector and Variable bindings in Hld/Tog modes.",
+                             "Buttons and Inc/Overdrive bindings are never scaled.",
+                             "Turn off to make analog inputs behave as plain on/off like buttons.",
+                             "Default: true.")
+                    .define("joystickScaling", true);
 
             builder.pop();
         }

@@ -33,6 +33,12 @@ public final class GamepadCodes {
         return code >= BASE;
     }
 
+    /** True for analog inputs (sticks and triggers) whose deflection can scale output. */
+    public static boolean isAnalogCode(int code) {
+        return code == TRIGGER_LT || code == TRIGGER_RT
+                || (code >= STICK_BASE && code <= RS_UP);
+    }
+
     public static int buttonCode(int buttonIndex) {
         return BUTTON_BASE + buttonIndex;
     }

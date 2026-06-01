@@ -74,10 +74,19 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity {
     public void checkPreviewExpiry(ServerLevel sl) {
         if (previewFace < 0) return;
         if (sl.getGameTime() >= previewExpiry) {
-            previewFace   = -1;
-            previewExpiry = 0;
-            notifyUpdate();
+            clearPreview();
         }
+    }
+
+    private void clearPreview() {
+        previewFace   = -1;
+        previewExpiry = 0;
+        if (level != null && !level.isClientSide) notifyUpdate();
+    }
+
+    // Render-time fall back to help test button now get stuck
+    private boolean previewExpired() {
+        return previewFace >= 0 && level != null && level.getGameTime() >= previewExpiry;
     }
 
     public void setConfig(String[] newFreqs, boolean[] newEnabled) {
@@ -108,7 +117,7 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity {
 
     @Override
     public ModelData getModelData() {
-        if (previewFace == -1) return super.getModelData();
+        if (previewFace == -1 || previewExpired()) return super.getModelData();
         return ModelData.builder()
                 .with(com.simibubi.create.content.decoration.copycat.CopycatModel.MATERIAL_PROPERTY, getMaterial())
                 .with(PREVIEW_FACE_PROPERTY, previewFace)
@@ -138,7 +147,7 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity {
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider registries, boolean clientPacket) {
         super.write(tag, registries, clientPacket);
-        writeWireless(tag);
+        writeWireless(tag, clientPacket);
     }
 
     @Override
@@ -151,14 +160,16 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity {
         }
     }
 
-    private void writeWireless(CompoundTag tag) {
+    private void writeWireless(CompoundTag tag, boolean clientPacket) {
         ListTag freqList = new ListTag();
         for (String f : freqs) freqList.add(StringTag.valueOf(f != null ? f : ""));
         tag.put("freqs", freqList);
         byte mask = 0;
         for (int i = 0; i < FACES; i++) if (enabled[i]) mask |= (byte)(1 << i);
         tag.putByte("enabled", mask);
-        if (previewFace >= 0) {
+        // Preview is a visual aid, only sync it to the client, dont persist to disk,
+        // so a save/reload mid-test can't leave a face stuck gold
+        if (clientPacket && previewFace >= 0) {
             tag.putByte("previewFace", (byte) previewFace);
             tag.putLong("previewExpiry", previewExpiry);
         }
