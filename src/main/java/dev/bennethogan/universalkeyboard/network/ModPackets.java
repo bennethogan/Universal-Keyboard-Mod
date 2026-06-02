@@ -395,7 +395,7 @@ public class ModPackets {
         registrar.playToServer(TypewriterScanPacket.TYPE,            TypewriterScanPacket.CODEC,            ModPackets::handleTypewriterScan);
         registrar.playToServer(TypewriterImportConfirmPacket.TYPE,   TypewriterImportConfirmPacket.CODEC,   ModPackets::handleTypewriterConfirm);
         registrar.playToServer(UnlinkKeyboardPacket.TYPE,            UnlinkKeyboardPacket.CODEC,            ModPackets::handleUnlinkKeyboard);
-        registrar.playToServer(ResetLinksPacket.TYPE,                ResetLinksPacket.CODEC,                ModPackets::handleResetLinks);
+        registrar.optional().playToServer(ResetLinksPacket.TYPE,                ResetLinksPacket.CODEC,                ModPackets::handleResetLinks);
         registrar.playToServer(SetActiveChannelPacket.TYPE,       SetActiveChannelPacket.CODEC,       ModPackets::handleSetActiveChannel);
         registrar.playToServer(SetLinkingChannelPacket.TYPE,      SetLinkingChannelPacket.CODEC,      ModPackets::handleSetLinkingChannel);
         registrar.playToServer(CycleChannelAndReopenPacket.TYPE,    CycleChannelAndReopenPacket.CODEC,    ModPackets::handleCycleChannelAndReopen);
@@ -406,11 +406,11 @@ public class ModPackets {
         registrar.optional().playToServer(OpenWirelessConfigPacket.TYPE,       OpenWirelessConfigPacket.CODEC,       ModPackets::handleOpenWirelessConfig);
         registrar.optional().playToServer(WirelessAddRemovePacket.TYPE,        WirelessAddRemovePacket.CODEC,        ModPackets::handleWirelessAddRemove);
         registrar.optional().playToServer(WirelessGhostSetPacket.TYPE,         WirelessGhostSetPacket.CODEC,         ModPackets::handleWirelessGhostSet);
-        registrar.playToServer(SaveWirelessCopycatConfigPacket.TYPE,   SaveWirelessCopycatConfigPacket.STREAM_CODEC,   ModPackets::handleSaveWirelessCopycatConfig);
-        registrar.playToServer(TestWirelessCopycatFacePacket.TYPE,     TestWirelessCopycatFacePacket.STREAM_CODEC,     ModPackets::handleTestWirelessCopycatFace);
-        registrar.playToServer(LocateWirelessCopycatPacket.TYPE,       LocateWirelessCopycatPacket.STREAM_CODEC,       ModPackets::handleLocateWirelessCopycat);
-        registrar.playToServer(SaveLinkFreqsPacket.TYPE,               SaveLinkFreqsPacket.STREAM_CODEC,               ModPackets::handleSaveLinkFreqs);
-        registrar.playToServer(RequestLinkFreqScreenPacket.TYPE,       RequestLinkFreqScreenPacket.STREAM_CODEC,       ModPackets::handleRequestLinkFreqScreen);
+        registrar.optional().playToServer(SaveWirelessCopycatConfigPacket.TYPE,   SaveWirelessCopycatConfigPacket.STREAM_CODEC,   ModPackets::handleSaveWirelessCopycatConfig);
+        registrar.optional().playToServer(TestWirelessCopycatFacePacket.TYPE,     TestWirelessCopycatFacePacket.STREAM_CODEC,     ModPackets::handleTestWirelessCopycatFace);
+        registrar.optional().playToServer(LocateWirelessCopycatPacket.TYPE,       LocateWirelessCopycatPacket.STREAM_CODEC,       ModPackets::handleLocateWirelessCopycat);
+        registrar.optional().playToServer(SaveLinkFreqsPacket.TYPE,               SaveLinkFreqsPacket.STREAM_CODEC,               ModPackets::handleSaveLinkFreqs);
+        registrar.optional().playToServer(RequestLinkFreqScreenPacket.TYPE,       RequestLinkFreqScreenPacket.STREAM_CODEC,       ModPackets::handleRequestLinkFreqScreen);
 
         // playToClient — the server must declare these channels so the handshake succeeds.
         // Real handlers are registered by ClientPacketHandlers (client only); skip here on client
@@ -427,8 +427,8 @@ public class ModPackets {
             registrar.playToClient(TypewriterImportOfferPacket.TYPE,  TypewriterImportOfferPacket.CODEC,  (p, c) -> {});
             registrar.playToClient(ChannelChangedPacket.TYPE,          ChannelChangedPacket.CODEC,          (p, c) -> {});
             registrar.playToClient(OpenLiveControlScreenPacket.TYPE, OpenLiveControlScreenPacket.CODEC, (p, c) -> {});
-            registrar.playToClient(OpenWirelessCopycatScreenPacket.TYPE, OpenWirelessCopycatScreenPacket.STREAM_CODEC, (p, c) -> {});
-            registrar.playToClient(OpenLinkFreqScreenPacket.TYPE,        OpenLinkFreqScreenPacket.STREAM_CODEC,        (p, c) -> {});
+            registrar.optional().playToClient(OpenWirelessCopycatScreenPacket.TYPE, OpenWirelessCopycatScreenPacket.STREAM_CODEC, (p, c) -> {});
+            registrar.optional().playToClient(OpenLinkFreqScreenPacket.TYPE,        OpenLinkFreqScreenPacket.STREAM_CODEC,        (p, c) -> {});
         }
     }
 
