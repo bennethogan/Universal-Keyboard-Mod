@@ -31,8 +31,12 @@
   "gui.universalkeyboard.box.other_modes": "Other Modes",
   "gui.universalkeyboard.box.redstone_links": "Redstone Links",
   "gui.universalkeyboard.box.wireless_copycat": "Wireless Copycat",
+  "gui.universalkeyboard.box.import_typewriter": "Import Typewriter",
+  "gui.universalkeyboard.box.calibrate_gamepad": "Calibrate Gamepad",
   "gui.universalkeyboard.box.reset_data": "Reset Data",
   "gui.universalkeyboard.tooltip.need_create": "§bDownload Create for more features!",
+  "gui.universalkeyboard.tooltip.need_aeronautics": "§7Install Aeronautics for more features!",
+  "gui.universalkeyboard.tooltip.calibrate": "Calibrate",
 
   "gui.universalkeyboard.btn.reset_data": "Reset Data",
   "gui.universalkeyboard.btn.delete_all_data": "Delete All Data",
@@ -75,6 +79,7 @@
   "gui.universalkeyboard.label.action_vec": "§bVEC",
   "gui.universalkeyboard.label.action_var": "§eVar",
   "gui.universalkeyboard.label.action_od": "§dOD",
+  "gui.universalkeyboard.label.action_rpm": "§bRPM",
   "gui.universalkeyboard.label.mode_hld": "§7Hld",
   "gui.universalkeyboard.label.mode_tog": "§aTog",
   "gui.universalkeyboard.label.mode_inc": "§6Inc",
@@ -115,6 +120,12 @@
   "gui.universalkeyboard.tooltip.cc_modrinth_1": "§eYou must download CC:Tweaked from Modrinth.",
   "gui.universalkeyboard.tooltip.cc_modrinth_2": "§7The Curseforge version has not been updated!",
 
+  "gui.universalkeyboard.tooltip.start": "Start",
+  "gui.universalkeyboard.tooltip.revert": "Revert",
+  "gui.universalkeyboard.tooltip.prev_page": "Previous Page",
+  "gui.universalkeyboard.tooltip.next_page": "Next Page",
+  "gui.universalkeyboard.tooltip.profile_n": "Profile %s",
+
   "gui.universalkeyboard.dialog.reset_title": "§cReset all keyboard data?",
   "gui.universalkeyboard.dialog.reset_body": "§7This cannot be undone.",
   "gui.universalkeyboard.dialog.reset_options_title": "What would you like to reset?",
@@ -128,7 +139,7 @@
   "gui.universalkeyboard.dialog.tw_import_title": "§bTypewriter Import",
   "gui.universalkeyboard.dialog.tw_import_summary": "§f%d binding(s) → §e%d§f wireless slot(s)",
   "gui.universalkeyboard.dialog.tw_import_warn1": "§8Overwrites wireless config & live bindings.",
-  "gui.universalkeyboard.dialog.tw_import_warn2": "§8Thruster links are preserved.",
+  "gui.universalkeyboard.dialog.tw_import_warn2": "§8Peripheral links are preserved.",
 
   "gui.universalkeyboard.thruster.type.standard": "THRUSTER CONTROL",
   "gui.universalkeyboard.thruster.type.ion": "ION THRUSTER",

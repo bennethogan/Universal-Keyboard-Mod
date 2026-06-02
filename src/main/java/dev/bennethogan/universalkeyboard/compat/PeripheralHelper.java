@@ -39,6 +39,66 @@ public class PeripheralHelper {
             int fuelCapacityMb
     ) {}
 
+    // Special condition - RPM setters
+    private static final Set<String> RPM_TYPE_NAMES = Set.of(
+            "electric_motor",             // CreateAddition — setSpeed(number)
+            "rotation_speed_controller"   // Create — setTargetSpeed(int)
+    );
+
+    public static boolean isRpmType(String type) {
+        return RPM_TYPE_NAMES.contains(type);
+    }
+
+
+    public static boolean isRpmCapable(Object peripheral) {
+        if (peripheral == null) return false;
+        for (java.lang.reflect.Method m : peripheral.getClass().getMethods()) {
+            String n = m.getName();
+            if (!n.equals("setSpeed") && !n.equals("setTargetSpeed")) continue;
+            java.lang.reflect.Parameter[] params = m.getParameters();
+            if (params.length == 1) return true;
+        }
+        return false;
+    }
+
+    private static @Nullable String rpmSetterName(Object peripheral) {
+        for (java.lang.reflect.Method m : peripheral.getClass().getMethods()) {
+            if (!m.getName().equals("setSpeed") && !m.getName().equals("setTargetSpeed")) continue;
+            if (m.getParameters().length == 1) return m.getName();
+        }
+        return null;
+    }
+
+    private static @Nullable String rpmGetterName(Object peripheral) {
+        for (java.lang.reflect.Method m : peripheral.getClass().getMethods()) {
+            if (!m.getName().equals("getSpeed") && !m.getName().equals("getTargetSpeed")) continue;
+            if (m.getParameters().length == 0) return m.getName();
+        }
+        return null;
+    }
+
+    public static void callRpmSetter(Object peripheral, int rpm) {
+        init();
+        if (!ccPresent) return;
+        String methodName = rpmSetterName(peripheral);
+        if (methodName == null) return;
+        callMethodWithDouble(peripheral, methodName, rpm);
+    }
+
+    public static int getRpmValue(Level level, BlockPos pos) {
+        init();
+        if (!ccPresent) return 0;
+        Object p = getPeripheral(level, pos);
+        if (p == null) return 0;
+        String getter = rpmGetterName(p);
+        if (getter == null) return 0;
+        int val = getIntVal(p, getter);
+        return Math.max(0, Math.min(256, Math.abs(val)));
+    }
+
+
+    // Special condition - thrusters
+
     private static final Set<String> THRUSTER_TYPES = Set.of(
             "thruster",                 // propulsion thruster (fuel/basic)
             "ion_thruster",             // ion thruster

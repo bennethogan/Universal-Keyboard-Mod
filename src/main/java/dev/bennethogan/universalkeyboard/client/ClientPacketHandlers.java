@@ -118,7 +118,7 @@ public class ClientPacketHandlers {
     private static void handleTypewriterOffer(ModPackets.TypewriterImportOfferPacket packet, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
             Minecraft mc = Minecraft.getInstance();
-            if (mc.screen instanceof LiveControlScreen screen
+            if (mc.screen instanceof ModeSelectionScreen screen
                     && screen.getKeyboardPos().equals(packet.keyboardPos()))
                 screen.handleTypewriterOffer(packet.typewriterPos(), packet.bindingCount(),
                         packet.freqCount(), packet.error());
@@ -143,10 +143,11 @@ public class ClientPacketHandlers {
         ctx.enqueueWork(() ->
                 Minecraft.getInstance().setScreen(
                         new LiveControlScreen(
-                                packet.keyboardPos(), packet.bindings(), packet.wirelessCount(),
-                                packet.hasThrusters(), packet.hasVectorThrusters(),
+                                packet.keyboardPos(), packet.wirelessCount(),
+                                packet.hasThrusters(), packet.hasVectorThrusters(), packet.hasRpm(),
                                 packet.localRsOutputs(), packet.wirelessPowers(), packet.thrusterPowers(),
-                                packet.varValues())));
+                                packet.varValues(), packet.rpmValues(),
+                                packet.activeProfile(), packet.allProfiles())));
     }
 
     private static void handleOpenWirelessCopycatScreen(ModPackets.OpenWirelessCopycatScreenPacket packet, IPayloadContext ctx) {

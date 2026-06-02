@@ -63,15 +63,39 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     // ----- Live Control -----
 
     public static final int MAX_LIVE_BINDINGS = 40;
-    private final List<LiveControlBinding> liveControlBindings = new ArrayList<>();
+    public static final int MAX_PROFILES = 4;
+    private int activeProfile = 0;
+    private final List<List<LiveControlBinding>> profileBindings = new ArrayList<>();
 
-    public List<LiveControlBinding> getLiveControlBindings() { return Collections.unmodifiableList(liveControlBindings); }
+    private List<LiveControlBinding> activeProfileBindings() {
+        return profileBindings.get(Math.max(0, Math.min(MAX_PROFILES - 1, activeProfile)));
+    }
+
+    public int getActiveProfile() { return activeProfile; }
+
+    public List<LiveControlBinding> getLiveControlBindings() {
+        return Collections.unmodifiableList(activeProfileBindings());
+    }
 
     public void setLiveControlBindings(List<LiveControlBinding> bindings) {
-        liveControlBindings.clear();
+        saveProfileBindings(activeProfile, bindings);
+    }
+
+    public void saveProfileBindings(int profileIdx, List<LiveControlBinding> bindings) {
+        if (profileIdx < 0 || profileIdx >= MAX_PROFILES) return;
+        activeProfile = profileIdx;
+        List<LiveControlBinding> slot = profileBindings.get(profileIdx);
+        slot.clear();
         for (int i = 0; i < Math.min(bindings.size(), MAX_LIVE_BINDINGS); i++)
-            liveControlBindings.add(bindings.get(i));
+            slot.add(bindings.get(i));
         setChanged();
+    }
+
+    public List<List<LiveControlBinding>> getAllProfileBindings() {
+        List<List<LiveControlBinding>> result = new ArrayList<>();
+        for (List<LiveControlBinding> p : profileBindings)
+            result.add(Collections.unmodifiableList(p));
+        return result;
     }
 
     /**
@@ -106,7 +130,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         if (WirelessPresence.isPresent() && level != null)
             for (WirelessEntry e : wirelessEntries) CreateWirelessHelper.removeFromNetwork(level, e);
         wirelessEntries.clear();
-        liveControlBindings.clear();
+        activeProfileBindings().clear();
 
         // Recreate wireless entries
         for (var freq : freqs) {
@@ -136,7 +160,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             lcb.wirelessIdx    = wIdx + 1; // 1-based (W1..W12)
             lcb.signalStrength = 15;
             lcb.rsSide         = Direction.NORTH; // unused for wireless
-            liveControlBindings.add(lcb);
+            activeProfileBindings().add(lcb);
         }
 
         setChanged();
@@ -168,6 +192,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     public LinkedKeyboardBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.LINKED_KEYBOARD.get(), pos, state);
+        for (int p = 0; p < MAX_PROFILES; p++) profileBindings.add(new ArrayList<>());
     }
 
     // ----- Channel helpers -----
@@ -284,7 +309,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         sequencerViewers.clear();
         stopSequencer();
         sequencerSteps.clear();
-        liveControlBindings.clear();
+        for (List<LiveControlBinding> p : profileBindings) p.clear();
+        activeProfile = 0;
         wirelessEntries.clear();
         autoTypeScript  = "";
         scriptLineIndex = 0;
@@ -294,8 +320,9 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     }
 
     public boolean hasData() {
+        boolean hasBindings = profileBindings.stream().anyMatch(p -> !p.isEmpty());
         return !channelTargets.isEmpty() || !sequencerSteps.isEmpty()
-                || !liveControlBindings.isEmpty() || !wirelessEntries.isEmpty()
+                || hasBindings || !wirelessEntries.isEmpty()
                 || getLinkFreqCount() > 0;
     }
 
@@ -797,14 +824,18 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             }
             tag.put("wireless_entries", wl);
         }
-        if (!liveControlBindings.isEmpty()) {
-            net.minecraft.nbt.ListTag lcl = new net.minecraft.nbt.ListTag();
-            for (LiveControlBinding b : liveControlBindings) {
-                CompoundTag bt = new CompoundTag();
-                b.saveToTag(bt);
-                lcl.add(bt);
+        tag.putInt("active_profile", activeProfile);
+        for (int p = 0; p < MAX_PROFILES; p++) {
+            List<LiveControlBinding> list = profileBindings.get(p);
+            if (!list.isEmpty()) {
+                net.minecraft.nbt.ListTag lcl = new net.minecraft.nbt.ListTag();
+                for (LiveControlBinding b : list) {
+                    CompoundTag bt = new CompoundTag();
+                    b.saveToTag(bt);
+                    lcl.add(bt);
+                }
+                tag.put("profile_" + p + "_bindings", lcl);
             }
-            tag.put("live_control_bindings", lcl);
         }
         int lfCount = getLinkFreqCount();
         if (lfCount > 0) {
@@ -904,11 +935,24 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             }
         }
 
-        liveControlBindings.clear();
-        if (tag.contains("live_control_bindings", Tag.TAG_LIST)) {
+        activeProfile = tag.contains("active_profile") ? tag.getInt("active_profile") : 0;
+        activeProfile = Math.max(0, Math.min(MAX_PROFILES - 1, activeProfile));
+        for (int p = 0; p < MAX_PROFILES; p++) {
+            List<LiveControlBinding> slot = profileBindings.get(p);
+            slot.clear();
+            String key = "profile_" + p + "_bindings";
+            if (tag.contains(key, Tag.TAG_LIST)) {
+                net.minecraft.nbt.ListTag lcl = tag.getList(key, Tag.TAG_COMPOUND);
+                for (int i = 0; i < lcl.size() && slot.size() < MAX_LIVE_BINDINGS; i++)
+                    slot.add(LiveControlBinding.fromTag(lcl.getCompound(i)));
+            }
+        }
+        // Legacy comppat for old "live_control_bindings" -> profile 0
+        if (profileBindings.get(0).isEmpty() && tag.contains("live_control_bindings", Tag.TAG_LIST)) {
             net.minecraft.nbt.ListTag lcl = tag.getList("live_control_bindings", Tag.TAG_COMPOUND);
-            for (int i = 0; i < lcl.size() && liveControlBindings.size() < MAX_LIVE_BINDINGS; i++)
-                liveControlBindings.add(LiveControlBinding.fromTag(lcl.getCompound(i)));
+            List<LiveControlBinding> slot = profileBindings.get(0);
+            for (int i = 0; i < lcl.size() && slot.size() < MAX_LIVE_BINDINGS; i++)
+                slot.add(LiveControlBinding.fromTag(lcl.getCompound(i)));
         }
         java.util.Arrays.fill(linkFreqs, null);
         if (tag.contains("link_freqs", Tag.TAG_LIST)) {
@@ -970,14 +1014,18 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             }
             tag.put("wireless_entries", wl);
         }
-        if (!liveControlBindings.isEmpty()) {
-            ListTag lcl = new ListTag();
-            for (LiveControlBinding b : liveControlBindings) {
-                CompoundTag bt = new CompoundTag();
-                b.saveToTag(bt);
-                lcl.add(bt);
+        tag.putInt("active_profile", activeProfile);
+        for (int p = 0; p < MAX_PROFILES; p++) {
+            List<LiveControlBinding> list = profileBindings.get(p);
+            if (!list.isEmpty()) {
+                ListTag lcl = new ListTag();
+                for (LiveControlBinding b : list) {
+                    CompoundTag bt = new CompoundTag();
+                    b.saveToTag(bt);
+                    lcl.add(bt);
+                }
+                tag.put("profile_" + p + "_bindings", lcl);
             }
-            tag.put("live_control_bindings", lcl);
         }
         for (Map.Entry<Integer, List<BlockPos>> entry : channelTargets.entrySet()) {
             List<BlockPos> list = entry.getValue();

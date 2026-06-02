@@ -2,9 +2,12 @@ package dev.bennethogan.universalkeyboard.client.screen;
 
 import dev.bennethogan.universalkeyboard.compat.KeyboardMode;
 import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
+import dev.bennethogan.universalkeyboard.compat.SableCompat;
 import dev.bennethogan.universalkeyboard.compat.wireless.WirelessPresence;
+import dev.bennethogan.universalkeyboard.config.ModConfig;
 import dev.bennethogan.universalkeyboard.item.ModItems;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.resources.language.I18n;
@@ -51,6 +54,15 @@ public class ModeSelectionScreen extends Screen {
     private final List<Box> boxes = new ArrayList<>();
 
     private ConfirmDialog confirmDialog;
+
+    // Typewriter import state
+    private BlockPos twOfferPos    = null;
+    private int      twBindCount   = 0;
+    private int      twFreqCount   = 0;
+    private String   twMessage     = null;
+    private int      twMessageTick = 0;
+
+    public BlockPos getKeyboardPos() { return keyboardPos; }
 
     public ModeSelectionScreen(BlockPos keyboardPos, String targetTypeName, int availableBits) {
         this(keyboardPos, targetTypeName, availableBits, Page.ROOT);
@@ -206,6 +218,29 @@ public class ModeSelectionScreen extends Screen {
             copy.tooltip = List.of(Component.translatable("gui.universalkeyboard.tooltip.need_create"));
         }
 
+        // Import Typewriter (gated by SableCompat / Aeronautics)
+        Box tw = add();
+        tw.kind = IconKind.ITEM;
+        tw.item = stackOf("simulated", "linked_typewriter");
+        if (SableCompat.isPresent()) {
+            tw.tooltip = List.of(Component.translatable("gui.universalkeyboard.box.import_typewriter"));
+            tw.onClick = this::doTypewriterScan;
+        } else {
+            tw.enabled = false;
+            tw.tooltip = List.of(Component.translatable("gui.universalkeyboard.tooltip.need_aeronautics"));
+        }
+
+        // Calibrate Gamepad (gated by config)
+        Box cal = add();
+        cal.kind = IconKind.GAMEPAD;
+        if (gamepadEnabled()) {
+            cal.tooltip = List.of(Component.translatable("gui.universalkeyboard.box.calibrate_gamepad"));
+            cal.onClick = this::openCalibration;
+        } else {
+            cal.enabled = false;
+            cal.tooltip = List.of(Component.translatable("gui.universalkeyboard.box.calibrate_gamepad"));
+        }
+
         // Reset Data
         Box reset = add();
         reset.kind = IconKind.TRASH;
@@ -282,6 +317,39 @@ public class ModeSelectionScreen extends Screen {
         return BuiltInRegistries.ITEM.getOptional(rl).map(ItemStack::new).orElse(ItemStack.EMPTY);
     }
 
+    // ── Typewriter helpers ─────────────────────────────────────────────────────
+
+    private void doTypewriterScan() {
+        twOfferPos = null;
+        twMessage  = I18n.get("gui.universalkeyboard.msg.scanning");
+        twMessageTick = 60;
+        ModPackets.sendTypewriterScan(keyboardPos);
+    }
+
+    public void handleTypewriterOffer(BlockPos twPos, int bindCount, int freqCount, String error) {
+        if (!error.isEmpty()) {
+            twOfferPos = null;
+            twMessage  = "§c" + error;
+            twMessageTick = 120;
+        } else {
+            twOfferPos  = twPos;
+            twBindCount = bindCount;
+            twFreqCount = freqCount;
+            twMessage   = null;
+        }
+    }
+
+    private static boolean gamepadEnabled() {
+        try { return ModConfig.CLIENT.enableGamepad.get(); }
+        catch (Exception e) { return false; }
+    }
+
+    private void openCalibration() {
+        Minecraft.getInstance().setScreen(
+                new GamepadCalibrationScreen(
+                        new ModeSelectionScreen(keyboardPos, targetTypeName, availableBits, Page.SETUP)));
+    }
+
     // ── Actions ───────────────────────────────────────────────────────────────
 
     private void doDeleteAll() { ModPackets.sendUnlinkKeyboard(keyboardPos); onClose(); }
@@ -298,6 +366,12 @@ public class ModeSelectionScreen extends Screen {
     }
 
     // ── Render ──────────────────────────────────────────────────────────────────
+
+    @Override
+    public void tick() {
+        super.tick();
+        if (twMessageTick > 0 && --twMessageTick == 0) twMessage = null;
+    }
 
     @Override
     public void render(GuiGraphics g, int mx, int my, float pt) {
@@ -324,8 +398,55 @@ public class ModeSelectionScreen extends Screen {
         }
 
         if (confirmDialog != null) confirmDialog.render(g, mx, my);
-        if (hoverTip != null && (confirmDialog == null || !confirmDialog.isOpen()))
+        if (hoverTip != null && (confirmDialog == null || !confirmDialog.isOpen()) && twOfferPos == null)
             g.renderComponentTooltip(font, hoverTip, mx, my);
+
+        if (twMessage != null && twMessageTick > 0)
+            g.drawCenteredString(font, twMessage, panelX + panelW / 2, panelY + panelH - PAD - font.lineHeight, 0xFFFFFF);
+
+        if (twOfferPos != null)
+            renderTypewriterDialog(g, mx, my);
+    }
+
+    private int[] twDialogLayout() {
+        int dw = 300, pad = 8, gap = 3, btnH = 14;
+        int textW = dw - pad * 2;
+        int textBlock = GuiText.wrappedHeight(font, I18n.get("gui.universalkeyboard.dialog.tw_import_title"), textW) + gap
+                + GuiText.wrappedHeight(font, I18n.get("gui.universalkeyboard.dialog.tw_import_summary", twBindCount, twFreqCount), textW) + gap
+                + GuiText.wrappedHeight(font, I18n.get("gui.universalkeyboard.dialog.tw_import_warn1"), textW)
+                + GuiText.wrappedHeight(font, I18n.get("gui.universalkeyboard.dialog.tw_import_warn2"), textW);
+        int dh  = pad + textBlock + gap + 4 + btnH + pad;
+        int dx  = panelX + (panelW - dw) / 2;
+        int dy  = panelY + (panelH - dh) / 2;
+        int btnY = dy + dh - pad - btnH;
+        return new int[]{dx, dy, dw, dh, btnY, btnH};
+    }
+
+    private void renderTypewriterDialog(GuiGraphics g, int mx, int my) {
+        g.pose().pushPose();
+        g.pose().translate(0, 0, 400);
+        g.fill(panelX, panelY, panelX + panelW, panelY + panelH, 0xAA000000);
+
+        int[] L   = twDialogLayout();
+        int dx = L[0], dy = L[1], dw = L[2], dh = L[3], btnY = L[4], btnH = L[5];
+        int pad = 8, gap = 3, textW = dw - pad * 2, cx = dx + dw / 2;
+
+        g.fill(dx - 1, dy - 1, dx + dw + 1, dy + dh + 1, 0xFF666666);
+        g.fill(dx, dy, dx + dw, dy + dh, 0xFF1A1A1A);
+
+        int y = dy + pad;
+        y += GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.tw_import_title"), cx, y, textW, 0xFFFFFF) + gap;
+        y += GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.tw_import_summary", twBindCount, twFreqCount), cx, y, textW, 0xFFFFFF) + gap;
+        y += GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.tw_import_warn1"), cx, y, textW, 0xAAAAAA);
+        GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.tw_import_warn2"), cx, y, textW, 0xAAAAAA);
+
+        boolean yh = mx >= dx + 20  && mx < dx + 120 && my >= btnY && my < btnY + btnH;
+        boolean nh = mx >= dx + 180 && mx < dx + 280 && my >= btnY && my < btnY + btnH;
+        g.fill(dx + 20,  btnY, dx + 120, btnY + btnH, yh ? 0xFF2A4A2A : 0xFF1E3A1E);
+        g.fill(dx + 180, btnY, dx + 280, btnY + btnH, nh ? 0xFF4A2A2A : 0xFF3A1E1E);
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.import"), dx + 70,  btnY + 3, yh ? 0x88FF88 : 0x66CC66);
+        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.cancel"), dx + 230, btnY + 3, nh ? 0xFF8888 : 0xCC6666);
+        g.pose().popPose();
     }
 
     private void drawIcon(GuiGraphics g, Box b) {
@@ -370,6 +491,17 @@ public class ModeSelectionScreen extends Screen {
     @Override
     public boolean mouseClicked(double mx, double my, int btn) {
         if (btn != 0) return super.mouseClicked(mx, my, btn);
+
+        if (twOfferPos != null) {
+            int[] L = twDialogLayout();
+            int dx = L[0], btnY = L[4], btnH = L[5];
+            if ((int) mx >= dx + 20 && (int) mx < dx + 120 && (int) my >= btnY && (int) my < btnY + btnH) {
+                ModPackets.sendTypewriterConfirm(keyboardPos, twOfferPos);
+            }
+            twOfferPos = null;
+            return true;
+        }
+
         if (confirmDialog != null && confirmDialog.isOpen())
             return confirmDialog.mouseClicked(mx, my, btn);
         for (Box b : boxes) {
@@ -380,6 +512,9 @@ public class ModeSelectionScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (twOfferPos != null) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) { twOfferPos = null; return true; }
+        }
         if (confirmDialog != null && confirmDialog.isOpen()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) return confirmDialog.keyPressed(keyCode);
             return super.keyPressed(keyCode, scanCode, modifiers);

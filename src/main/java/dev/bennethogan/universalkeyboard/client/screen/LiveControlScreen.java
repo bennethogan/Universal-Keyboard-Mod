@@ -2,8 +2,6 @@ package dev.bennethogan.universalkeyboard.client.screen;
 
 import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.universalkeyboard.client.gamepad.GamepadLiveDriver;
-import dev.bennethogan.universalkeyboard.compat.SableCompat;
-import dev.bennethogan.universalkeyboard.config.ModConfig;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.ActionType;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.Mode;
@@ -11,7 +9,6 @@ import dev.bennethogan.universalkeyboard.livecontrol.LiveControlManager;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -52,14 +49,21 @@ public class LiveControlScreen extends Screen {
     private final int                     wirelessCount;
     private final boolean                 hasThrusters;
     private final boolean                 hasVectorThrusters;
+    private final boolean                 hasRpm;
     private final List<LiveControlBinding> bindings;
     private final int[] currentLocalRs;
     private final int[] currentWirelessPowers;
     private final int[] currentThrusterPowers;
     private final double[] currentVarValues;
+    private final int[] currentRpmValues;
+
+    // Profile state
+    private int activeProfile;
+    private final List<List<LiveControlBinding>> allProfiles; // mutable; all 4 slots
+    private final List<List<LiveControlBinding>> originalAllProfiles; // for per-profile revert
+    private final IconButton[] profileButtons = new IconButton[4];
 
     // Autosave/revert state
-    private final List<LiveControlBinding> originalBindings; // state when menu opened (for Revert)
     private List<LiveControlBinding>       savedSnapshot;    // last state pushed to the server
     private List<LiveControlBinding>       lastTickSnapshot; // previous tick, to debounce mid-edit autosaves
 
@@ -76,36 +80,50 @@ public class LiveControlScreen extends Screen {
     private int    wFreqTooltipX  = 0;
     private int    wFreqTooltipY  = 0;
 
-    // Typewriter import state
-    private net.minecraft.core.BlockPos twOfferPos   = null; // non-null when offer is pending
-    private int                         twBindCount  = 0;
-    private int                         twFreqCount  = 0;
-    private String                      twMessage    = null; // error or status shown briefly
-    private int                         twMessageTick = 0;
-
     // ── Constructor ───────────────────────────────────────────────────────────
     public LiveControlScreen(BlockPos keyboardPos,
-                             List<LiveControlBinding> inBindings,
                              int wirelessCount,
                              boolean hasThrusters,
                              boolean hasVectorThrusters,
+                             boolean hasRpm,
                              int[] currentLocalRs,
                              int[] currentWirelessPowers,
                              int[] currentThrusterPowers,
-                             double[] currentVarValues) {
+                             double[] currentVarValues,
+                             int[] currentRpmValues,
+                             int activeProfile,
+                             List<List<LiveControlBinding>> allProfilesIn) {
         super(Component.empty());
         this.keyboardPos           = keyboardPos;
         this.wirelessCount         = wirelessCount;
         this.hasThrusters          = hasThrusters;
         this.hasVectorThrusters    = hasVectorThrusters;
+        this.hasRpm                = hasRpm;
         this.currentLocalRs        = currentLocalRs;
         this.currentWirelessPowers = currentWirelessPowers;
         this.currentThrusterPowers = currentThrusterPowers;
         this.currentVarValues      = currentVarValues;
+        this.currentRpmValues      = currentRpmValues;
+        this.activeProfile         = Math.max(0, Math.min(3, activeProfile));
+
+        // mutable copies of profile list
+        this.allProfiles = new ArrayList<>(4);
+        for (int p = 0; p < 4; p++) {
+            List<LiveControlBinding> src = (p < allProfilesIn.size()) ? allProfilesIn.get(p) : List.of();
+            this.allProfiles.add(new ArrayList<>(src));
+        }
+
+        // Active profile bindings fill the working list
+        List<LiveControlBinding> activeData = this.allProfiles.get(this.activeProfile);
         this.bindings = new ArrayList<>(MAX_SLOTS);
         for (int i = 0; i < MAX_SLOTS; i++)
-            this.bindings.add(i < inBindings.size() ? copyBinding(inBindings.get(i)) : new LiveControlBinding());
-        this.originalBindings = deepCopy(bindings);
+            this.bindings.add(i < activeData.size() ? copyBinding(activeData.get(i)) : new LiveControlBinding());
+
+        // Per-profile originals for Revert
+        this.originalAllProfiles = new ArrayList<>(4);
+        for (List<LiveControlBinding> profile : this.allProfiles)
+            this.originalAllProfiles.add(new ArrayList<>(deepCopy(profile)));
+
         this.savedSnapshot    = deepCopy(bindings);
         this.lastTickSnapshot = deepCopy(bindings);
     }
@@ -132,7 +150,8 @@ public class LiveControlScreen extends Screen {
                 && a.varIndex == b.varIndex
                 && a.varOnValue == b.varOnValue
                 && a.overdriveMultiplier == b.overdriveMultiplier
-                && java.util.Objects.equals(a.odExcludes, b.odExcludes);
+                && java.util.Objects.equals(a.odExcludes, b.odExcludes)
+                && a.rpmTarget == b.rpmTarget;
     }
 
     private static boolean listsEqual(List<LiveControlBinding> a, List<LiveControlBinding> b) {
@@ -160,6 +179,7 @@ public class LiveControlScreen extends Screen {
         b.varOnValue          = src.varOnValue;
         b.overdriveMultiplier = src.overdriveMultiplier;
         b.odExcludes          = src.odExcludes;
+        b.rpmTarget           = src.rpmTarget;
         return b;
     }
 
@@ -174,43 +194,54 @@ public class LiveControlScreen extends Screen {
         confirmDialog = new ConfirmDialog(font);
         confirmDialog.setParentBounds(panelX, panelY, PANEL_W, panelH);
 
-        int btnY = panelY + panelH - PAD - BTN_H;
-        boolean sablePresent = SableCompat.isPresent();
-        boolean gamepadOn    = gamepadEnabled();
-        // Bottom button row: Revert | Start | [Calibrate if gamepad] | [Import Typewriter if Sable]
-        // Edits autosave continuously; Revert discards back to how the menu opened.
-        int bottomBtnCount = 2 + (gamepadOn ? 1 : 0) + (sablePresent ? 1 : 0);
-        int btnW = (PANEL_W - PAD * 2 - 4 * (bottomBtnCount - 1)) / bottomBtnCount;
-        int bi = 0;
-        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.revert"),
-                        b -> confirmDialog.open(
-                                "gui.universalkeyboard.dialog.revert_title",
-                                "gui.universalkeyboard.dialog.revert_body",
-                                "gui.universalkeyboard.btn.yes_revert",
-                                this::doRevert))
-                .pos(panelX + PAD + (btnW + 4) * bi++, btnY).size(btnW, BTN_H).build());
-        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.start"), b -> doStart())
-                .pos(panelX + PAD + (btnW + 4) * bi++, btnY).size(btnW, BTN_H).build());
-        if (gamepadOn) {
-            int idx = bi++;
-            addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.calibrate"), b -> openCalibration())
-                    .pos(panelX + PAD + (btnW + 4) * idx, btnY).size(btnW, BTN_H).build());
-        }
-        if (sablePresent) {
-            int idx = bi++;
-            addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.import_typewriter"), b -> doTypewriterScan())
-                    .pos(panelX + PAD + (btnW + 4) * idx, btnY).size(btnW, BTN_H).build());
+        // Bottom row: Start | Profile 1-4 | Revert | Prev | Next  (32×16 each, 2px gap)
+        final int BTN_W   = 32;
+        final int BTN_GAP = 2;
+        final int NUM_BTNS = 8; // 1 start + 4 profiles + 1 revert + 2 nav
+        int btnY  = panelY + panelH - PAD - BTN_H;
+        int bx    = panelX + (PANEL_W - (NUM_BTNS * BTN_W + (NUM_BTNS - 1) * BTN_GAP)) / 2;
+
+        // Green start button
+        addRenderableWidget(IconButton.make(ModIcons.PLAY,
+                Component.translatable("gui.universalkeyboard.tooltip.start"),
+                b -> doStart(),
+                bx, btnY, BTN_W, BTN_H, 0xFF1E3A1E, 0));
+        bx += BTN_W + BTN_GAP;
+
+        // 4 profile buttons
+        for (int i = 0; i < 4; i++) {
+            final int profIdx = i;
+            profileButtons[i] = IconButton.make(ModIcons.FOLDER,
+                    Component.translatable("gui.universalkeyboard.tooltip.profile_n", i + 1),
+                    b -> switchProfile(profIdx),
+                    bx, btnY, BTN_W, BTN_H, -1, -6);
+            addRenderableWidget(profileButtons[i]);
+            bx += BTN_W + BTN_GAP;
         }
 
-        // Page navigation buttons at top-right of panel
-        int pageBtnY = panelY + PAD;
-        int pageBtnW = 80;
-        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.next_page"),
-                        b -> { page = 1; vectorOverlaySlot = -1; listeningSlot = -1; })
-                .pos(panelX + PANEL_W - PAD - pageBtnW, pageBtnY).size(pageBtnW, 12).build());
-        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.prev_page"),
-                        b -> { page = 0; vectorOverlaySlot = -1; listeningSlot = -1; })
-                .pos(panelX + PANEL_W - PAD - pageBtnW * 2 - 4, pageBtnY).size(pageBtnW, 12).build());
+        // Revert (trash)
+        addRenderableWidget(IconButton.make(ModIcons.TRASH,
+                Component.translatable("gui.universalkeyboard.tooltip.revert"),
+                b -> confirmDialog.open(
+                        "gui.universalkeyboard.dialog.revert_title",
+                        "gui.universalkeyboard.dialog.revert_body",
+                        "gui.universalkeyboard.btn.yes_revert",
+                        this::doRevert),
+                bx, btnY, BTN_W, BTN_H));
+        bx += BTN_W + BTN_GAP;
+
+        // Prev Page
+        addRenderableWidget(IconButton.make(ModIcons.PREV_PAGE,
+                Component.translatable("gui.universalkeyboard.tooltip.prev_page"),
+                b -> { page = 0; vectorOverlaySlot = -1; listeningSlot = -1; },
+                bx, btnY, BTN_W, BTN_H));
+        bx += BTN_W + BTN_GAP;
+
+        // Next Page
+        addRenderableWidget(IconButton.make(ModIcons.NEXT_PAGE,
+                Component.translatable("gui.universalkeyboard.tooltip.next_page"),
+                b -> { page = 1; vectorOverlaySlot = -1; listeningSlot = -1; },
+                bx, btnY, BTN_W, BTN_H));
     }
 
     public BlockPos getKeyboardPos() { return keyboardPos; }
@@ -218,53 +249,41 @@ public class LiveControlScreen extends Screen {
     /** Push the current bindings to the server if they differ from what was last saved. */
     private void autosave() {
         if (listsEqual(bindings, savedSnapshot)) return;
-        ModPackets.sendSaveLiveBindings(keyboardPos, bindings);
+        ModPackets.sendSaveLiveBindings(keyboardPos, activeProfile, bindings);
         savedSnapshot = deepCopy(bindings);
     }
 
-    /** Discard all edits made since the menu was opened. */
+    /** Discard all edits to the current profile since the menu was opened. */
     private void doRevert() {
         bindings.clear();
-        bindings.addAll(deepCopy(originalBindings));
+        List<LiveControlBinding> orig = originalAllProfiles.get(activeProfile);
+        for (int i = 0; i < MAX_SLOTS; i++)
+            bindings.add(i < orig.size() ? copyBinding(orig.get(i)) : new LiveControlBinding());
         listeningSlot = vectorOverlaySlot = exclOverlaySlot = -1;
-        autosave(); // push the reverted state to the server immediately
+        autosave();
+    }
+
+    /** Switch to a different profile, auto-saving the current one first. */
+    private void switchProfile(int idx) {
+        if (idx == activeProfile) return;
+        // Save current working state into the allProfiles list
+        allProfiles.set(activeProfile, new ArrayList<>(bindings));
+        autosave(); // flush current profile to server
+        // Switch
+        activeProfile = idx;
+        List<LiveControlBinding> src = allProfiles.get(idx);
+        bindings.clear();
+        for (int i = 0; i < MAX_SLOTS; i++)
+            bindings.add(i < src.size() ? copyBinding(src.get(i)) : new LiveControlBinding());
+        savedSnapshot    = deepCopy(bindings);
+        lastTickSnapshot = deepCopy(bindings);
+        listeningSlot = vectorOverlaySlot = exclOverlaySlot = -1;
     }
 
     private void doStart() {
         autosave();
-        LiveControlManager.activate(keyboardPos, bindings, currentLocalRs, currentWirelessPowers, currentThrusterPowers, currentVarValues);
+        LiveControlManager.activate(keyboardPos, bindings, currentLocalRs, currentWirelessPowers, currentThrusterPowers, currentVarValues, currentRpmValues);
         onClose();
-    }
-
-    private static boolean gamepadEnabled() {
-        try { return ModConfig.CLIENT.enableGamepad.get(); }
-        catch (Exception e) { return false; }
-    }
-
-    private void openCalibration() {
-        autosave(); // preserve edits; we'll return to this screen afterward
-        Minecraft.getInstance().setScreen(new GamepadCalibrationScreen(this));
-    }
-
-    private void doTypewriterScan() {
-        twOfferPos = null;
-        twMessage  = I18n.get("gui.universalkeyboard.msg.scanning");
-        twMessageTick = 60;
-        ModPackets.sendTypewriterScan(keyboardPos);
-    }
-
-    /** Called by ClientPacketHandlers when the server replies to our scan request. */
-    public void handleTypewriterOffer(net.minecraft.core.BlockPos twPos, int bindCount, int freqCount, String error) {
-        if (!error.isEmpty()) {
-            twOfferPos = null;
-            twMessage  = "§c" + error;
-            twMessageTick = 120;
-        } else {
-            twOfferPos  = twPos;
-            twBindCount = bindCount;
-            twFreqCount = freqCount;
-            twMessage   = null;
-        }
     }
 
     // ── Rendering ─────────────────────────────────────────────────────────────
@@ -289,18 +308,18 @@ public class LiveControlScreen extends Screen {
             }
         }
         for (var r : this.renderables) r.render(g, mx, my, pt);
+
+        // active-profile underline and profile number
+        for (int i = 0; i < 4; i++) {
+            if (profileButtons[i] == null) continue;
+            int bx = profileButtons[i].getX(), by = profileButtons[i].getY();
+            g.drawCenteredString(font, String.valueOf(i + 1), bx + 24, by + 4, 0xFFFFFF);
+            if (activeProfile == i)
+                g.fill(bx + 1, by + 14, bx + 31, by + 16, 0xFF5599FF);
+        }
+
         if (vectorOverlaySlot >= 0) renderVectorOverlay(g, mx, my, vectorOverlaySlot);
         if (exclOverlaySlot >= 0) renderExclOverlay(g, mx, my);
-
-        // Brief status/error message below title
-        if (twMessage != null && twMessageTick > 0) {
-            g.drawCenteredString(font, twMessage, panelX + PANEL_W / 2, panelY + PAD + TITLE_H + 2, 0xFFFFFF);
-        }
-
-        // Typewriter import confirmation dialog
-        if (twOfferPos != null) {
-            renderTypewriterDialog(g, mx, my);
-        }
 
         if (confirmDialog != null) confirmDialog.render(g, mx, my);
         if (wFreqTooltip != null)
@@ -327,6 +346,7 @@ public class LiveControlScreen extends Screen {
             case REDSTONE        -> I18n.get("gui.universalkeyboard.label.action_rs");
             case THRUSTER_POWER  -> I18n.get("gui.universalkeyboard.label.action_thr");
             case THRUSTER_VECTOR -> I18n.get("gui.universalkeyboard.label.action_vec");
+            case RPM_CONTROL     -> I18n.get("gui.universalkeyboard.label.action_rpm");
             case VARIABLE        -> I18n.get("gui.universalkeyboard.label.action_var");
             case OVERDRIVE       -> I18n.get("gui.universalkeyboard.label.action_od");
         };
@@ -345,6 +365,7 @@ public class LiveControlScreen extends Screen {
             case REDSTONE        -> renderRsConfig(g, mx, my, b, x, y);
             case THRUSTER_POWER  -> renderPwrConfig(g, mx, my, b, x, y);
             case THRUSTER_VECTOR -> renderVecConfig(g, mx, my, b, idx, x, y);
+            case RPM_CONTROL     -> renderRpmConfig(g, mx, my, b, x, y);
             case VARIABLE        -> renderVarConfig(g, mx, my, b, x, y);
             case OVERDRIVE       -> renderOdConfig(g, mx, my, b, x, y);
         }
@@ -452,6 +473,38 @@ public class LiveControlScreen extends Screen {
         } else {
             drawBorder(g, x, y, 28, ROW_H, 0xFF335588);
             g.drawCenteredString(font, "§b" + pct + "%", x + 14, y + 4, 0xFFFFFF);
+        }
+    }
+
+    // RPM_CONTROL config — [ch:40][mode:20][value:28] = 88px
+    private void renderRpmConfig(GuiGraphics g, int mx, int my, LiveControlBinding b, int x, int y) {
+        boolean cHov = isIn(mx, my, x, y, 40, ROW_H);
+        g.fill(x, y, x + 40, y + ROW_H, cHov ? 0xFF252535 : 0xFF1A1A2A);
+        drawBorder(g, x, y, 40, ROW_H, 0xFF333355);
+        g.drawString(font, "§7◄", x + 1, y + 4, 0x999999, false);
+        g.drawCenteredString(font, "§fC" + b.channel, x + 20, y + 4, 0xFFFFFF);
+        g.drawString(font, "§7►", x + 31, y + 4, 0x999999, false);
+        x += 42;
+
+        boolean mHov = isIn(mx, my, x, y, 20, ROW_H);
+        String modeLabel = switch (b.mode) {
+            case HLD -> I18n.get("gui.universalkeyboard.label.mode_hld");
+            case TGL -> I18n.get("gui.universalkeyboard.label.mode_tog");
+            case INC -> I18n.get("gui.universalkeyboard.label.mode_inc");
+        };
+        g.fill(x, y, x + 20, y + ROW_H, mHov ? 0xFF253525 : 0xFF1A261A);
+        drawBorder(g, x, y, 20, ROW_H, 0xFF446644);
+        g.drawCenteredString(font, modeLabel, x + 10, y + 4, 0xFFFFFF);
+        x += 22;
+
+        boolean vHov = isIn(mx, my, x, y, 28, ROW_H);
+        g.fill(x, y, x + 28, y + ROW_H, vHov ? 0xFF1A3040 : 0xFF111F2A);
+        if (b.mode == Mode.INC) {
+            drawBorder(g, x, y, 28, ROW_H, b.incPlus ? 0xFF448844 : 0xFF884444);
+            g.drawCenteredString(font, b.incPlus ? "§a++" : "§c--", x + 14, y + 4, 0xFFFFFF);
+        } else {
+            drawBorder(g, x, y, 28, ROW_H, 0xFF3355AA);
+            g.drawCenteredString(font, "§b" + b.rpmTarget, x + 14, y + 4, 0xFFFFFF);
         }
     }
 
@@ -626,21 +679,6 @@ public class LiveControlScreen extends Screen {
 
         int imx = (int) mx, imy = (int) my;
 
-        // Typewriter import dialog intercepts all clicks
-        if (twOfferPos != null) {
-            int[] L = twDialogLayout();
-            int dx = L[0], btnY = L[4], btnH = L[5];
-            if (imx >= dx + 20 && imx < dx + 120 && imy >= btnY && imy < btnY + btnH) {
-                // Confirm
-                ModPackets.sendTypewriterConfirm(keyboardPos, twOfferPos);
-                twOfferPos = null;
-            } else {
-                // Cancel or click outside
-                twOfferPos = null;
-            }
-            return true;
-        }
-
         if (exclOverlaySlot >= 0) { handleExclOverlayClick(imx, imy); return true; }
         if (vectorOverlaySlot >= 0) { handleVectorOverlayClick(imx, imy, vectorOverlaySlot, btn); return true; }
         if (listeningSlot >= 0) listeningSlot = -1;
@@ -751,6 +789,23 @@ public class LiveControlScreen extends Screen {
                 x += 22;
                 if (isIn(mx, my, x, y, 28, ROW_H)) { vectorOverlaySlot = (vectorOverlaySlot == idx) ? -1 : idx; return true; }
             }
+            case RPM_CONTROL -> {
+                if (isIn(mx, my, x, y, 40, ROW_H)) {
+                    if (mx < x + 12) b.channel = b.channel == 1 ? LinkedKeyboardBlockEntity.MAX_CHANNELS : b.channel - 1;
+                    else if (mx > x + 28) b.channel = b.channel == LinkedKeyboardBlockEntity.MAX_CHANNELS ? 1 : b.channel + 1;
+                    return true;
+                }
+                x += 42;
+                if (isIn(mx, my, x, y, 20, ROW_H)) {
+                    b.mode = nextMode(b.actionType, b.mode, right ? -1 : 1); return true;
+                }
+                x += 22;
+                if (isIn(mx, my, x, y, 28, ROW_H)) {
+                    if (b.mode == Mode.INC) b.incPlus = !b.incPlus;
+                    else b.rpmTarget = Math.max(-256, Math.min(256, b.rpmTarget + (right ? -1 : 1)));
+                    return true;
+                }
+            }
             case VARIABLE -> {
                 if (isIn(mx, my, x, y, 40, ROW_H)) {
                     if (mx < x + 12)      b.varIndex = (b.varIndex + 15) % 16;
@@ -816,6 +871,7 @@ public class LiveControlScreen extends Screen {
                 switch (b.actionType) {
                     case REDSTONE       -> b.signalStrength = Math.max(0, Math.min(15, b.signalStrength + dir));
                     case THRUSTER_POWER -> b.powerLevel = stepPower(b.powerLevel, dir);
+                    case RPM_CONTROL    -> b.rpmTarget = Math.max(-256, Math.min(256, b.rpmTarget + dir));
                     case VARIABLE       -> b.varOnValue = Math.max(1, Math.min(100, b.varOnValue + dir));
                     case OVERDRIVE      -> b.overdriveMultiplier = cycleOverdrive(b.overdriveMultiplier, dir);
                     default -> {}
@@ -858,7 +914,6 @@ public class LiveControlScreen extends Screen {
             return true;
         }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-            if (twOfferPos != null) { twOfferPos = null; return true; }
             if (vectorOverlaySlot >= 0) { vectorOverlaySlot = -1; return true; }
             onClose(); return true;
         }
@@ -869,7 +924,6 @@ public class LiveControlScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
-        if (twMessageTick > 0) { if (--twMessageTick == 0) twMessage = null; }
         // While a slot is "listening", a gamepad button press binds it just like a key press.
         if (listeningSlot >= 0 && exclOverlaySlot < 0) {
             int code = GamepadLiveDriver.pollCapture();
@@ -893,55 +947,13 @@ public class LiveControlScreen extends Screen {
 
     @Override public boolean isPauseScreen() { return false; }
 
-    // Layout for the typewriter dialog: [dx, dy, dw, dh, btnY, btnH]
-    private int[] twDialogLayout() {
-        int dw = 300, pad = 8, gap = 3, btnH = 14;
-        int textW = dw - pad * 2;
-        int textBlock = GuiText.wrappedHeight(font, I18n.get("gui.universalkeyboard.dialog.tw_import_title"), textW) + gap
-                + GuiText.wrappedHeight(font, I18n.get("gui.universalkeyboard.dialog.tw_import_summary", twBindCount, twFreqCount), textW) + gap
-                + GuiText.wrappedHeight(font, I18n.get("gui.universalkeyboard.dialog.tw_import_warn1"), textW)
-                + GuiText.wrappedHeight(font, I18n.get("gui.universalkeyboard.dialog.tw_import_warn2"), textW);
-        int dh = pad + textBlock + gap + 4 + btnH + pad;
-        int dx = panelX + (PANEL_W - dw) / 2;
-        int dy = panelY + (panelH  - dh) / 2;
-        int btnY = dy + dh - pad - btnH;
-        return new int[]{dx, dy, dw, dh, btnY, btnH};
-    }
-
-    private void renderTypewriterDialog(GuiGraphics g, int mx, int my) {
-        g.pose().pushPose();
-        g.pose().translate(0, 0, 400);
-        // Dim the whole panel
-        g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, 0xAA000000);
-
-        int[] L = twDialogLayout();
-        int dx = L[0], dy = L[1], dw = L[2], dh = L[3], btnY = L[4], btnH = L[5];
-        int pad = 8, gap = 3, textW = dw - pad * 2, cx = dx + dw / 2;
-
-        g.fill(dx - 1, dy - 1, dx + dw + 1, dy + dh + 1, 0xFF666666);
-        g.fill(dx, dy, dx + dw, dy + dh, 0xFF1A1A1A);
-
-        int y = dy + pad;
-        y += GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.tw_import_title"), cx, y, textW, 0xFFFFFF) + gap;
-        y += GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.tw_import_summary", twBindCount, twFreqCount), cx, y, textW, 0xFFFFFF) + gap;
-        y += GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.tw_import_warn1"), cx, y, textW, 0xAAAAAA);
-        GuiText.drawWrappedCentered(g, font, I18n.get("gui.universalkeyboard.dialog.tw_import_warn2"), cx, y, textW, 0xAAAAAA);
-
-        boolean yh = mx >= dx + 20  && mx < dx + 120 && my >= btnY && my < btnY + btnH;
-        boolean nh = mx >= dx + 180 && mx < dx + 280 && my >= btnY && my < btnY + btnH;
-        g.fill(dx + 20,  btnY, dx + 120, btnY + btnH, yh ? 0xFF2A4A2A : 0xFF1E3A1E);
-        g.fill(dx + 180, btnY, dx + 280, btnY + btnH, nh ? 0xFF4A2A2A : 0xFF3A1E1E);
-        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.import"), dx + 70,  btnY + 3, yh ? 0x88FF88 : 0x66CC66);
-        g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.cancel"), dx + 230, btnY + 3, nh ? 0xFF8888 : 0xCC6666);
-        g.pose().popPose();
-    }
-
     // ── Type / mode cycling ───────────────────────────────────────────────────
     private boolean isTypeAvailable(ActionType t) {
         return switch (t) {
             case REDSTONE        -> true;
             case THRUSTER_POWER  -> hasThrusters;
             case THRUSTER_VECTOR -> hasVectorThrusters;
+            case RPM_CONTROL     -> hasRpm;
             case VARIABLE        -> true;
             case OVERDRIVE       -> true;
         };

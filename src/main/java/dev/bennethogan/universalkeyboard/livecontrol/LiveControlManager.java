@@ -32,9 +32,11 @@ public class LiveControlManager {
     private static final Map<Long, Integer>    rsIncCounters  = new HashMap<>();
     private static final Map<Integer, Integer> thrIncCounters = new HashMap<>();
     private static final Map<Integer, Integer> varIncCounters = new HashMap<>();
+    private static final Map<Integer, Integer> rpmIncCounters = new HashMap<>();
     private static final Map<Long, Double>     rsIncFrac      = new HashMap<>();
     private static final Map<Integer, Double>  thrIncFrac     = new HashMap<>();
     private static final Map<Integer, Double>  varIncFrac     = new HashMap<>();
+    private static final Map<Integer, Double>  rpmIncFrac     = new HashMap<>();
     private static final Map<Integer, Integer> incHoldTicks   = new HashMap<>();
     private static final Set<Integer>          hldVarOn       = new HashSet<>();
     private static final Map<Integer, Double>  tglPendingPeak = new HashMap<>();
@@ -49,7 +51,7 @@ public class LiveControlManager {
 
     public static void activate(BlockPos pos, List<LiveControlBinding> binds,
                                 int[] localRsOutputs, int[] wirelessPowers, int[] thrusterPowers,
-                                double[] varValues) {
+                                double[] varValues, int[] rpmValues) {
         active      = true;
         keyboardPos = pos;
         bindings    = new ArrayList<>(binds);
@@ -58,9 +60,11 @@ public class LiveControlManager {
         rsIncCounters.clear();
         thrIncCounters.clear();
         varIncCounters.clear();
+        rpmIncCounters.clear();
         rsIncFrac.clear();
         thrIncFrac.clear();
         varIncFrac.clear();
+        rpmIncFrac.clear();
         incHoldTicks.clear();
         hldVarOn.clear();
         tglPendingPeak.clear();
@@ -93,6 +97,12 @@ public class LiveControlManager {
                     varIncCounters.putIfAbsent(b.varIndex, Math.max(0, Math.min(100, cur)));
                 else if (b.mode == Mode.TGL && cur == b.varOnValue)
                     toggledOn.add(i);
+            } else if (b.actionType == LiveControlBinding.ActionType.RPM_CONTROL) {
+                int cur = (b.channel < rpmValues.length) ? rpmValues[b.channel] : 0;
+                if (b.mode == Mode.INC)
+                    rpmIncCounters.putIfAbsent(b.channel, Math.max(-256, Math.min(256, cur)));
+                else if (b.mode == Mode.TGL && cur == b.rpmTarget)
+                    toggledOn.add(i);
             }
         }
     }
@@ -119,9 +129,11 @@ public class LiveControlManager {
         rsIncCounters.clear();
         thrIncCounters.clear();
         varIncCounters.clear();
+        rpmIncCounters.clear();
         rsIncFrac.clear();
         thrIncFrac.clear();
         varIncFrac.clear();
+        rpmIncFrac.clear();
     }
 
     public static boolean isActive()       { return active; }
@@ -192,6 +204,11 @@ public class LiveControlManager {
                     if (scaled != 0)
                         thrIncCounters.merge(b.channel, scaled, (cur, d) -> Math.max(0, Math.min(15, cur + d)));
                 }
+                case RPM_CONTROL -> {
+                    int scaled = rpmScaledStep(b.channel, baseDelta, odFactor);
+                    if (scaled != 0)
+                        rpmIncCounters.merge(b.channel, scaled, (cur, d) -> Math.max(-256, Math.min(256, cur + d)));
+                }
                 default -> {}
             }
             incFired = true;
@@ -233,6 +250,12 @@ public class LiveControlManager {
                         if (scaled != 0)
                             thrIncCounters.merge(b.channel, scaled,
                                     (cur, d) -> Math.max(0, Math.min(15, cur + d)));
+                    }
+                    case RPM_CONTROL -> {
+                        int scaled = rpmScaledStep(b.channel, baseDelta, odFactor);
+                        if (scaled != 0)
+                            rpmIncCounters.merge(b.channel, scaled,
+                                    (cur, d) -> Math.max(-256, Math.min(256, cur + d)));
                     }
                     default -> {}
                 }
@@ -405,6 +428,14 @@ public class LiveControlManager {
         return whole;
     }
 
+    private static int rpmScaledStep(int channel, int baseDelta, double factor) {
+        if (factor == 1.0) return baseDelta;
+        double want = baseDelta * factor + rpmIncFrac.getOrDefault(channel, 0.0);
+        int whole = (int) Math.round(want);
+        rpmIncFrac.put(channel, want - whole);
+        return whole;
+    }
+
     // ── Output computation ───────────────────────────────────────────────────
 
     public static void computeAndSend() {
@@ -412,6 +443,7 @@ public class LiveControlManager {
         Map<Integer, Double>   powerByChannel   = new HashMap<>();
         Map<Integer, double[]> vectorByChannel  = new HashMap<>();
         Map<Integer, Integer>  linkSignals      = new HashMap<>();
+        Map<Integer, Integer>  rpmByChannel     = new HashMap<>();
 
         for (int i = 0; i < bindings.size(); i++) {
             LiveControlBinding b            = bindings.get(i);
@@ -451,6 +483,14 @@ public class LiveControlManager {
                         vectorByChannel.computeIfAbsent(b.channel, k -> new double[]{0.0, 0.0});
                     }
                 }
+                case RPM_CONTROL -> {
+                    if (b.mode == Mode.INC) {
+                        rpmByChannel.putIfAbsent(b.channel, 0);
+                    } else {
+                        int contribution = bindingActive ? b.rpmTarget : 0;
+                        rpmByChannel.merge(b.channel, contribution, Math::max);
+                    }
+                }
                 default -> {}
             }
         }
@@ -460,6 +500,8 @@ public class LiveControlManager {
             rsTargetToSignal.merge(e.getKey(), e.getValue(), Math::max);
         for (Map.Entry<Integer, Integer> e : thrIncCounters.entrySet())
             powerByChannel.merge(e.getKey(), e.getValue() / 15.0, Math::max);
+        for (Map.Entry<Integer, Integer> e : rpmIncCounters.entrySet())
+            rpmByChannel.put(e.getKey(), e.getValue());
 
         // Normalise vectors with magnitude > 1
         for (double[] vec : vectorByChannel.values()) {
@@ -484,6 +526,8 @@ public class LiveControlManager {
             double[] vec = e.getValue();
             actions.add(new ModPackets.LiveAction((byte) 3, e.getKey(), vec[0], vec[1]));
         }
+        for (Map.Entry<Integer, Integer> e : rpmByChannel.entrySet())
+            actions.add(new ModPackets.LiveAction((byte) 6, e.getKey(), e.getValue(), 0.0));
 
         if (!actions.isEmpty()) ModPackets.sendLiveAction(keyboardPos, actions);
     }
@@ -524,7 +568,7 @@ public class LiveControlManager {
     private static boolean hasActiveAnalogOutput() {
         for (int i = 0; i < bindings.size(); i++) {
             LiveControlBinding b = bindings.get(i);
-            if (b.actionType == ActionType.VARIABLE) continue; // variables resend each tick already
+            if (b.actionType == ActionType.VARIABLE || b.actionType == ActionType.RPM_CONTROL) continue;
             if (!isScaledAnalog(b)) continue;
             if (isBindingActive(i)) return true;
         }
@@ -568,6 +612,10 @@ public class LiveControlManager {
             if (varVal != null) return "§e[" + name + " =" + varVal + suffix + "§e]";
         }
         if (heldKeys.contains(keyCode)) {
+            Integer rpmVal = rpmIncValueForKey(keyCode);
+            if (rpmVal != null) return "§b[" + name + " " + rpmVal + "rpm" + suffix + "§b]";
+        }
+        if (heldKeys.contains(keyCode)) {
             Integer level = incLevelForKey(keyCode);
             if (level != null)
                 return "§f[" + name + " " + Math.round(level / 15.0 * 100) + "%" + suffix + "§f]";
@@ -589,6 +637,15 @@ public class LiveControlManager {
 
     private static String formatOdMult(double m) {
         return (m == (int) m) ? ((int) m) + "x" : m + "x";
+    }
+
+    private static Integer rpmIncValueForKey(int keyCode) {
+        for (LiveControlBinding b : bindings) {
+            if (b.keyCode != keyCode || b.mode != Mode.INC
+                    || b.actionType != LiveControlBinding.ActionType.RPM_CONTROL) continue;
+            return rpmIncCounters.getOrDefault(b.channel, 0);
+        }
+        return null;
     }
 
     private static Integer varValueForKey(int keyCode) {

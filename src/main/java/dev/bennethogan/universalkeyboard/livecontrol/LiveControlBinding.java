@@ -14,7 +14,8 @@ public class LiveControlBinding {
         THRUSTER_POWER,  // 1
         THRUSTER_VECTOR, // 2
         VARIABLE,        // 3 — sets a sequencer variable
-        OVERDRIVE        // 4 — multiplies output of other active bindings (RS/Thr/Var)
+        OVERDRIVE,       // 4 — multiplies output of other active bindings (RS/Thr/Var)
+        RPM_CONTROL      // 5 — sets motor RPM (electric_motor / rotation_speed_controller)
     }
 
     /** Activation mode for a binding. VEC does not support INC. */
@@ -69,6 +70,9 @@ public class LiveControlBinding {
     /** Comma-separated 1-based slot numbers excluded from this OD binding's effect. */
     public String odExcludes = "";
 
+    // RPM_CONTROL — -256 to 256
+    public int rpmTarget = 0;
+
     // ── Serialization ────────────────────────────────────────────────────────
 
     public void saveToTag(CompoundTag tag) {
@@ -88,6 +92,7 @@ public class LiveControlBinding {
         tag.putInt("varOnValue",     varOnValue);
         tag.putDouble("overdriveMultiplier", overdriveMultiplier);
         tag.putString("odExcludes",          odExcludes == null ? "" : odExcludes);
+        tag.putInt("rpmTarget", rpmTarget);
     }
 
     public static LiveControlBinding fromTag(CompoundTag tag) {
@@ -131,6 +136,7 @@ public class LiveControlBinding {
 
         b.overdriveMultiplier = tag.contains("overdriveMultiplier") ? tag.getDouble("overdriveMultiplier") : 2.0;
         b.odExcludes          = tag.contains("odExcludes") ? tag.getString("odExcludes") : "";
+        b.rpmTarget           = tag.contains("rpmTarget") ? Math.max(-256, Math.min(256, tag.getInt("rpmTarget"))) : 0;
 
         return b;
     }
@@ -153,7 +159,8 @@ public class LiveControlBinding {
         buf.writeByte(Math.max(0, Math.min(15, varIndex)));
         buf.writeByte(Math.max(1, Math.min(100, varOnValue)));
         buf.writeDouble(overdriveMultiplier);
-        buf.writeUtf(odExcludes == null ? "" : odExcludes, 256);
+        buf.writeUtf(odExcludes == null ? "" : odExcludes, 513);
+        buf.writeShort(Math.max(-256, Math.min(256, rpmTarget)));
     }
 
     public static LiveControlBinding decode(FriendlyByteBuf buf) {
@@ -190,7 +197,8 @@ public class LiveControlBinding {
         if (b.varOnValue < 1) b.varOnValue = 1;
 
         b.overdriveMultiplier = buf.readDouble();
-        b.odExcludes          = buf.readUtf(256);
+        b.odExcludes          = buf.readUtf(513);
+        b.rpmTarget           = buf.isReadable(2) ? Math.max(-256, Math.min(256, (int) buf.readShort())) : 0;
 
         return b;
     }

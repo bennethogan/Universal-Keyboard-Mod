@@ -1335,10 +1335,14 @@ public class ModPackets {
             int wirelessCount,
             boolean hasThrusters,
             boolean hasVectorThrusters,
+            boolean hasRpm,
             int[] localRsOutputs,
             int[] wirelessPowers,
             int[] thrusterPowers,
-            double[] varValues
+            double[] varValues,
+            int[] rpmValues,
+            int activeProfile,
+            List<List<dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding>> allProfiles
     ) implements CustomPacketPayload {
         public static final Type<OpenLiveControlScreenPacket> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "open_live_control_screen"));
@@ -1350,11 +1354,21 @@ public class ModPackets {
                     buf.writeInt(p.wirelessCount());
                     buf.writeBoolean(p.hasThrusters());
                     buf.writeBoolean(p.hasVectorThrusters());
+                    buf.writeBoolean(p.hasRpm());
                     buf.writeByteArray(toByteArray(p.localRsOutputs()));
                     buf.writeByteArray(toByteArray(p.wirelessPowers()));
                     buf.writeByteArray(toByteArray(p.thrusterPowers()));
                     buf.writeInt(p.varValues().length);
                     for (double v : p.varValues()) buf.writeDouble(v);
+                    buf.writeShort(p.rpmValues().length);
+                    for (int v : p.rpmValues()) buf.writeShort(v);
+                    buf.writeByte(p.activeProfile());
+                    List<List<dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding>> ap = p.allProfiles();
+                    buf.writeByte(ap.size());
+                    for (List<dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding> profile : ap) {
+                        buf.writeInt(profile.size());
+                        for (var b : profile) b.encode(buf);
+                    }
                 },
                 buf -> {
                     BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
@@ -1365,13 +1379,27 @@ public class ModPackets {
                     int wc  = buf.readInt();
                     boolean ht  = buf.readBoolean();
                     boolean hvt = buf.readBoolean();
+                    boolean hr  = buf.readBoolean();
                     int[] lrs = fromByteArray(buf.readByteArray());
                     int[] wp  = fromByteArray(buf.readByteArray());
                     int[] tp  = fromByteArray(buf.readByteArray());
                     int vlen = buf.readInt();
                     double[] vars = new double[vlen];
                     for (int i = 0; i < vlen; i++) vars[i] = buf.readDouble();
-                    return new OpenLiveControlScreenPacket(pos, binds, wc, ht, hvt, lrs, wp, tp, vars);
+                    int rlen = buf.readShort() & 0xFFFF;
+                    int[] rpmVals = new int[rlen];
+                    for (int i = 0; i < rlen; i++) rpmVals[i] = buf.readShort() & 0xFFFF;
+                    int activeProf = buf.readByte() & 0xFF;
+                    int numProfiles = buf.readByte() & 0xFF;
+                    List<List<dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding>> allProfs = new ArrayList<>(numProfiles);
+                    for (int p = 0; p < numProfiles; p++) {
+                        int pc = buf.readInt();
+                        List<dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding> profile = new ArrayList<>(pc);
+                        for (int i = 0; i < pc; i++)
+                            profile.add(dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.decode(buf));
+                        allProfs.add(profile);
+                    }
+                    return new OpenLiveControlScreenPacket(pos, binds, wc, ht, hvt, hr, lrs, wp, tp, vars, rpmVals, activeProf, allProfs);
                 });
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
 
@@ -1383,9 +1411,10 @@ public class ModPackets {
         }
     }
 
-    /** Client → Server: save updated bindings. */
+    /** Client → Server: save updated bindings for a specific profile slot. */
     public record SaveLiveBindingsPacket(
             BlockPos keyboardPos,
+            int profileIdx,
             List<dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding> bindings
     ) implements CustomPacketPayload {
         public static final Type<SaveLiveBindingsPacket> TYPE =
@@ -1393,16 +1422,18 @@ public class ModPackets {
         public static final StreamCodec<FriendlyByteBuf, SaveLiveBindingsPacket> CODEC = StreamCodec.of(
                 (buf, p) -> {
                     BlockPos.STREAM_CODEC.encode(buf, p.keyboardPos());
+                    buf.writeByte(p.profileIdx());
                     buf.writeInt(p.bindings().size());
                     for (var b : p.bindings()) b.encode(buf);
                 },
                 buf -> {
                     BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
+                    int profileIdx = buf.readByte() & 0xFF;
                     int cnt = buf.readInt();
                     List<dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding> binds = new ArrayList<>(cnt);
                     for (int i = 0; i < cnt; i++)
                         binds.add(dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.decode(buf));
-                    return new SaveLiveBindingsPacket(pos, binds);
+                    return new SaveLiveBindingsPacket(pos, profileIdx, binds);
                 });
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
@@ -1443,9 +1474,9 @@ public class ModPackets {
         PacketDistributor.sendToServer(new OpenLiveControlPacket(keyboardPos));
     }
 
-    public static void sendSaveLiveBindings(BlockPos keyboardPos,
+    public static void sendSaveLiveBindings(BlockPos keyboardPos, int profileIdx,
             List<dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding> bindings) {
-        PacketDistributor.sendToServer(new SaveLiveBindingsPacket(keyboardPos, bindings));
+        PacketDistributor.sendToServer(new SaveLiveBindingsPacket(keyboardPos, profileIdx, bindings));
     }
 
     public static void sendLiveAction(BlockPos keyboardPos, List<LiveAction> actions) {
@@ -1459,10 +1490,11 @@ public class ModPackets {
             BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
             if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
             var level = sp.serverLevel();
-            boolean hasThrusters = false, hasVector = false;
+            boolean hasThrusters = false, hasVector = false, hasRpm = false;
 
             // Current thruster power by channel (1-16); index 0 unused
             int[] thrusterPowers = new int[LinkedKeyboardBlockEntity.MAX_CHANNELS + 1];
+            int[] rpmValues      = new int[LinkedKeyboardBlockEntity.MAX_CHANNELS + 1];
             for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS; ch++) {
                 for (BlockPos tp : kb.getLinkedTargetPositions(ch)) {
                     Object p = PeripheralHelper.getPeripheral(level, tp);
@@ -1473,6 +1505,11 @@ public class ModPackets {
                         if (type.contains("vector")) hasVector = true;
                         if (thrusterPowers[ch] == 0)
                             thrusterPowers[ch] = PeripheralHelper.getThrusterPower(level, tp);
+                    }
+                    if (PeripheralHelper.isRpmCapable(p)) {
+                        hasRpm = true;
+                        if (rpmValues[ch] == 0)
+                            rpmValues[ch] = PeripheralHelper.getRpmValue(level, tp);
                     }
                 }
             }
@@ -1489,8 +1526,9 @@ public class ModPackets {
 
             PacketDistributor.sendToPlayer(sp, new OpenLiveControlScreenPacket(
                     packet.keyboardPos(), kb.getLiveControlBindings(),
-                    wc, hasThrusters, hasVector, localRs, wirelessPowers, thrusterPowers,
-                    kb.getSequencerVars()));
+                    wc, hasThrusters, hasVector, hasRpm, localRs, wirelessPowers, thrusterPowers,
+                    kb.getSequencerVars(), rpmValues,
+                    kb.getActiveProfile(), kb.getAllProfileBindings()));
         });
     }
 
@@ -1499,7 +1537,7 @@ public class ModPackets {
             if (!(ctx.player() instanceof ServerPlayer sp)) return;
             BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
             if (be instanceof LinkedKeyboardBlockEntity kb) {
-                kb.setLiveControlBindings(packet.bindings());
+                kb.saveProfileBindings(packet.profileIdx(), packet.bindings());
             }
         });
     }
@@ -1536,6 +1574,13 @@ public class ModPackets {
                         kb.setSequencerVariable(a.target(), a.v1());
                     case 5 -> // link channel broadcast (target = linkIdx 0-based)
                         kb.broadcastLinkChannel(a.target(), (int) Math.round(a.v1()));
+                    case 6 -> { // RPM control (channel = target)
+                        for (BlockPos tp : kb.getLinkedTargetPositions(a.target())) {
+                            Object p = PeripheralHelper.getPeripheral(level, tp);
+                            if (p != null && PeripheralHelper.isRpmCapable(p))
+                                PeripheralHelper.callRpmSetter(p, (int) Math.round(a.v1()));
+                        }
+                    }
                 }
             }
         });
