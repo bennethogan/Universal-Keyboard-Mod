@@ -32,8 +32,8 @@ public class ClientPacketHandlers {
         registrar.playToClient(ModPackets.TypewriterImportOfferPacket.TYPE,   ModPackets.TypewriterImportOfferPacket.CODEC,   ClientPacketHandlers::handleTypewriterOffer);
         registrar.playToClient(ChannelChangedPacket.TYPE,          ChannelChangedPacket.CODEC,          ClientPacketHandlers::handleChannelChanged);
         registrar.playToClient(OpenLiveControlScreenPacket.TYPE, OpenLiveControlScreenPacket.CODEC, ClientPacketHandlers::handleOpenLiveControlScreen);
-        registrar.playToClient(ModPackets.OpenWirelessCopycatScreenPacket.TYPE, ModPackets.OpenWirelessCopycatScreenPacket.STREAM_CODEC, ClientPacketHandlers::handleOpenWirelessCopycatScreen);
-        registrar.playToClient(ModPackets.OpenLinkFreqScreenPacket.TYPE,        ModPackets.OpenLinkFreqScreenPacket.STREAM_CODEC,        ClientPacketHandlers::handleOpenLinkFreqScreen);
+        registrar.optional().playToClient(ModPackets.OpenWirelessCopycatScreenPacket.TYPE, ModPackets.OpenWirelessCopycatScreenPacket.STREAM_CODEC, ClientPacketHandlers::handleOpenWirelessCopycatScreen);
+        registrar.optional().playToClient(ModPackets.OpenLinkFreqScreenPacket.TYPE,        ModPackets.OpenLinkFreqScreenPacket.STREAM_CODEC,        ClientPacketHandlers::handleOpenLinkFreqScreen);
     }
 
     private static void handleKeyboardCapture(KeyboardCapturePacket packet, IPayloadContext ctx) {
