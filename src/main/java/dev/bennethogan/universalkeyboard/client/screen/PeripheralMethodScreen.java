@@ -272,6 +272,7 @@ public class PeripheralMethodScreen extends Screen {
             onClose();
             return true;
         }
+        if (!inputBox.isFocused() && MenuNav.handleTabBack(this, keyCode, keyboardPos)) return true;
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 

@@ -17,6 +17,8 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import net.neoforged.neoforge.client.model.data.ModelProperty;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 public class WirelessCopycatBlockEntity extends CopycatBlockEntity {
@@ -52,6 +54,13 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity {
     public boolean isFaceEnabled(int face)  { return face >= 0 && face < FACES && enabled[face]; }
 
     public int getPower(Direction dir) { return power[dir.ordinal()]; }
+
+    public String[] getEnabledFreqs() {
+        List<String> result = new ArrayList<>();
+        for (int i = 0; i < FACES; i++)
+            if (enabled[i] && freqs[i] != null && !freqs[i].isEmpty()) result.add(freqs[i]);
+        return result.toArray(new String[0]);
+    }
 
     public void startPreview(int faceIdx) {
         if (level == null || level.isClientSide || faceIdx < 0 || faceIdx >= FACES) return;

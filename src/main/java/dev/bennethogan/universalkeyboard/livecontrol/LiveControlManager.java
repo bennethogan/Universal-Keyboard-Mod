@@ -37,6 +37,8 @@ public class LiveControlManager {
     private static final Map<Integer, Double>  varIncFrac     = new HashMap<>();
     private static final Map<Integer, Integer> incHoldTicks   = new HashMap<>();
     private static final Set<Integer>          hldVarOn       = new HashSet<>();
+    private static final Map<Integer, Double>  tglPendingPeak = new HashMap<>();
+    private static final Map<Integer, Double>  tglLockedMag   = new HashMap<>();
 
     private static final int INC_REPEAT_DELAY_TICKS = 10;
     private static final int MAX_DISPLAY_KEYS        = 3;
@@ -61,6 +63,8 @@ public class LiveControlManager {
         varIncFrac.clear();
         incHoldTicks.clear();
         hldVarOn.clear();
+        tglPendingPeak.clear();
+        tglLockedMag.clear();
 
         for (int i = 0; i < bindings.size(); i++) {
             LiveControlBinding b = bindings.get(i);
@@ -108,6 +112,8 @@ public class LiveControlManager {
         heldKeys.clear();
         incHoldTicks.clear();
         hldVarOn.clear();
+        tglPendingPeak.clear();
+        tglLockedMag.clear();
         if (Minecraft.getInstance().getConnection() != null) computeAndSend();
         toggledOn.clear();
         rsIncCounters.clear();
@@ -127,6 +133,12 @@ public class LiveControlManager {
         if (!active) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
+
+        for (int i = 0; i < bindings.size(); i++) {
+            if (!tglPendingPeak.containsKey(i)) continue;
+            double mag = GamepadLiveDriver.analogMagnitude(bindings.get(i).keyCode);
+            tglPendingPeak.merge(i, mag, Math::max);
+        }
 
         if (!heldKeys.isEmpty() || !toggledOn.isEmpty()) {
             mc.player.displayClientMessage(Component.literal(buildKeyDisplay()), true);
@@ -244,11 +256,27 @@ public class LiveControlManager {
                 if (b.mode == Mode.HLD) {
                     heldKeys.add(keyCode);
                 } else {
-                    if (toggledOn.contains(i)) toggledOn.remove(i);
-                    else toggledOn.add(i);
+                    if (toggledOn.contains(i)) {
+                        toggledOn.remove(i);
+                        tglLockedMag.remove(i);
+                    } else if (GamepadCodes.isAnalogCode(b.keyCode) && scalingOn()) {
+                        tglPendingPeak.put(i, 0.0);
+                    } else {
+                        toggledOn.add(i);
+                    }
                 }
             }
         } else if (glfw_action == GLFW.GLFW_RELEASE) {
+            for (int i = 0; i < bindings.size(); i++) {
+                LiveControlBinding b = bindings.get(i);
+                if (b.keyCode != keyCode || b.mode == Mode.INC
+                        || b.actionType == LiveControlBinding.ActionType.VARIABLE) continue;
+                Double peak = tglPendingPeak.remove(i);
+                if (peak != null) {
+                    tglLockedMag.put(i, peak);
+                    toggledOn.add(i);
+                }
+            }
             heldKeys.remove(keyCode);
             incHoldTicks.remove(keyCode);
         }
@@ -277,8 +305,16 @@ public class LiveControlManager {
                         out.add(varAction(b.varIndex, varIncCounters.getOrDefault(b.varIndex, 0)));
                     }
                     case TGL -> {
-                        if (toggledOn.contains(i)) toggledOn.remove(i); else toggledOn.add(i);
-                        out.add(varActionOd(b.varIndex, toggledOn.contains(i) ? b.varOnValue : 0, i));
+                        if (toggledOn.contains(i)) {
+                            toggledOn.remove(i);
+                            tglLockedMag.remove(i);
+                            out.add(varActionOd(b.varIndex, 0, i));
+                        } else if (GamepadCodes.isAnalogCode(b.keyCode) && scalingOn()) {
+                            tglPendingPeak.put(i, 0.0);
+                        } else {
+                            toggledOn.add(i);
+                            out.add(varActionOd(b.varIndex, b.varOnValue, i));
+                        }
                     }
                 }
             }
@@ -293,7 +329,17 @@ public class LiveControlManager {
             for (int i = 0; i < bindings.size(); i++) {
                 LiveControlBinding b = bindings.get(i);
                 if (b.keyCode != keyCode || b.actionType != LiveControlBinding.ActionType.VARIABLE) continue;
-                if (b.mode == Mode.HLD) { out.add(varActionOd(b.varIndex, 0, i)); hldVarOn.remove(b.varIndex); }
+                if (b.mode == Mode.HLD) {
+                    out.add(varActionOd(b.varIndex, 0, i));
+                    hldVarOn.remove(b.varIndex);
+                } else if (b.mode == Mode.TGL) {
+                    Double peak = tglPendingPeak.remove(i);
+                    if (peak != null) {
+                        tglLockedMag.put(i, peak);
+                        toggledOn.add(i);
+                        out.add(varActionOd(b.varIndex, b.varOnValue, i));
+                    }
+                }
             }
         }
         if (!out.isEmpty()) ModPackets.sendLiveAction(keyboardPos, out);
@@ -306,7 +352,7 @@ public class LiveControlManager {
     private static ModPackets.LiveAction varActionOd(int varIndex, double value, int bindingIdx) {
         double od  = (value == 0.0) ? 1.0 : overdriveFactor(bindingIdx);
         double mag = (value == 0.0 || bindingIdx < 0 || bindingIdx >= bindings.size())
-                ? 1.0 : joystickMagnitude(bindings.get(bindingIdx));
+                ? 1.0 : joystickMagnitude(bindings.get(bindingIdx), bindingIdx);
         double scaled = (value == 0.0) ? 0.0 : Math.min(100.0, value * od * mag);
         return new ModPackets.LiveAction((byte) 4, varIndex, scaled, 0.0);
     }
@@ -371,7 +417,7 @@ public class LiveControlManager {
             LiveControlBinding b            = bindings.get(i);
             boolean            bindingActive = isBindingActive(i);
             double             odFactor     = overdriveFactor(i);
-            double             mag          = joystickMagnitude(b);
+            double             mag          = joystickMagnitude(b, i);
 
             switch (b.actionType) {
                 case REDSTONE -> {
@@ -468,11 +514,13 @@ public class LiveControlManager {
                 && GamepadCodes.isAnalogCode(b.keyCode);
     }
 
-    private static double joystickMagnitude(LiveControlBinding b) {
+    private static double joystickMagnitude(LiveControlBinding b, int bindingIdx) {
+        if (b.mode == Mode.TGL && bindingIdx >= 0 && GamepadCodes.isAnalogCode(b.keyCode) && scalingOn())
+            return tglLockedMag.getOrDefault(bindingIdx, 1.0);
         if (!isScaledAnalog(b)) return 1.0;
         return GamepadLiveDriver.analogMagnitude(b.keyCode);
     }
-    
+
     private static boolean hasActiveAnalogOutput() {
         for (int i = 0; i < bindings.size(); i++) {
             LiveControlBinding b = bindings.get(i);

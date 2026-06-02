@@ -3,6 +3,7 @@ package dev.bennethogan.universalkeyboard.client.screen;
 import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.universalkeyboard.client.gamepad.GamepadLiveDriver;
 import dev.bennethogan.universalkeyboard.compat.SableCompat;
+import dev.bennethogan.universalkeyboard.config.ModConfig;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.ActionType;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.Mode;
@@ -70,6 +71,10 @@ public class LiveControlScreen extends Screen {
     private int exclOverlaySlot   = -1;
     private String exclInput      = "";
     private int page = 0; // 0 = slots 0–19, 1 = slots 20–39
+
+    private String wFreqTooltip   = null;
+    private int    wFreqTooltipX  = 0;
+    private int    wFreqTooltipY  = 0;
 
     // Typewriter import state
     private net.minecraft.core.BlockPos twOfferPos   = null; // non-null when offer is pending
@@ -171,22 +176,30 @@ public class LiveControlScreen extends Screen {
 
         int btnY = panelY + panelH - PAD - BTN_H;
         boolean sablePresent = SableCompat.isPresent();
-        // Bottom button row: Revert | Start | [Import Typewriter if Sable present]
+        boolean gamepadOn    = gamepadEnabled();
+        // Bottom button row: Revert | Start | [Calibrate if gamepad] | [Import Typewriter if Sable]
         // Edits autosave continuously; Revert discards back to how the menu opened.
-        int bottomBtnCount = sablePresent ? 3 : 2;
+        int bottomBtnCount = 2 + (gamepadOn ? 1 : 0) + (sablePresent ? 1 : 0);
         int btnW = (PANEL_W - PAD * 2 - 4 * (bottomBtnCount - 1)) / bottomBtnCount;
+        int bi = 0;
         addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.revert"),
                         b -> confirmDialog.open(
                                 "gui.universalkeyboard.dialog.revert_title",
                                 "gui.universalkeyboard.dialog.revert_body",
                                 "gui.universalkeyboard.btn.yes_revert",
                                 this::doRevert))
-                .pos(panelX + PAD, btnY).size(btnW, BTN_H).build());
+                .pos(panelX + PAD + (btnW + 4) * bi++, btnY).size(btnW, BTN_H).build());
         addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.start"), b -> doStart())
-                .pos(panelX + PAD + (btnW + 4), btnY).size(btnW, BTN_H).build());
+                .pos(panelX + PAD + (btnW + 4) * bi++, btnY).size(btnW, BTN_H).build());
+        if (gamepadOn) {
+            int idx = bi++;
+            addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.calibrate"), b -> openCalibration())
+                    .pos(panelX + PAD + (btnW + 4) * idx, btnY).size(btnW, BTN_H).build());
+        }
         if (sablePresent) {
+            int idx = bi++;
             addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.import_typewriter"), b -> doTypewriterScan())
-                    .pos(panelX + PAD + (btnW + 4) * 2, btnY).size(btnW, BTN_H).build());
+                    .pos(panelX + PAD + (btnW + 4) * idx, btnY).size(btnW, BTN_H).build());
         }
 
         // Page navigation buttons at top-right of panel
@@ -223,6 +236,16 @@ public class LiveControlScreen extends Screen {
         onClose();
     }
 
+    private static boolean gamepadEnabled() {
+        try { return ModConfig.CLIENT.enableGamepad.get(); }
+        catch (Exception e) { return false; }
+    }
+
+    private void openCalibration() {
+        autosave(); // preserve edits; we'll return to this screen afterward
+        Minecraft.getInstance().setScreen(new GamepadCalibrationScreen(this));
+    }
+
     private void doTypewriterScan() {
         twOfferPos = null;
         twMessage  = I18n.get("gui.universalkeyboard.msg.scanning");
@@ -247,6 +270,7 @@ public class LiveControlScreen extends Screen {
     // ── Rendering ─────────────────────────────────────────────────────────────
     @Override
     public void render(GuiGraphics g, int mx, int my, float pt) {
+        wFreqTooltip = null;
         renderBackground(g, mx, my, pt);
         g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, 0xFF111111);
         drawBorder(g, panelX, panelY, PANEL_W, panelH, 0xFF666666);
@@ -279,6 +303,8 @@ public class LiveControlScreen extends Screen {
         }
 
         if (confirmDialog != null) confirmDialog.render(g, mx, my);
+        if (wFreqTooltip != null)
+            g.renderTooltip(font, Component.literal(wFreqTooltip), wFreqTooltipX, wFreqTooltipY);
     }
 
     // ── Slot rendering ────────────────────────────────────────────────────────
@@ -365,6 +391,10 @@ public class LiveControlScreen extends Screen {
         g.drawString(font, "§7◄", x + 1, y + 4, 0x999999, false);
         g.drawCenteredString(font, "§f" + sideLabel, x + 25, y + 4, 0xFFFFFF);
         g.drawString(font, "§7►", x + 41, y + 4, 0x999999, false);
+        if (sHov && b.linkIdx > 0) {
+            String freq = getLinkFreq(b.linkIdx - 1);
+            if (freq != null) { wFreqTooltip = freq; wFreqTooltipX = mx; wFreqTooltipY = my; }
+        }
         x += 52;
 
         // Mode button cycles Hld → Tog → Inc
@@ -832,6 +862,7 @@ public class LiveControlScreen extends Screen {
             if (vectorOverlaySlot >= 0) { vectorOverlaySlot = -1; return true; }
             onClose(); return true;
         }
+        if (MenuNav.handleTabBack(this, keyCode, keyboardPos)) return true;
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
@@ -944,6 +975,15 @@ public class LiveControlScreen extends Screen {
         if (be instanceof dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity kb)
             return kb.getLinkFreqCount();
         return 0;
+    }
+
+    private String getLinkFreq(int zeroBasedIdx) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return null;
+        var be = mc.level.getBlockEntity(keyboardPos);
+        if (be instanceof dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity kb)
+            return kb.getLinkFreq(zeroBasedIdx);
+        return null;
     }
 
     private void cycleSide(LiveControlBinding b, int dir) {

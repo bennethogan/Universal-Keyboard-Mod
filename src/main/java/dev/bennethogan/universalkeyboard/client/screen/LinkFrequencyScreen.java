@@ -170,6 +170,7 @@ public class LinkFrequencyScreen extends PanelScreen {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (confirmDialog != null && confirmDialog.isOpen())
             return confirmDialog.keyPressed(keyCode);
+        if (MenuNav.handleTabBack(this, keyCode, keyboardPos)) return true;
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 

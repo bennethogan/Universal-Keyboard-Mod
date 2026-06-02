@@ -2,11 +2,13 @@ package dev.bennethogan.universalkeyboard.item;
 
 import dev.bennethogan.universalkeyboard.UniversalKeyboardMod;
 import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
+import dev.bennethogan.universalkeyboard.blockentity.WirelessCopycatBlockEntity;
 import dev.bennethogan.universalkeyboard.compat.KeyboardMode;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
@@ -24,8 +26,11 @@ import net.minecraft.world.InteractionHand;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class LinkedKeyboardItem extends BlockItem {
 
@@ -77,6 +82,12 @@ public class LinkedKeyboardItem extends BlockItem {
         ItemStack stack  = context.getItemInHand();
 
         if (player == null) return InteractionResult.PASS;
+
+        // Special: shift+right-click a WirelessCopycat → import its enabled face freqs onto the item
+        if (player.isShiftKeyDown() && level.getBlockEntity(pos) instanceof WirelessCopycatBlockEntity cb) {
+            if (!level.isClientSide) importCopycatFreqs(stack, player, cb);
+            return InteractionResult.sidedSuccess(level.isClientSide);
+        }
 
         // Shift+right-click: toggle linking mode, and try to add/remove clicked block on enter
         if (player.isShiftKeyDown()) {
@@ -179,6 +190,28 @@ public class LinkedKeyboardItem extends BlockItem {
                 UniversalKeyboardMod.LOGGER.info("transferred {} channel(s) with {} total target(s) to placed keyboard at {}",
                         allTargets.size(), total, pos);
             }
+
+            // Transfer any wireless channel freqs collected from WirelessCopycat shift-clicks
+            CompoundTag itemTag = readTag(stack);
+            if (itemTag != null && itemTag.contains("wifi_freqs", Tag.TAG_LIST)) {
+                ListTag wfl = itemTag.getList("wifi_freqs", Tag.TAG_STRING);
+                if (!wfl.isEmpty()) {
+                    String[] existing = keyboard.getLinkFreqs();
+                    LinkedHashSet<String> merged = new LinkedHashSet<>();
+                    for (String f : existing) if (f != null && !f.isEmpty()) merged.add(f);
+                    for (int i = 0; i < wfl.size(); i++) {
+                        String f = wfl.getString(i);
+                        if (!f.isEmpty()) merged.add(f);
+                    }
+                    String[] out = new String[LinkedKeyboardBlockEntity.MAX_LINK_FREQS];
+                    int slot = 0;
+                    for (String f : merged) { if (slot >= out.length) break; out[slot++] = f; }
+                    keyboard.setLinkFreqs(out);
+                }
+                itemTag.remove("wifi_freqs");
+                if (itemTag.isEmpty()) stack.remove(DataComponents.CUSTOM_DATA);
+                else writeTag(stack, itemTag);
+            }
         }
         return result;
     }
@@ -209,6 +242,35 @@ public class LinkedKeyboardItem extends BlockItem {
             String marker = (linking && ch == activeCh) ? "§e▶ " : "§7";
             tooltip.add(Component.literal(marker + "Channel " + ch + ": §f" + list.size() + " block(s)"));
         }
+    }
+
+    // ----- WirelessCopycat freq import -----
+
+    private static void importCopycatFreqs(ItemStack stack, Player player, WirelessCopycatBlockEntity cb) {
+        String[] enabledFreqs = cb.getEnabledFreqs();
+        if (enabledFreqs.length == 0) {
+            player.displayClientMessage(Component.literal(
+                    "§7[Universal Keyboard] §fNo enabled faces on that copycat."), true);
+            return;
+        }
+        CompoundTag tag = getOrCreateTag(stack);
+        ListTag list = tag.contains("wifi_freqs", Tag.TAG_LIST)
+                ? tag.getList("wifi_freqs", Tag.TAG_STRING)
+                : new ListTag();
+        Set<String> existing = new HashSet<>();
+        for (int i = 0; i < list.size(); i++) existing.add(list.getString(i));
+        int added = 0;
+        for (String f : enabledFreqs) {
+            if (!existing.contains(f) && list.size() < LinkedKeyboardBlockEntity.MAX_LINK_FREQS) {
+                list.add(StringTag.valueOf(f));
+                existing.add(f);
+                added++;
+            }
+        }
+        tag.put("wifi_freqs", list);
+        writeTag(stack, tag);
+        player.displayClientMessage(Component.literal(
+                "§a[Universal Keyboard] §f+" + added + " freq(s) added §8(" + list.size() + " total pending§8)"), true);
     }
 
     // ----- NBT helpers -----

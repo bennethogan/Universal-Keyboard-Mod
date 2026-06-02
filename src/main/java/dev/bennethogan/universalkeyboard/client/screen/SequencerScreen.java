@@ -1330,6 +1330,7 @@ public class SequencerScreen extends Screen {
             if (typeDropdownRow >= 0) { typeDropdownRow = -1; return true; }
             onClose(); return true;
         }
+        if (MenuNav.handleTabBack(this, keyCode, keyboardPos)) return true;
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 

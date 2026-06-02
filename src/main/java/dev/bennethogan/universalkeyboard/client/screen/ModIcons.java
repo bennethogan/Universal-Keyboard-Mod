@@ -1,12 +1,13 @@
 package dev.bennethogan.universalkeyboard.client.screen;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.ResourceLocation;
 
 public class ModIcons {
 
-    public static final ResourceLocation CREATE_ATLAS =
-            ResourceLocation.fromNamespaceAndPath("create", "textures/gui/icons.png");
+    public static final ResourceLocation ATLAS =
+            ResourceLocation.fromNamespaceAndPath("universalkeyboard", "textures/gui/icons.png");
     private static final int ATLAS_SIZE = 256;
 
 
@@ -33,6 +34,12 @@ public class ModIcons {
     }
 
     public void render(GuiGraphics g, int x, int y) {
-        g.blit(CREATE_ATLAS, x, y, 0, iconX, iconY, 16, 16, ATLAS_SIZE, ATLAS_SIZE);
+        g.blit(ATLAS, x, y, 0, iconX, iconY, 16, 16, ATLAS_SIZE, ATLAS_SIZE);
+    }
+
+    public void renderCentered(GuiGraphics g, int cx, int cy, boolean on) {
+        if (!on) RenderSystem.setShaderColor(0.5f, 0.5f, 0.5f, 1.0f);
+        render(g, cx - 8, cy - 8);
+        if (!on) RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
     }
 }

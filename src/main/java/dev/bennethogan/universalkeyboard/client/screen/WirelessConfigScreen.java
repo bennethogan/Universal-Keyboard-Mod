@@ -140,4 +140,10 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
         g.drawString(font, I18n.get("gui.universalkeyboard.screen.wireless_config.title"), 8, 6, 0xFFFFFF, false);
         g.drawString(font, playerInventoryTitle, this.inventoryLabelX, this.inventoryLabelY, 0xAAAAAA, false);
     }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (MenuNav.handleTabBack(this, keyCode, menu.getKeyboardPos())) return true;
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
 }
