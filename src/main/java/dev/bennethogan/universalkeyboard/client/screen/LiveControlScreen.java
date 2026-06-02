@@ -1065,9 +1065,8 @@ public class LiveControlScreen extends Screen {
     }
 
     private static double stepPower(double current, int dir) {
-        double probe = dir > 0 ? current : current - 0.001;
-        double step  = probe < 0.10 ? 0.05 : 0.10;
-        return Math.max(0.0, Math.min(1.0, Math.round((current + dir * step) * 20) / 20.0));
+        int n = (int) Math.round(current * 15);
+        return Math.max(0, Math.min(15, n + dir)) / 15.0;
     }
 
     private static String vecArrow(double vx, double vy) {
