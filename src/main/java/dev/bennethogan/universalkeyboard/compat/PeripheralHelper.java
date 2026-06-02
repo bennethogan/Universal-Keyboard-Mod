@@ -42,19 +42,27 @@ public class PeripheralHelper {
     // Special condition - RPM setters
     private static final Set<String> RPM_TYPE_NAMES = Set.of(
             "electric_motor",             // CreateAddition — setSpeed(number)
-            "rotation_speed_controller"   // Create — setTargetSpeed(int)
+            "rotation_speed_controller",  // Create — setTargetSpeed(int)
+            "creative_motor"              // Create — setGeneratedSpeed(int)
     );
 
     public static boolean isRpmType(String type) {
         return RPM_TYPE_NAMES.contains(type);
     }
 
+    private static boolean isRpmSetterName(String n) {
+        return n.equals("setSpeed") || n.equals("setTargetSpeed") || n.equals("setGeneratedSpeed");
+    }
+
+    private static boolean isRpmGetterName(String n) {
+        return n.equals("getSpeed") || n.equals("getTargetSpeed") || n.equals("getGeneratedSpeed");
+    }
+
 
     public static boolean isRpmCapable(Object peripheral) {
         if (peripheral == null) return false;
         for (java.lang.reflect.Method m : peripheral.getClass().getMethods()) {
-            String n = m.getName();
-            if (!n.equals("setSpeed") && !n.equals("setTargetSpeed")) continue;
+            if (!isRpmSetterName(m.getName())) continue;
             java.lang.reflect.Parameter[] params = m.getParameters();
             if (params.length == 1) return true;
         }
@@ -63,7 +71,7 @@ public class PeripheralHelper {
 
     private static @Nullable String rpmSetterName(Object peripheral) {
         for (java.lang.reflect.Method m : peripheral.getClass().getMethods()) {
-            if (!m.getName().equals("setSpeed") && !m.getName().equals("setTargetSpeed")) continue;
+            if (!isRpmSetterName(m.getName())) continue;
             if (m.getParameters().length == 1) return m.getName();
         }
         return null;
@@ -71,7 +79,7 @@ public class PeripheralHelper {
 
     private static @Nullable String rpmGetterName(Object peripheral) {
         for (java.lang.reflect.Method m : peripheral.getClass().getMethods()) {
-            if (!m.getName().equals("getSpeed") && !m.getName().equals("getTargetSpeed")) continue;
+            if (!isRpmGetterName(m.getName())) continue;
             if (m.getParameters().length == 0) return m.getName();
         }
         return null;
@@ -93,7 +101,7 @@ public class PeripheralHelper {
         String getter = rpmGetterName(p);
         if (getter == null) return 0;
         int val = getIntVal(p, getter);
-        return Math.max(0, Math.min(256, Math.abs(val)));
+        return Math.max(-256, Math.min(256, val)); // signed: motors can run reverse
     }
 
 

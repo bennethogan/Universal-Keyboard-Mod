@@ -8,7 +8,7 @@ public class IconButton extends Button {
 
     private ModIcons icon;
     private final Component tooltip;
-    private final int accentBg; // -1 = default dark style; otherwise used as normal bg
+    private int accentBg;       // -1 = default dark style; otherwise used as normal bg
     private final int iconDx;   // horizontal offset added to centered icon position
 
     // default style square button
@@ -37,6 +37,7 @@ public class IconButton extends Button {
     }
 
     public void setIcon(ModIcons icon) { this.icon = icon; }
+    public void setAccentBg(int accentBg) { this.accentBg = accentBg; }
 
     @Override
     protected void renderWidget(GuiGraphics g, int mx, int my, float pt) {

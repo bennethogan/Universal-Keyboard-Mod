@@ -39,7 +39,7 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity {
 
     public WirelessCopycatBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
         super(type, pos, state);
-        for (int i = 0; i < FACES; i++) freqs[i] = generateFreq();
+        for (int i = 0; i < FACES; i++) freqs[i] = "";
     }
 
     public static String generateFreq() {
@@ -102,7 +102,10 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity {
         if (level == null || level.isClientSide) return;
         WirelessRSNetwork.unregisterAll((Level) level, worldPosition);
         for (int i = 0; i < FACES; i++) {
-            freqs[i]   = (newFreqs[i] != null && !newFreqs[i].isEmpty()) ? newFreqs[i] : generateFreq();
+            String f = newFreqs[i] != null ? newFreqs[i] : "";
+            // generate random frequency only once enabled, it starts blank now
+            if (newEnabled[i] && f.isEmpty()) f = generateFreq();
+            freqs[i]   = f;
             enabled[i] = newEnabled[i];
             if (!enabled[i]) power[i] = 0;
         }
@@ -189,7 +192,6 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity {
             ListTag freqList = tag.getList("freqs", Tag.TAG_STRING);
             for (int i = 0; i < FACES && i < freqList.size(); i++) {
                 freqs[i] = freqList.getString(i);
-                if (freqs[i].isEmpty()) freqs[i] = generateFreq();
             }
         }
         if (tag.contains("enabled")) {

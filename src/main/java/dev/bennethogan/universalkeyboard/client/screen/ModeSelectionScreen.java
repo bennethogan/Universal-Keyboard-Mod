@@ -382,7 +382,7 @@ public class ModeSelectionScreen extends Screen {
 
         g.drawCenteredString(font, pageTitle(), panelX + panelW / 2, panelY + PAD - 2, 0xFFFFFF);
         if (page != Page.ROOT)
-            g.drawString(font, "§8< Tab", panelX + PAD - 4, panelY + PAD - 2, 0x666666, false);
+            g.drawString(font, "§8<< Tab", panelX + PAD - 4, panelY + PAD - 2, 0x666666, false);
 
         List<Component> hoverTip = null;
         for (Box b : boxes) {
@@ -492,6 +492,12 @@ public class ModeSelectionScreen extends Screen {
     public boolean mouseClicked(double mx, double my, int btn) {
         if (btn != 0) return super.mouseClicked(mx, my, btn);
 
+        // Clickable "<< Tab" back button
+        if (page != Page.ROOT && inBackHint(mx, my)) {
+            setPage(parentOf(page));
+            return true;
+        }
+
         if (twOfferPos != null) {
             int[] L = twDialogLayout();
             int dx = L[0], btnY = L[4], btnH = L[5];
@@ -529,6 +535,13 @@ public class ModeSelectionScreen extends Screen {
 
     @Override
     public boolean isPauseScreen() { return false; }
+
+    // Hit-test for the "<< Tab" back button
+    private boolean inBackHint(double mx, double my) {
+        int tx = panelX + PAD - 4, ty = panelY + PAD - 2;
+        int tw = font.width("<< Tab"), th = font.lineHeight;
+        return mx >= tx - 2 && mx < tx + tw + 2 && my >= ty - 2 && my < ty + th + 2;
+    }
 
     private static void drawBorder(GuiGraphics g, int x, int y, int w, int h, int c) {
         g.fill(x, y, x + w, y + 1, c);

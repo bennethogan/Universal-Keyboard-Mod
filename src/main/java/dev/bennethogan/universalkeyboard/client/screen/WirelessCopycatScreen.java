@@ -65,6 +65,9 @@ public class WirelessCopycatScreen extends PanelScreen {
                     Component.literal(enabledState[fi] ? "Enabled" : "Disabled"),
                     b -> {
                         enabledState[fi] = !enabledState[fi];
+                        // Generate a frequency only after first enabled
+                        if (enabledState[fi] && freqBoxes[fi].getValue().isEmpty())
+                            freqBoxes[fi].setValue(WirelessCopycatBlockEntity.generateFreq());
                         ((IconButton) b).setIcon(enabledState[fi] ? ModIcons.ACTIVE : ModIcons.PASSIVE);
                         b.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
                                 Component.literal(enabledState[fi] ? "Enabled" : "Disabled")));
@@ -102,14 +105,14 @@ public class WirelessCopycatScreen extends PanelScreen {
         }
 
         int footY = panelY + getPanelH() - BTN - PAD;
-        addRenderableWidget(DarkButton.make(
-                Component.translatable("gui.universalkeyboard.btn.revert"),
+        addRenderableWidget(IconButton.make(ModIcons.REVERT,
+                Component.translatable("gui.universalkeyboard.tooltip.revert"),
                 b -> confirmDialog.open(
                         "gui.universalkeyboard.dialog.revert_title",
                         "gui.universalkeyboard.dialog.revert_body",
                         "gui.universalkeyboard.btn.yes_revert",
                         this::doRevert),
-                panelX + PAD, footY, 60, BTN));
+                panelX + PAD, footY, BTN));
         addRenderableWidget(DarkButton.make(Component.literal("x"),
                 b -> onClose(), panelX + PANEL_W - PAD - BTN, footY, BTN, BTN));
 

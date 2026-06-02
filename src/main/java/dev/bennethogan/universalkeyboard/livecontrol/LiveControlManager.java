@@ -444,6 +444,7 @@ public class LiveControlManager {
         Map<Integer, double[]> vectorByChannel  = new HashMap<>();
         Map<Integer, Integer>  linkSignals      = new HashMap<>();
         Map<Integer, Integer>  rpmByChannel     = new HashMap<>();
+        Set<Integer>           rpmActiveHldTgl  = new java.util.HashSet<>();
 
         for (int i = 0; i < bindings.size(); i++) {
             LiveControlBinding b            = bindings.get(i);
@@ -488,7 +489,10 @@ public class LiveControlManager {
                         rpmByChannel.putIfAbsent(b.channel, 0);
                     } else {
                         int contribution = bindingActive ? b.rpmTarget : 0;
-                        rpmByChannel.merge(b.channel, contribution, Math::max);
+                        // Fixed so negative targets arent clamped, for reverse RPM speed
+                        rpmByChannel.merge(b.channel, contribution,
+                                (cur, in) -> Math.abs(in) >= Math.abs(cur) ? in : cur);
+                        if (bindingActive) rpmActiveHldTgl.add(b.channel);
                     }
                 }
                 default -> {}
@@ -500,8 +504,11 @@ public class LiveControlManager {
             rsTargetToSignal.merge(e.getKey(), e.getValue(), Math::max);
         for (Map.Entry<Integer, Integer> e : thrIncCounters.entrySet())
             powerByChannel.merge(e.getKey(), e.getValue() / 15.0, Math::max);
+        // INC counters drive their channel, but yields to a HLD/TGL binding that is
+        // currently active on the same channel (so toggle overrides the INC )
         for (Map.Entry<Integer, Integer> e : rpmIncCounters.entrySet())
-            rpmByChannel.put(e.getKey(), e.getValue());
+            if (!rpmActiveHldTgl.contains(e.getKey()))
+                rpmByChannel.put(e.getKey(), e.getValue());
 
         // Normalise vectors with magnitude > 1
         for (double[] vec : vectorByChannel.values()) {

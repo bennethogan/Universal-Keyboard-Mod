@@ -219,8 +219,8 @@ public class LiveControlScreen extends Screen {
             bx += BTN_W + BTN_GAP;
         }
 
-        // Revert (trash)
-        addRenderableWidget(IconButton.make(ModIcons.TRASH,
+        // Revert
+        addRenderableWidget(IconButton.make(ModIcons.REVERT,
                 Component.translatable("gui.universalkeyboard.tooltip.revert"),
                 b -> confirmDialog.open(
                         "gui.universalkeyboard.dialog.revert_title",

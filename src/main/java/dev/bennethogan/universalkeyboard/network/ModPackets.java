@@ -1302,10 +1302,21 @@ public class ModPackets {
             int slotIdx  = packet.slotIdx();
             int cols     = dev.bennethogan.universalkeyboard.menu.WirelessConfigMenu.GHOST_COLS;
             int entryIdx = slotIdx / cols;
-            if (entryIdx < 0 || entryIdx >= kb.getWirelessCount()) return;
+            if (entryIdx < 0 || entryIdx >= dev.bennethogan.universalkeyboard.menu.WirelessConfigMenu.ROWS) return;
+            // Auto-activate: create entries up to entryIdx when an item is placed
+            if (!packet.item().isEmpty()) {
+                while (kb.getWirelessCount() <= entryIdx) {
+                    if (kb.addWirelessEntry() < 0) break; // MAX_WIRELESS reached
+                }
+            }
+            if (entryIdx >= kb.getWirelessCount()) return; // couldn't create (already at max)
             boolean isFirst = (slotIdx % cols) == 0;
             kb.setWirelessFrequencyItem(entryIdx, isFirst, packet.item());
-            // Immediately broadcast so the client stays in sync
+            // Blank+blank: if both frequency slots are now empty, deactivate the entry
+            if (!kb.getWirelessEntries().get(entryIdx).hasFrequency()) {
+                kb.removeWirelessEntry(entryIdx);
+            }
+            // Broadcast so the client stays in sync
             if (sp.containerMenu instanceof dev.bennethogan.universalkeyboard.menu.WirelessConfigMenu wcm
                     && wcm.getKeyboardPos().equals(packet.keyboardPos())) {
                 wcm.broadcastChanges();
@@ -1388,7 +1399,7 @@ public class ModPackets {
                     for (int i = 0; i < vlen; i++) vars[i] = buf.readDouble();
                     int rlen = buf.readShort() & 0xFFFF;
                     int[] rpmVals = new int[rlen];
-                    for (int i = 0; i < rlen; i++) rpmVals[i] = buf.readShort() & 0xFFFF;
+                    for (int i = 0; i < rlen; i++) rpmVals[i] = buf.readShort(); // signed: motors can run reverse (negative)
                     int activeProf = buf.readByte() & 0xFF;
                     int numProfiles = buf.readByte() & 0xFF;
                     List<List<dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding>> allProfs = new ArrayList<>(numProfiles);

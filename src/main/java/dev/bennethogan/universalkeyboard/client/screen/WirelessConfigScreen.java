@@ -3,7 +3,6 @@ package dev.bennethogan.universalkeyboard.client.screen;
 import dev.bennethogan.universalkeyboard.menu.WirelessConfigMenu;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
@@ -18,9 +17,6 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
     private static final int FREQ1_TINT = 0x55FF3333; // transparent red  (freq 1 / left slot)
     private static final int FREQ2_TINT = 0x553333FF; // transparent blue (freq 2 / right slot)
 
-    private Button addBtn;
-    private Button removeBtn;
-
     public WirelessConfigScreen(WirelessConfigMenu menu, Inventory inv, Component title) {
         super(menu, inv, title);
         this.imageWidth      = 222;
@@ -31,27 +27,6 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
     @Override
     protected void init() {
         super.init();
-
-        int btnY = topPos + 18 + WirelessConfigMenu.COL_ROWS * 18 + 6;
-        addBtn = Button.builder(Component.translatable("gui.universalkeyboard.btn.add"),
-                        b -> ModPackets.sendWirelessAddRemove(menu.getKeyboardPos(), true))
-                .pos(leftPos + 8, btnY).size(28, 12).build();
-        removeBtn = Button.builder(Component.translatable("gui.universalkeyboard.btn.remove"),
-                        b -> ModPackets.sendWirelessAddRemove(menu.getKeyboardPos(), false))
-                .pos(leftPos + 40, btnY).size(44, 12).build();
-        addRenderableWidget(Button.builder(Component.literal("Wireless Channels →"),
-                b -> { ModPackets.sendRequestLinkFreqScreen(menu.getKeyboardPos()); onClose(); })
-                .pos(leftPos + 90, btnY).size(90, 12).build());
-        addRenderableWidget(addBtn);
-        addRenderableWidget(removeBtn);
-    }
-
-    @Override
-    protected void containerTick() {
-        super.containerTick();
-        int count = menu.getWirelessCount();
-        addBtn.active    = count < WirelessConfigMenu.ROWS;
-        removeBtn.active = count > 0;
     }
 
     @Override
@@ -123,13 +98,10 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType type) {
         if (slot != null && slotId >= 0 && slotId < WirelessConfigMenu.GHOST_COUNT
                 && (type == ClickType.PICKUP || type == ClickType.QUICK_MOVE)) {
-            int entryIdx = slotId / WirelessConfigMenu.GHOST_COLS;
-            if (entryIdx < menu.getWirelessCount()) {
-                ItemStack carried = menu.getCarried();
-                ItemStack toSet   = carried.isEmpty() ? ItemStack.EMPTY : carried.copyWithCount(1);
-                slot.set(toSet); // immediate client-side visual update
-                ModPackets.sendWirelessGhostSet(menu.getKeyboardPos(), slotId, toSet);
-            }
+            ItemStack carried = menu.getCarried();
+            ItemStack toSet   = carried.isEmpty() ? ItemStack.EMPTY : carried.copyWithCount(1);
+            slot.set(toSet); // immediate client-side visual update
+            ModPackets.sendWirelessGhostSet(menu.getKeyboardPos(), slotId, toSet);
             return; // never call super for ghost slots
         }
         super.slotClicked(slot, slotId, mouseButton, type);

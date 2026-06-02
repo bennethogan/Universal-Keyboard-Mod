@@ -22,6 +22,7 @@
   "gui.universalkeyboard.screen.mode_selection.title": "§bUniversal Keyboard",
   "gui.universalkeyboard.screen.live_controller.title": "§bLive Controller",
   "gui.universalkeyboard.screen.wireless_config.title": "Redstone Links",
+  "gui.universalkeyboard.screen.wireless_copycat.title": "Wireless Copycat",
   "gui.universalkeyboard.screen.auto_type.title": "Auto-Type Script",
   "gui.universalkeyboard.screen.sequencer.title": "§bPeripheral Sequencer",
 
@@ -125,6 +126,11 @@
   "gui.universalkeyboard.tooltip.prev_page": "Previous Page",
   "gui.universalkeyboard.tooltip.next_page": "Next Page",
   "gui.universalkeyboard.tooltip.profile_n": "Profile %s",
+  "gui.universalkeyboard.tooltip.back": "Back",
+  "gui.universalkeyboard.tooltip.play": "Play",
+  "gui.universalkeyboard.tooltip.stop": "Stop",
+  "gui.universalkeyboard.tooltip.save_file": "Save to File",
+  "gui.universalkeyboard.tooltip.load_file": "Load from File",
 
   "gui.universalkeyboard.dialog.reset_title": "§cReset all keyboard data?",
   "gui.universalkeyboard.dialog.reset_body": "§7This cannot be undone.",

@@ -26,7 +26,8 @@ public class ModIcons {
     public static final ModIcons ADD          = new ModIcons(0,  0);
     public static final ModIcons ACTIVE       = ENABLED;
     public static final ModIcons PASSIVE      = DISABLED;
-    public static final ModIcons DICE         = RANDOMIZE;
+    public static final ModIcons REVERT       = new ModIcons(4,  5);
+    public static final ModIcons DICE         = new ModIcons(5, 12);
     public static final ModIcons LOCATE       = PLAY;
 
     private final int iconX;

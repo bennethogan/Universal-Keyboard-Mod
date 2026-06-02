@@ -45,7 +45,7 @@ public class SequencerScreen extends Screen {
     private static final int TYPE_DD_VIS = 4;
     private static final int SRC_DD_VIS  = 6;
 
-    private static final int COL_NUM  = 0;
+    private static final int COL_NUM  = 4;
     private static final int COL_CH   = 16;
     private static final int COL_TYPE = 34;
     private static final int COL_CTX  = 108;
@@ -131,7 +131,7 @@ public class SequencerScreen extends Screen {
     private int bottomBtnW, bottomBtnY, loadBtnX;
 
     private final List<RowWidgets> rows = new ArrayList<>();
-    private Button  runStopBtn;
+    private IconButton runStopBtn;
     private EditBox saveName;
 
     boolean refreshing = false;
@@ -223,33 +223,52 @@ public class SequencerScreen extends Screen {
 
         for (int r = 0; r < VISIBLE; r++) rows.add(new RowWidgets(r));
 
-        // Five-button bottom row: Run/Stop | Save | Save File | Load File | Close
-        bottomBtnW = (PANEL_W - PAD * 2 - 4 * 4) / 5; // ~78 px each
-        bottomBtnY = panelY + panelH - PAD - BTN_H;
-        int gap = 4;
+        // Bottom row: Back page | gap | Play/Stop ; Revert ; Save ; Load
+        final int IBTN_W = 48, IBTN_H = 16, gap = 4;
+        bottomBtnW = IBTN_W;
+        bottomBtnY = panelY + panelH - PAD - IBTN_H;
 
-        runStopBtn = Button.builder(runStopLabel(), b -> onRunStop())
-                .pos(panelX + PAD, bottomBtnY).size(bottomBtnW, BTN_H).build();
+        // Back, left-positioned; returns to the mode-selection menu
+        addRenderableWidget(IconButton.make(ModIcons.PREV_PAGE,
+                Component.translatable("gui.universalkeyboard.tooltip.back"),
+                b -> goBack(),
+                panelX + PAD, bottomBtnY, IBTN_W, IBTN_H));
+
+        // Right group, laid out right-to-left
+        int rx = panelX + PANEL_W - PAD - IBTN_W;
+
+        // Load (folder)
+        loadBtnX = rx;
+        addRenderableWidget(IconButton.make(ModIcons.FOLDER,
+                Component.translatable("gui.universalkeyboard.tooltip.load_file"),
+                b -> onLoadFile(),
+                rx, bottomBtnY, IBTN_W, IBTN_H));
+        rx -= IBTN_W + gap;
+
+        // Save (floppy)
+        addRenderableWidget(IconButton.make(ModIcons.CONFIG_SAVE,
+                Component.translatable("gui.universalkeyboard.tooltip.save_file"),
+                b -> onSaveFile(),
+                rx, bottomBtnY, IBTN_W, IBTN_H));
+        rx -= IBTN_W + gap;
+
+        // Revert, discards to how the menu opened.
+        addRenderableWidget(IconButton.make(ModIcons.REVERT,
+                Component.translatable("gui.universalkeyboard.tooltip.revert"),
+                b -> revertDialog.open(
+                        "gui.universalkeyboard.dialog.revert_title",
+                        "gui.universalkeyboard.dialog.revert_body",
+                        "gui.universalkeyboard.btn.yes_revert",
+                        this::onRevert),
+                rx, bottomBtnY, IBTN_W, IBTN_H));
+        rx -= IBTN_W + gap;
+
+        // Play/Stop, icon toggles with run state
+        runStopBtn = IconButton.make(running ? ModIcons.STOP : ModIcons.PLAY,
+                Component.translatable(running ? "gui.universalkeyboard.tooltip.stop" : "gui.universalkeyboard.tooltip.play"),
+                b -> onRunStop(),
+                rx, bottomBtnY, IBTN_W, IBTN_H, running ? -1 : 0xFF1E3A1E, 0);
         addRenderableWidget(runStopBtn);
-
-        // Steps autosave continuously; Revert discards back to how the menu opened.
-        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.revert"),
-                        b -> revertDialog.open(
-                                "gui.universalkeyboard.dialog.revert_title",
-                                "gui.universalkeyboard.dialog.revert_body",
-                                "gui.universalkeyboard.btn.yes_revert",
-                                this::onRevert))
-                .pos(panelX + PAD + (bottomBtnW + gap), bottomBtnY).size(bottomBtnW, BTN_H).build());
-
-        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.save_file"), b -> onSaveFile())
-                .pos(panelX + PAD + (bottomBtnW + gap) * 2, bottomBtnY).size(bottomBtnW, BTN_H).build());
-
-        loadBtnX = panelX + PAD + (bottomBtnW + gap) * 3;
-        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.load_file"), b -> onLoadFile())
-                .pos(loadBtnX, bottomBtnY).size(bottomBtnW, BTN_H).build());
-
-        addRenderableWidget(Button.builder(Component.translatable("gui.universalkeyboard.btn.close"), b -> onClose())
-                .pos(panelX + PAD + (bottomBtnW + gap) * 4, bottomBtnY).size(bottomBtnW, BTN_H).build());
 
         refreshAllRows();
         ModPackets.sendSequencerWatch(keyboardPos, true);
@@ -259,6 +278,12 @@ public class SequencerScreen extends Screen {
     public void onClose() {
         ModPackets.sendSequencerWatch(keyboardPos, false);
         super.onClose();
+    }
+
+    // Return to the mode-selection menu with breadcrumb
+    private void goBack() {
+        ModPackets.sendSequencerWatch(keyboardPos, false);
+        if (!MenuNav.back()) super.onClose();
     }
 
     @Override
@@ -465,8 +490,8 @@ public class SequencerScreen extends Screen {
     private void renderLoadDropdown(GuiGraphics g, int mx, int my) {
         if (!loadDropdownOpen || loadDropdownFiles.isEmpty()) return;
         int itemH = 12;
-        int ddW   = bottomBtnW + 20;
-        int ddX   = loadBtnX;
+        int ddW   = bottomBtnW + 60;
+        int ddX   = loadBtnX + bottomBtnW - ddW; // right-aligned to the Load button
         int vis   = Math.min(DD_VIS, loadDropdownFiles.size());
         int ddH   = vis * itemH + 4;
         int ddY   = bottomBtnY - ddH - 2; // drop UP
@@ -606,10 +631,14 @@ public class SequencerScreen extends Screen {
     }
 
     private void updateRunStopLabel() {
-        if (runStopBtn != null) runStopBtn.setMessage(runStopLabel());
+        if (runStopBtn == null) return;
+        runStopBtn.setIcon(running ? ModIcons.STOP : ModIcons.PLAY);
+        runStopBtn.setAccentBg(running ? -1 : 0xFF1E3A1E);
+        runStopBtn.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
+                Component.translatable(running
+                        ? "gui.universalkeyboard.tooltip.stop"
+                        : "gui.universalkeyboard.tooltip.play")));
     }
-
-    private Component runStopLabel() { return Component.literal(running ? "■ Stop" : "▶ Run"); }
 
     private void insertStep(int beforeIdx) {
         if (steps.size() >= MAX_STEPS) return;
@@ -850,8 +879,8 @@ public class SequencerScreen extends Screen {
     private boolean handleLoadDropdownClick(double mx, double my) {
         int savedScroll = loadDropdownScroll;
         int itemH = 12;
-        int ddW   = bottomBtnW + 20;
-        int ddX   = loadBtnX;
+        int ddW   = bottomBtnW + 60;
+        int ddX   = loadBtnX + bottomBtnW - ddW; // right-aligned to the Load button
         int vis   = Math.min(DD_VIS, loadDropdownFiles.size());
         int ddH   = vis * itemH + 4;
         int ddY   = bottomBtnY - ddH - 2;

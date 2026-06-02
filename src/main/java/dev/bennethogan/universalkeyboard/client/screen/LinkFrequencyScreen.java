@@ -21,6 +21,7 @@ public class LinkFrequencyScreen extends PanelScreen {
     private static final int ROW_H   = 18;
     private static final int PAD     = 8;
     private static final int BTN     = 16;
+    private static final int HEADER_H = 28;
     private static final int MAX     = LinkedKeyboardBlockEntity.MAX_LINK_FREQS;
 
     private static final int COL_DEL = PAD;
@@ -38,7 +39,7 @@ public class LinkFrequencyScreen extends PanelScreen {
     private ConfirmDialog confirmDialog;
 
     public LinkFrequencyScreen(BlockPos keyboardPos, String[] freqs) {
-        super(Component.literal("Wireless Channels"));
+        super(Component.translatable("gui.universalkeyboard.screen.wireless_copycat.title"));
         this.keyboardPos   = keyboardPos;
         this.freqs         = new ArrayList<>();
         for (String f : freqs) if (f != null && !f.isEmpty()) this.freqs.add(f);
@@ -49,7 +50,7 @@ public class LinkFrequencyScreen extends PanelScreen {
     protected int getPanelW() { return PANEL_W; }
 
     @Override
-    protected int getPanelH() { return PAD + 10 + 6 + VISIBLE * ROW_H + PAD + 14 + PAD; }
+    protected int getPanelH() { return HEADER_H + VISIBLE * ROW_H + PAD; }
 
     @Override
     protected void init() {
@@ -60,9 +61,23 @@ public class LinkFrequencyScreen extends PanelScreen {
         confirmDialog = new ConfirmDialog(font);
         confirmDialog.setParentBounds(panelX, panelY, PANEL_W, getPanelH());
 
+
+        addRenderableWidget(IconButton.make(ModIcons.REVERT,
+                Component.translatable("gui.universalkeyboard.tooltip.revert"),
+                b -> confirmDialog.open(
+                        "gui.universalkeyboard.dialog.revert_title",
+                        "gui.universalkeyboard.dialog.revert_body",
+                        "gui.universalkeyboard.btn.yes_revert",
+                        this::doRevert),
+                panelX + PANEL_W - PAD - BTN * 2 - 2, panelY + 6, BTN));
+        addRenderableWidget(IconButton.make(ModIcons.PREV_PAGE,
+                Component.translatable("gui.universalkeyboard.tooltip.back"),
+                b -> goBack(),
+                panelX + PANEL_W - PAD - BTN, panelY + 6, BTN));
+
         int totalItems = freqs.size() + (freqs.size() < MAX ? 1 : 0);
         scrollOffset   = Math.min(scrollOffset, Math.max(0, totalItems - VISIBLE));
-        int rowAreaY   = panelY + PAD + 10 + 6;
+        int rowAreaY   = panelY + HEADER_H;
 
         for (int vi = 0; vi < VISIBLE; vi++) {
             int fi   = scrollOffset + vi;
@@ -107,20 +122,11 @@ public class LinkFrequencyScreen extends PanelScreen {
                         }, panelX + COL_DEL, rowY + 1, PANEL_W - PAD * 2, 14));
             }
         }
+    }
 
-        int footY = panelY + getPanelH() - 14 - PAD;
-        addRenderableWidget(DarkButton.make(Component.literal("Redstone Links →"),
-                b -> { syncBoxesToFreqs(); ModPackets.sendOpenWirelessConfig(keyboardPos); onClose(); },
-                panelX + PAD, footY, 110, 14));
-        addRenderableWidget(DarkButton.make(Component.translatable("gui.universalkeyboard.btn.revert"),
-                b -> confirmDialog.open(
-                        "gui.universalkeyboard.dialog.revert_title",
-                        "gui.universalkeyboard.dialog.revert_body",
-                        "gui.universalkeyboard.btn.yes_revert",
-                        this::doRevert),
-                panelX + PANEL_W - PAD - 60 - BTN - 4, footY, 60, 14));
-        addRenderableWidget(DarkButton.make(Component.literal("x"),
-                b -> onClose(), panelX + PANEL_W - PAD - BTN, footY, BTN, 14));
+    private void goBack() {
+        syncBoxesToFreqs();
+        if (!MenuNav.back()) onClose();
     }
 
     private void syncBoxesToFreqs() {
@@ -186,9 +192,11 @@ public class LinkFrequencyScreen extends PanelScreen {
 
     @Override
     protected void renderContents(GuiGraphics g, int mouseX, int mouseY, float pt) {
-        g.drawString(font, "Wireless Channels (W1-W" + MAX + ")", panelX + PAD, panelY + PAD, 0xFFFFFF, false);
+        int titleMaxW = (PANEL_W - PAD - BTN * 2 - 2 - 4) - PAD;
+        drawScaled(g, getTitle().getString(), panelX + PAD, panelY + PAD, titleMaxW, 1.0f, 0xFFFFFF);
+        drawScaled(g, "W1-W" + MAX, panelX + PAD, panelY + PAD + 11, titleMaxW, 0.75f, 0x888888);
 
-        int rowAreaY = panelY + PAD + 10 + 6;
+        int rowAreaY = panelY + HEADER_H;
         for (int vi = 0; vi < VISIBLE; vi++) {
             int fi = scrollOffset + vi;
             if (fi < freqs.size()) {
@@ -196,5 +204,17 @@ public class LinkFrequencyScreen extends PanelScreen {
                 g.drawString(font, "W" + (fi + 1), panelX + COL_LBL, rowY + 4, 0xAAAAAA, false);
             }
         }
+    }
+
+    // Ideally this will wrap long translations, will work on adding stuff like this everywhere if it works as intended
+    private void drawScaled(GuiGraphics g, String text, int x, int y, int maxW, float baseScale, int color) {
+        int w = font.width(text);
+        float scale = baseScale;
+        if (w * scale > maxW) scale = maxW / (float) w;
+        g.pose().pushPose();
+        g.pose().translate(x, y, 0);
+        g.pose().scale(scale, scale, 1f);
+        g.drawString(font, text, 0, 0, color, false);
+        g.pose().popPose();
     }
 }
