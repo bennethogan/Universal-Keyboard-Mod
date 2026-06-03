@@ -265,7 +265,7 @@ public class SequencerScreen extends Screen {
         bottomBtnY = panelY + panelH - PAD - IBTN_H;
 
         // Back, left-positioned; returns to the mode-selection menu
-        addRenderableWidget(IconButton.make(ModIcons.PREV_PAGE,
+        addRenderableWidget(IconButton.make(ModIcons.TAB_BACK,
                 Component.translatable("gui.universalkeyboard.tooltip.back"),
                 b -> goBack(),
                 panelX + PAD, bottomBtnY, IBTN_W, IBTN_H));

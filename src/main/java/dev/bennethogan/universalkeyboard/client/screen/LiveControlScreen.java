@@ -234,7 +234,7 @@ public class LiveControlScreen extends Screen {
         int bx    = panelX + (PANEL_W - (NUM_BTNS * BTN_W + (NUM_BTNS - 1) * BTN_GAP)) / 2;
 
         // Back button — bottom left, isolated from the rest
-        addRenderableWidget(IconButton.make(ModIcons.PREV_PAGE,
+        addRenderableWidget(IconButton.make(ModIcons.TAB_BACK,
                 Component.translatable("gui.universalkeyboard.tooltip.back"),
                 b -> goBack(),
                 panelX + PAD, btnY, BTN_W, BTN_H));

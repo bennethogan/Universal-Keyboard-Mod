@@ -49,7 +49,7 @@ public class GamepadCalibrationScreen extends Screen {
 
         int by = panelY + PANEL_H - PAD - BTN_H;
 
-        addRenderableWidget(IconButton.make(ModIcons.PREV_PAGE,
+        addRenderableWidget(IconButton.make(ModIcons.TAB_BACK,
                 Component.translatable("gui.universalkeyboard.tooltip.back"),
                 b -> onClose(),
                 panelX + PAD, by, BTN_H));

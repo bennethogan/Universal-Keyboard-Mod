@@ -15,7 +15,7 @@ public class ModIcons {
     public static final ModIcons ENABLED      = new ModIcons(0,  1);
     public static final ModIcons FOLDER       = new ModIcons(2,  1);
     public static final ModIcons DISABLED     = new ModIcons(8, 10);
-    public static final ModIcons RANDOMIZE    = new ModIcons(3,  1);
+    public static final ModIcons TAB_BACK      = new ModIcons(5,  10);
     public static final ModIcons COPY         = new ModIcons(5, 11);
     public static final ModIcons PASTE        = new ModIcons(0,  3);
     public static final ModIcons PLAY         = new ModIcons(0,  5);

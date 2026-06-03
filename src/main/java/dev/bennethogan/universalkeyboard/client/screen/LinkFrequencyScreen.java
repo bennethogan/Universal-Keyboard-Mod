@@ -74,7 +74,7 @@ public class LinkFrequencyScreen extends PanelScreen {
                         "gui.universalkeyboard.btn.yes_revert",
                         this::doRevert),
                 panelX + PANEL_W - PAD - BTN * 2 - 2, panelY + 6, BTN));
-        addRenderableWidget(IconButton.make(ModIcons.PREV_PAGE,
+        addRenderableWidget(IconButton.make(ModIcons.TAB_BACK,
                 Component.translatable("gui.universalkeyboard.tooltip.back"),
                 b -> goBack(),
                 panelX + PANEL_W - PAD - BTN, panelY + 6, BTN));
