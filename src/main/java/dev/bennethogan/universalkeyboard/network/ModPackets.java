@@ -7,6 +7,8 @@ import dev.bennethogan.universalkeyboard.compat.CreateValueHelper;
 import dev.bennethogan.universalkeyboard.compat.KeyboardMode;
 import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import dev.bennethogan.universalkeyboard.compat.SableCompat;
+import dev.bennethogan.universalkeyboard.config.ModConfig;
+import dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen;
 import dev.bennethogan.universalkeyboard.wireless.rs.WirelessRSNetwork;
 import net.minecraft.world.level.Level;
 import dev.bennethogan.universalkeyboard.item.LinkedKeyboardItem;
@@ -411,6 +413,7 @@ public class ModPackets {
         registrar.optional().playToServer(LocateWirelessCopycatPacket.TYPE,       LocateWirelessCopycatPacket.STREAM_CODEC,       ModPackets::handleLocateWirelessCopycat);
         registrar.optional().playToServer(SaveLinkFreqsPacket.TYPE,               SaveLinkFreqsPacket.STREAM_CODEC,               ModPackets::handleSaveLinkFreqs);
         registrar.optional().playToServer(RequestLinkFreqScreenPacket.TYPE,       RequestLinkFreqScreenPacket.STREAM_CODEC,       ModPackets::handleRequestLinkFreqScreen);
+        registrar.playToServer(SetFavoritePacket.TYPE,              SetFavoritePacket.CODEC,              ModPackets::handleSetFavorite);
 
         // playToClient — the server must declare these channels so the handshake succeeds.
         // Real handlers are registered by ClientPacketHandlers (client only); skip here on client
@@ -427,6 +430,7 @@ public class ModPackets {
             registrar.playToClient(TypewriterImportOfferPacket.TYPE,  TypewriterImportOfferPacket.CODEC,  (p, c) -> {});
             registrar.playToClient(ChannelChangedPacket.TYPE,          ChannelChangedPacket.CODEC,          (p, c) -> {});
             registrar.playToClient(OpenLiveControlScreenPacket.TYPE, OpenLiveControlScreenPacket.CODEC, (p, c) -> {});
+            registrar.playToClient(SyncFavoritePacket.TYPE,            SyncFavoritePacket.CODEC,            (p, c) -> {});
             registrar.optional().playToClient(OpenWirelessCopycatScreenPacket.TYPE, OpenWirelessCopycatScreenPacket.STREAM_CODEC, (p, c) -> {});
             registrar.optional().playToClient(OpenLinkFreqScreenPacket.TYPE,        OpenLinkFreqScreenPacket.STREAM_CODEC,        (p, c) -> {});
         }
@@ -885,6 +889,10 @@ public class ModPackets {
                 state.fuelAmountMb(), state.fuelCapacityMb(),
                 channel, sublevelSnapshot
         ));
+        // Sync favorite so the ThrusterControlScreen can highlight its star button.
+        BlockEntity kbe = player.serverLevel().getBlockEntity(keyboardPos);
+        if (kbe instanceof LinkedKeyboardBlockEntity kb)
+            PacketDistributor.sendToPlayer(player, new SyncFavoritePacket(keyboardPos, (byte) kb.getFavoriteScreen().ordinal()));
     }
 
     public static void sendSetThrusterValue(BlockPos keyboardPos, String methodName, double value) {
@@ -1205,6 +1213,9 @@ public class ModPackets {
                     chSetters.addAll(result.setters());
                 }
             }
+            // synthetic value panel setter
+            if (kLevel != null && CreateValueHelper.hasScrollValue(kLevel.getBlockEntity(targets.get(0))))
+                chSetters.add(new String[]{ CreateValueHelper.VALUE_PANEL_SETTER, "int" });
             gettersByChannel.put(ch, chGetters);
             settersByChannel.put(ch, chSetters);
         }
@@ -1217,6 +1228,7 @@ public class ModPackets {
                 keyboardPos, keyboard.getSequencerSteps(),
                 keyboard.isSequencerRunning(), keyboard.getSequencerCurrentStep(),
                 ch1Getters, ch1Setters, gettersByChannel, settersByChannel));
+        PacketDistributor.sendToPlayer(player, new SyncFavoritePacket(keyboardPos, (byte) keyboard.getFavoriteScreen().ordinal()));
     }
 
     public static void sendSaveAndRunSequencer(BlockPos keyboardPos, List<SequencerStep> steps, boolean run) {
@@ -1353,7 +1365,8 @@ public class ModPackets {
             double[] varValues,
             int[] rpmValues,
             int activeProfile,
-            List<List<dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding>> allProfiles
+            List<List<dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding>> allProfiles,
+            boolean autoStart
     ) implements CustomPacketPayload {
         public static final Type<OpenLiveControlScreenPacket> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "open_live_control_screen"));
@@ -1380,6 +1393,7 @@ public class ModPackets {
                         buf.writeInt(profile.size());
                         for (var b : profile) b.encode(buf);
                     }
+                    buf.writeBoolean(p.autoStart());
                 },
                 buf -> {
                     BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
@@ -1410,7 +1424,8 @@ public class ModPackets {
                             profile.add(dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.decode(buf));
                         allProfs.add(profile);
                     }
-                    return new OpenLiveControlScreenPacket(pos, binds, wc, ht, hvt, hr, lrs, wp, tp, vars, rpmVals, activeProf, allProfs);
+                    boolean autoStart = buf.readBoolean();
+                    return new OpenLiveControlScreenPacket(pos, binds, wc, ht, hvt, hr, lrs, wp, tp, vars, rpmVals, activeProf, allProfs, autoStart);
                 });
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
 
@@ -1485,6 +1500,64 @@ public class ModPackets {
         PacketDistributor.sendToServer(new OpenLiveControlPacket(keyboardPos));
     }
 
+    public static void sendSetFavorite(BlockPos keyboardPos, FavoriteScreen fav) {
+        PacketDistributor.sendToServer(new SetFavoritePacket(keyboardPos, (byte) fav.ordinal()));
+    }
+
+    private static void handleSetFavorite(SetFavoritePacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            kb.setFavoriteScreen(FavoriteScreen.fromByte(packet.favorite()));
+            // Confirm back to client so the star button updates immediately.
+            PacketDistributor.sendToPlayer(sp, new SyncFavoritePacket(packet.keyboardPos(), packet.favorite()));
+        });
+    }
+
+    // Called from LinkedKeyboardBlock when a favorite shortcut is in effect
+    public static void openFavoriteForPlayer(ServerPlayer sp, BlockPos keyboardPos,
+            LinkedKeyboardBlockEntity kb) {
+        var level = sp.serverLevel();
+        FavoriteScreen fav = kb.getFavoriteScreen();
+        switch (fav) {
+            case LIVE_CONTROL -> {
+                boolean autoStart = ModConfig.COMMON.favoriteLiveControlAutoStart.get();
+                openLiveControlForPlayer(sp, keyboardPos, kb, autoStart);
+            }
+            case SEQUENCER -> sendOpenSequencer(sp, keyboardPos, kb);
+            case THRUSTER_CONTROL -> {
+                BlockPos targetPos = kb.getLinkedTargetPos();
+                if (targetPos == null || !kb.isTargetInRange()) {
+                    openModeSelectionFallback(sp, keyboardPos, kb, level);
+                    return;
+                }
+                PeripheralHelper.ThrusterState state = PeripheralHelper.scanThruster(level, targetPos);
+                if (state == null) {
+                    openModeSelectionFallback(sp, keyboardPos, kb, level);
+                    return;
+                }
+                double[] snap = (SableCompat.isPresent() && SableCompat.isOnSublevel(level, keyboardPos))
+                        ? SableCompat.getSnapshot(level, keyboardPos) : new double[0];
+                sendOpenThrusterControl(sp, keyboardPos, state, kb.getActiveChannel(), snap);
+            }
+            case NONE -> openModeSelectionFallback(sp, keyboardPos, kb, level);
+        }
+    }
+
+    private static void openModeSelectionFallback(ServerPlayer sp, BlockPos keyboardPos,
+            LinkedKeyboardBlockEntity kb, Level level) {
+        BlockPos targetPos = kb.getLinkedTargetPos();
+        if (targetPos == null) {
+            sendOpenModeSelection(sp, keyboardPos, "", 1 << KeyboardMode.PERIPHERAL_SEQUENCER.ordinal());
+        } else {
+            int bits = KeyboardMode.availableBitfield(level, targetPos)
+                    | (1 << KeyboardMode.PERIPHERAL_SEQUENCER.ordinal());
+            String typeName = level.getBlockState(targetPos).getBlock().getName().getString();
+            sendOpenModeSelection(sp, keyboardPos, typeName, bits);
+        }
+    }
+
     public static void sendSaveLiveBindings(BlockPos keyboardPos, int profileIdx,
             List<dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding> bindings) {
         PacketDistributor.sendToServer(new SaveLiveBindingsPacket(keyboardPos, profileIdx, bindings));
@@ -1500,47 +1573,50 @@ public class ModPackets {
             if (!(ctx.player() instanceof ServerPlayer sp)) return;
             BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
             if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
-            var level = sp.serverLevel();
-            boolean hasThrusters = false, hasVector = false, hasRpm = false;
+            openLiveControlForPlayer(sp, packet.keyboardPos(), kb, false);
+        });
+    }
 
-            // Current thruster power by channel (1-16); index 0 unused
-            int[] thrusterPowers = new int[LinkedKeyboardBlockEntity.MAX_CHANNELS + 1];
-            int[] rpmValues      = new int[LinkedKeyboardBlockEntity.MAX_CHANNELS + 1];
-            for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS; ch++) {
-                for (BlockPos tp : kb.getLinkedTargetPositions(ch)) {
-                    Object p = PeripheralHelper.getPeripheral(level, tp);
-                    if (p == null) continue;
-                    String type = PeripheralHelper.getPeripheralType(p);
-                    if (PeripheralHelper.isThrusterType(type)) {
-                        hasThrusters = true;
-                        if (type.contains("vector")) hasVector = true;
-                        if (thrusterPowers[ch] == 0)
-                            thrusterPowers[ch] = PeripheralHelper.getThrusterPower(level, tp);
-                    }
-                    if (PeripheralHelper.isRpmCapable(p)) {
-                        hasRpm = true;
-                        if (rpmValues[ch] == 0)
-                            rpmValues[ch] = PeripheralHelper.getRpmValue(level, tp);
-                    }
+    public static void openLiveControlForPlayer(ServerPlayer sp, BlockPos keyboardPos,
+            LinkedKeyboardBlockEntity kb, boolean autoStart) {
+        var level = sp.serverLevel();
+        boolean hasThrusters = false, hasVector = false, hasRpm = false;
+
+        int[] thrusterPowers = new int[LinkedKeyboardBlockEntity.MAX_CHANNELS + 1];
+        int[] rpmValues      = new int[LinkedKeyboardBlockEntity.MAX_CHANNELS + 1];
+        for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS; ch++) {
+            for (BlockPos tp : kb.getLinkedTargetPositions(ch)) {
+                Object p = PeripheralHelper.getPeripheral(level, tp);
+                if (p == null) continue;
+                String type = PeripheralHelper.getPeripheralType(p);
+                if (PeripheralHelper.isThrusterType(type)) {
+                    hasThrusters = true;
+                    if (type.contains("vector")) hasVector = true;
+                    if (thrusterPowers[ch] == 0)
+                        thrusterPowers[ch] = PeripheralHelper.getThrusterPower(level, tp);
+                }
+                if (PeripheralHelper.isRpmCapable(p)) {
+                    hasRpm = true;
+                    if (rpmValues[ch] == 0)
+                        rpmValues[ch] = PeripheralHelper.getRpmValue(level, tp);
                 }
             }
+        }
 
-            // Current local RS outputs (by Direction ordinal)
-            Direction[] dirs = Direction.values();
-            int[] localRs = new int[dirs.length];
-            for (Direction d : dirs) localRs[d.ordinal()] = kb.getRedstoneOutput(d);
+        Direction[] dirs = Direction.values();
+        int[] localRs = new int[dirs.length];
+        for (Direction d : dirs) localRs[d.ordinal()] = kb.getRedstoneOutput(d);
 
-            // Current wireless powers (by slot index 0-based)
-            int wc = kb.getWirelessCount();
-            int[] wirelessPowers = new int[wc];
-            for (int i = 0; i < wc; i++) wirelessPowers[i] = kb.getWirelessOutput(i);
+        int wc = kb.getWirelessCount();
+        int[] wirelessPowers = new int[wc];
+        for (int i = 0; i < wc; i++) wirelessPowers[i] = kb.getWirelessOutput(i);
 
-            PacketDistributor.sendToPlayer(sp, new OpenLiveControlScreenPacket(
-                    packet.keyboardPos(), kb.getLiveControlBindings(),
-                    wc, hasThrusters, hasVector, hasRpm, localRs, wirelessPowers, thrusterPowers,
-                    kb.getSequencerVars(), rpmValues,
-                    kb.getActiveProfile(), kb.getAllProfileBindings()));
-        });
+        PacketDistributor.sendToPlayer(sp, new OpenLiveControlScreenPacket(
+                keyboardPos, kb.getLiveControlBindings(),
+                wc, hasThrusters, hasVector, hasRpm, localRs, wirelessPowers, thrusterPowers,
+                kb.getSequencerVars(), rpmValues,
+                kb.getActiveProfile(), kb.getAllProfileBindings(), autoStart));
+        PacketDistributor.sendToPlayer(sp, new SyncFavoritePacket(keyboardPos, (byte) kb.getFavoriteScreen().ordinal()));
     }
 
     private static void handleSaveLiveBindings(SaveLiveBindingsPacket packet, IPayloadContext ctx) {
@@ -1560,6 +1636,15 @@ public class ModPackets {
             if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
             var level = sp.serverLevel();
             for (LiveAction a : packet.actions()) {
+                dev.bennethogan.universalkeyboard.livecontrol.ChannelMode cm =
+                        dev.bennethogan.universalkeyboard.livecontrol.ChannelMode.byOpcode(a.type());
+                if (cm != null) {
+                    for (BlockPos tp : kb.getLinkedTargetPositions(a.target())) {
+                        Object p = PeripheralHelper.getPeripheral(level, tp);
+                        if (p != null) cm.server.apply(p, (int) Math.round(a.v1()));
+                    }
+                    continue;
+                }
                 switch (a.type()) {
                     case 0 -> { // local RS side
                         Direction[] dirs = Direction.values();
@@ -1585,13 +1670,6 @@ public class ModPackets {
                         kb.setSequencerVariable(a.target(), a.v1());
                     case 5 -> // link channel broadcast (target = linkIdx 0-based)
                         kb.broadcastLinkChannel(a.target(), (int) Math.round(a.v1()));
-                    case 6 -> { // RPM control (channel = target)
-                        for (BlockPos tp : kb.getLinkedTargetPositions(a.target())) {
-                            Object p = PeripheralHelper.getPeripheral(level, tp);
-                            if (p != null && PeripheralHelper.isRpmCapable(p))
-                                PeripheralHelper.callRpmSetter(p, (int) Math.round(a.v1()));
-                        }
-                    }
                 }
             }
         });
@@ -1730,6 +1808,26 @@ public class ModPackets {
                 StreamCodec.of(
                         (buf, pkt) -> BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos()),
                         buf -> new RequestLinkFreqScreenPacket(BlockPos.STREAM_CODEC.decode(buf)));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // Client -> Server: set/clear the favorite screen for a keyboard
+    public record SetFavoritePacket(BlockPos keyboardPos, byte favorite) implements CustomPacketPayload {
+        public static final Type<SetFavoritePacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "set_favorite"));
+        public static final StreamCodec<FriendlyByteBuf, SetFavoritePacket> CODEC = StreamCodec.of(
+                (buf, pkt) -> { BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos()); buf.writeByte(pkt.favorite()); },
+                buf -> new SetFavoritePacket(BlockPos.STREAM_CODEC.decode(buf), buf.readByte()));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // Server -> Client: sync the current favorite so favoritable screens can highlight the star
+    public record SyncFavoritePacket(BlockPos keyboardPos, byte favorite) implements CustomPacketPayload {
+        public static final Type<SyncFavoritePacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "sync_favorite"));
+        public static final StreamCodec<FriendlyByteBuf, SyncFavoritePacket> CODEC = StreamCodec.of(
+                (buf, pkt) -> { BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos()); buf.writeByte(pkt.favorite()); },
+                buf -> new SyncFavoritePacket(BlockPos.STREAM_CODEC.decode(buf), buf.readByte()));
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 

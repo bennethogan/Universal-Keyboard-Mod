@@ -27,6 +27,10 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
     @Override
     protected void init() {
         super.init();
+        addRenderableWidget(DarkButton.make(Component.literal("?"),
+                Component.translatable("gui.universalkeyboard.tooltip.wiki"),
+                b -> net.minecraft.client.Minecraft.getInstance().setScreen(new WikiScreen(this)),
+                leftPos + imageWidth - 8 - 16, topPos + 2, 16, 16));
     }
 
     @Override

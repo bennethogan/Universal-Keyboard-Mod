@@ -62,6 +62,10 @@ public class LinkFrequencyScreen extends PanelScreen {
         confirmDialog.setParentBounds(panelX, panelY, PANEL_W, getPanelH());
 
 
+        addRenderableWidget(DarkButton.make(Component.literal("?"),
+                Component.translatable("gui.universalkeyboard.tooltip.wiki"),
+                b -> Minecraft.getInstance().setScreen(new WikiScreen(this)),
+                panelX + PANEL_W - PAD - BTN * 3 - 4, panelY + 6, BTN, BTN));
         addRenderableWidget(IconButton.make(ModIcons.REVERT,
                 Component.translatable("gui.universalkeyboard.tooltip.revert"),
                 b -> confirmDialog.open(

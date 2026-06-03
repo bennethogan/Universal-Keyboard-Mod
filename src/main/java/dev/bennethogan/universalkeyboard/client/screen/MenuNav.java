@@ -1,5 +1,6 @@
 package dev.bennethogan.universalkeyboard.client.screen;
 
+import dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -18,9 +19,10 @@ public final class MenuNav {
     public static BlockPos keyboardPos;
     public static String   targetTypeName = "";
     public static int      availableBits;
-
-
     public static ModeSelectionScreen.Page returnPage = ModeSelectionScreen.Page.ROOT;
+
+    // Current favorite for the keyboard, synced from server whenever one of the 3 favoritable screens opens
+    public static FavoriteScreen currentFavorite = FavoriteScreen.NONE;
 
     public static void remember(BlockPos pos, String type, int bits) {
         keyboardPos    = pos;

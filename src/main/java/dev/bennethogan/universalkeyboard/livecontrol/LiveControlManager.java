@@ -13,6 +13,7 @@ import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -32,11 +33,16 @@ public class LiveControlManager {
     private static final Map<Long, Integer>    rsIncCounters  = new HashMap<>();
     private static final Map<Integer, Integer> thrIncCounters = new HashMap<>();
     private static final Map<Integer, Integer> varIncCounters = new HashMap<>();
-    private static final Map<Integer, Integer> rpmIncCounters = new HashMap<>();
     private static final Map<Long, Double>     rsIncFrac      = new HashMap<>();
     private static final Map<Integer, Double>  thrIncFrac     = new HashMap<>();
     private static final Map<Integer, Double>  varIncFrac     = new HashMap<>();
-    private static final Map<Integer, Double>  rpmIncFrac     = new HashMap<>();
+
+    // Per-channel-mode INC state (RPM and any future scalar peripheral modes), keyed by
+    // ActionType then channel. Registry-driven so a new mode needs no new fields here.
+    private static final Map<ActionType, Map<Integer, Integer>> chIncCounters = new EnumMap<>(ActionType.class);
+    private static final Map<ActionType, Map<Integer, Double>>  chIncFrac     = new EnumMap<>(ActionType.class);
+    // Current peripheral values to seed channel modes from on activate (e.g. RPM ← rpmValues).
+    private static final Map<ActionType, int[]>                 channelSeeds  = new EnumMap<>(ActionType.class);
     private static final Map<Integer, Integer> incHoldTicks   = new HashMap<>();
     private static final Set<Integer>          hldVarOn       = new HashSet<>();
     private static final Map<Integer, Double>  tglPendingPeak = new HashMap<>();
@@ -60,15 +66,19 @@ public class LiveControlManager {
         rsIncCounters.clear();
         thrIncCounters.clear();
         varIncCounters.clear();
-        rpmIncCounters.clear();
         rsIncFrac.clear();
         thrIncFrac.clear();
         varIncFrac.clear();
-        rpmIncFrac.clear();
+        chIncCounters.clear();
+        chIncFrac.clear();
+        channelSeeds.clear();
         incHoldTicks.clear();
         hldVarOn.clear();
         tglPendingPeak.clear();
         tglLockedMag.clear();
+
+        // Wire the current-value arrays each channel mode seeds from on resume.
+        channelSeeds.put(ActionType.RPM_CONTROL, rpmValues);
 
         for (int i = 0; i < bindings.size(); i++) {
             LiveControlBinding b = bindings.get(i);
@@ -97,11 +107,13 @@ public class LiveControlManager {
                     varIncCounters.putIfAbsent(b.varIndex, Math.max(0, Math.min(100, cur)));
                 else if (b.mode == Mode.TGL && cur == b.varOnValue)
                     toggledOn.add(i);
-            } else if (b.actionType == LiveControlBinding.ActionType.RPM_CONTROL) {
-                int cur = (b.channel < rpmValues.length) ? rpmValues[b.channel] : 0;
+            } else if (ChannelMode.isChannelMode(b.actionType)) {
+                ChannelMode m = ChannelMode.byType(b.actionType);
+                int[] seed = channelSeeds.get(b.actionType);
+                int cur = (seed != null && b.channel < seed.length) ? seed[b.channel] : 0;
                 if (b.mode == Mode.INC)
-                    rpmIncCounters.putIfAbsent(b.channel, Math.max(-256, Math.min(256, cur)));
-                else if (b.mode == Mode.TGL && cur == b.rpmTarget)
+                    chInc(b.actionType).putIfAbsent(b.channel, m.clamp(cur));
+                else if (b.mode == Mode.TGL && cur == m.targetValue(b))
                     toggledOn.add(i);
             }
         }
@@ -129,11 +141,11 @@ public class LiveControlManager {
         rsIncCounters.clear();
         thrIncCounters.clear();
         varIncCounters.clear();
-        rpmIncCounters.clear();
         rsIncFrac.clear();
         thrIncFrac.clear();
         varIncFrac.clear();
-        rpmIncFrac.clear();
+        chIncCounters.clear();
+        chIncFrac.clear();
     }
 
     public static boolean isActive()       { return active; }
@@ -204,12 +216,7 @@ public class LiveControlManager {
                     if (scaled != 0)
                         thrIncCounters.merge(b.channel, scaled, (cur, d) -> Math.max(0, Math.min(15, cur + d)));
                 }
-                case RPM_CONTROL -> {
-                    int scaled = rpmScaledStep(b.channel, baseDelta, odFactor);
-                    if (scaled != 0)
-                        rpmIncCounters.merge(b.channel, scaled, (cur, d) -> Math.max(-256, Math.min(256, cur + d)));
-                }
-                default -> {}
+                default -> stepChannelInc(b, baseDelta, odFactor);
             }
             incFired = true;
         }
@@ -251,13 +258,7 @@ public class LiveControlManager {
                             thrIncCounters.merge(b.channel, scaled,
                                     (cur, d) -> Math.max(0, Math.min(15, cur + d)));
                     }
-                    case RPM_CONTROL -> {
-                        int scaled = rpmScaledStep(b.channel, baseDelta, odFactor);
-                        if (scaled != 0)
-                            rpmIncCounters.merge(b.channel, scaled,
-                                    (cur, d) -> Math.max(-256, Math.min(256, cur + d)));
-                    }
-                    default -> {}
+                    default -> stepChannelInc(b, baseDelta, odFactor);
                 }
             }
         }
@@ -428,12 +429,31 @@ public class LiveControlManager {
         return whole;
     }
 
-    private static int rpmScaledStep(int channel, int baseDelta, double factor) {
-        if (factor == 1.0) return baseDelta;
-        double want = baseDelta * factor + rpmIncFrac.getOrDefault(channel, 0.0);
-        int whole = (int) Math.round(want);
-        rpmIncFrac.put(channel, want - whole);
-        return whole;
+    // ── Channel-mode (RPM family) helpers ──────────────────────────────────────
+
+    private static Map<Integer, Integer> chInc(ActionType t) {
+        return chIncCounters.computeIfAbsent(t, k -> new HashMap<>());
+    }
+
+    private static Map<Integer, Double> chFrac(ActionType t) {
+        return chIncFrac.computeIfAbsent(t, k -> new HashMap<>());
+    }
+
+    /** One INC step for a channel-mode binding: OD-scaled, fractional carry, clamped. */
+    private static void stepChannelInc(LiveControlBinding b, int baseDelta, double odFactor) {
+        ChannelMode m = ChannelMode.byType(b.actionType);
+        if (m == null) return;
+        int scaled;
+        if (odFactor == 1.0) {
+            scaled = baseDelta;
+        } else {
+            Map<Integer, Double> frac = chFrac(b.actionType);
+            double want = baseDelta * odFactor + frac.getOrDefault(b.channel, 0.0);
+            scaled = (int) Math.round(want);
+            frac.put(b.channel, want - scaled);
+        }
+        if (scaled != 0)
+            chInc(b.actionType).merge(b.channel, scaled, (cur, d) -> m.clamp(cur + d));
     }
 
     // ── Output computation ───────────────────────────────────────────────────
@@ -443,8 +463,9 @@ public class LiveControlManager {
         Map<Integer, Double>   powerByChannel   = new HashMap<>();
         Map<Integer, double[]> vectorByChannel  = new HashMap<>();
         Map<Integer, Integer>  linkSignals      = new HashMap<>();
-        Map<Integer, Integer>  rpmByChannel     = new HashMap<>();
-        Set<Integer>           rpmActiveHldTgl  = new java.util.HashSet<>();
+        // Channel-mode (RPM family) accumulators, keyed by ActionType then channel.
+        Map<ActionType, Map<Integer, Integer>> chOut         = new EnumMap<>(ActionType.class);
+        Map<ActionType, Set<Integer>>          chActiveHldTgl = new EnumMap<>(ActionType.class);
 
         for (int i = 0; i < bindings.size(); i++) {
             LiveControlBinding b            = bindings.get(i);
@@ -484,18 +505,25 @@ public class LiveControlManager {
                         vectorByChannel.computeIfAbsent(b.channel, k -> new double[]{0.0, 0.0});
                     }
                 }
-                case RPM_CONTROL -> {
-                    if (b.mode == Mode.INC) {
-                        rpmByChannel.putIfAbsent(b.channel, 0);
-                    } else {
-                        int contribution = bindingActive ? b.rpmTarget : 0;
-                        // Fixed so negative targets arent clamped, for reverse RPM speed
-                        rpmByChannel.merge(b.channel, contribution,
-                                (cur, in) -> Math.abs(in) >= Math.abs(cur) ? in : cur);
-                        if (bindingActive) rpmActiveHldTgl.add(b.channel);
+                default -> {
+                    ChannelMode m = ChannelMode.byType(b.actionType);
+                    if (m != null) {
+                        Map<Integer, Integer> out = chOut.computeIfAbsent(b.actionType, k -> new HashMap<>());
+                        if (b.mode == Mode.INC) {
+                            out.putIfAbsent(b.channel, 0);
+                        } else {
+                            // Apply overdrive and analog deflection then clamp
+                            int contribution = bindingActive
+                                    ? m.clamp((int) Math.round(m.targetValue(b) * odFactor * mag))
+                                    : 0;
+                            // Mode-defined merge (RPM is magnitude-preserving so an active +/- target beats
+                            // an inactive 0 and negative targets aren't clamped away by max)
+                            out.merge(b.channel, contribution, m::merge);
+                            if (bindingActive)
+                                chActiveHldTgl.computeIfAbsent(b.actionType, k -> new HashSet<>()).add(b.channel);
+                        }
                     }
                 }
-                default -> {}
             }
         }
 
@@ -504,11 +532,21 @@ public class LiveControlManager {
             rsTargetToSignal.merge(e.getKey(), e.getValue(), Math::max);
         for (Map.Entry<Integer, Integer> e : thrIncCounters.entrySet())
             powerByChannel.merge(e.getKey(), e.getValue() / 15.0, Math::max);
-        // INC counters drive their channel, but yields to a HLD/TGL binding that is
-        // currently active on the same channel (so toggle overrides the INC )
-        for (Map.Entry<Integer, Integer> e : rpmIncCounters.entrySet())
-            if (!rpmActiveHldTgl.contains(e.getKey()))
-                rpmByChannel.put(e.getKey(), e.getValue());
+        // Channel-mode INC counters: SIGNED_YIELD modes (RPM) drive their channel but yield to a
+        // HLD/TGL active on the same channel (so a toggle can override the INC value); MAX modes compete
+        for (ChannelMode m : ChannelMode.all()) {
+            Map<Integer, Integer> counters = chIncCounters.get(m.type);
+            if (counters == null || counters.isEmpty()) continue;
+            Map<Integer, Integer> out      = chOut.computeIfAbsent(m.type, k -> new HashMap<>());
+            Set<Integer>          activeHT = chActiveHldTgl.getOrDefault(m.type, Set.of());
+            for (Map.Entry<Integer, Integer> e : counters.entrySet()) {
+                if (m.incMerge == ChannelMode.IncMerge.SIGNED_YIELD) {
+                    if (!activeHT.contains(e.getKey())) out.put(e.getKey(), e.getValue());
+                } else {
+                    out.merge(e.getKey(), e.getValue(), Math::max);
+                }
+            }
+        }
 
         // Normalise vectors with magnitude > 1
         for (double[] vec : vectorByChannel.values()) {
@@ -533,8 +571,12 @@ public class LiveControlManager {
             double[] vec = e.getValue();
             actions.add(new ModPackets.LiveAction((byte) 3, e.getKey(), vec[0], vec[1]));
         }
-        for (Map.Entry<Integer, Integer> e : rpmByChannel.entrySet())
-            actions.add(new ModPackets.LiveAction((byte) 6, e.getKey(), e.getValue(), 0.0));
+        for (ChannelMode m : ChannelMode.all()) {
+            Map<Integer, Integer> out = chOut.get(m.type);
+            if (out == null) continue;
+            for (Map.Entry<Integer, Integer> e : out.entrySet())
+                actions.add(new ModPackets.LiveAction(m.opcode, e.getKey(), e.getValue(), 0.0));
+        }
 
         if (!actions.isEmpty()) ModPackets.sendLiveAction(keyboardPos, actions);
     }
@@ -575,7 +617,7 @@ public class LiveControlManager {
     private static boolean hasActiveAnalogOutput() {
         for (int i = 0; i < bindings.size(); i++) {
             LiveControlBinding b = bindings.get(i);
-            if (b.actionType == ActionType.VARIABLE || b.actionType == ActionType.RPM_CONTROL) continue;
+            if (b.actionType == ActionType.VARIABLE || ChannelMode.isChannelMode(b.actionType)) continue;
             if (!isScaledAnalog(b)) continue;
             if (isBindingActive(i)) return true;
         }
@@ -619,8 +661,8 @@ public class LiveControlManager {
             if (varVal != null) return "§e[" + name + " =" + varVal + suffix + "§e]";
         }
         if (heldKeys.contains(keyCode)) {
-            Integer rpmVal = rpmIncValueForKey(keyCode);
-            if (rpmVal != null) return "§b[" + name + " " + rpmVal + "rpm" + suffix + "§b]";
+            String chVal = channelIncLabelForKey(keyCode);
+            if (chVal != null) return "§b[" + name + " " + chVal + suffix + "§b]";
         }
         if (heldKeys.contains(keyCode)) {
             Integer level = incLevelForKey(keyCode);
@@ -646,11 +688,13 @@ public class LiveControlManager {
         return (m == (int) m) ? ((int) m) + "x" : m + "x";
     }
 
-    private static Integer rpmIncValueForKey(int keyCode) {
+    private static String channelIncLabelForKey(int keyCode) {
         for (LiveControlBinding b : bindings) {
-            if (b.keyCode != keyCode || b.mode != Mode.INC
-                    || b.actionType != LiveControlBinding.ActionType.RPM_CONTROL) continue;
-            return rpmIncCounters.getOrDefault(b.channel, 0);
+            if (b.keyCode != keyCode || b.mode != Mode.INC || !ChannelMode.isChannelMode(b.actionType)) continue;
+            ChannelMode m = ChannelMode.byType(b.actionType);
+            Map<Integer, Integer> c = chIncCounters.get(b.actionType);
+            int val = (c == null) ? 0 : c.getOrDefault(b.channel, 0);
+            return val + m.unitSuffix;
         }
         return null;
     }

@@ -2,6 +2,7 @@ package dev.bennethogan.universalkeyboard.block;
 
 import com.simibubi.create.content.decoration.copycat.CopycatBlockEntity;
 import com.simibubi.create.content.decoration.copycat.CopycatPanelBlock;
+import com.simibubi.create.foundation.blockEntity.SmartBlockEntityTicker;
 import dev.bennethogan.universalkeyboard.blockentity.ModBlockEntities;
 import dev.bennethogan.universalkeyboard.blockentity.WirelessCopycatBlockEntity;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
@@ -18,6 +19,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 
@@ -40,6 +42,14 @@ public class WirelessCopycatPanelBlock extends CopycatPanelBlock {
     @Override
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
         return new WirelessCopycatBlockEntity(ModBlockEntities.WIRELESS_COPYCAT.get(), pos, state);
+    }
+
+    // CopycatBlock returns a null ticker; this re-enables a server-side ticker so the
+    // block entity can poll Sable ship mass in lazyTick
+    @Override
+    public <S extends BlockEntity> BlockEntityTicker<S> getTicker(Level level, BlockState state,
+                                                                  BlockEntityType<S> type) {
+        return level.isClientSide ? null : new SmartBlockEntityTicker<>();
     }
 
     @Override

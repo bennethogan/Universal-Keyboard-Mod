@@ -54,6 +54,7 @@ public class ModeSelectionScreen extends Screen {
     private final List<Box> boxes = new ArrayList<>();
 
     private ConfirmDialog confirmDialog;
+    private DarkButton wikiBtn;
 
     // Typewriter import state
     private BlockPos twOfferPos    = null;
@@ -99,6 +100,11 @@ public class ModeSelectionScreen extends Screen {
     protected void init() {
         confirmDialog = new ConfirmDialog(font);
         relayout();
+        wikiBtn = DarkButton.make(Component.literal("?"),
+                Component.translatable("gui.universalkeyboard.tooltip.wiki"),
+                b -> Minecraft.getInstance().setScreen(new WikiScreen(this)),
+                panelX + panelW - PAD - 16, panelY + (TITLE_H - 16) / 2, 16, 16);
+        addRenderableWidget(wikiBtn);
     }
 
     private void setPage(Page p) {
@@ -138,6 +144,10 @@ public class ModeSelectionScreen extends Screen {
         }
 
         if (confirmDialog != null) confirmDialog.setParentBounds(panelX, panelY, panelW, panelH);
+        if (wikiBtn != null) {
+            wikiBtn.setX(panelX + panelW - PAD - 16);
+            wikiBtn.setY(panelY + (TITLE_H - 16) / 2);
+        }
     }
 
     private void buildBoxes() {

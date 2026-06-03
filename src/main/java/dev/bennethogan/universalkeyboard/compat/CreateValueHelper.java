@@ -3,9 +3,11 @@ package dev.bennethogan.universalkeyboard.compat;
 import dev.bennethogan.universalkeyboard.UniversalKeyboardMod;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
-// All Create interaction goes through reflection so Create is a soft dependency.
-// Covers ScrollValueBehaviour and ScrollOptionBehaviour (same base class).
+
 public class CreateValueHelper {
+
+    // Synthetic setter name so its picked up for the sequencer
+    public static final String VALUE_PANEL_SETTER = "Value Panel";
 
     private static boolean initialized = false;
     private static boolean createPresent = false;

@@ -2,6 +2,8 @@ package dev.bennethogan.universalkeyboard.client.screen;
 
 import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.universalkeyboard.client.gamepad.GamepadLiveDriver;
+import dev.bennethogan.universalkeyboard.livecontrol.ChannelMode;
+import dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.ActionType;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.Mode;
@@ -79,6 +81,20 @@ public class LiveControlScreen extends Screen {
     private String wFreqTooltip   = null;
     private int    wFreqTooltipX  = 0;
     private int    wFreqTooltipY  = 0;
+
+    // Favorite / wiki buttons
+    private boolean isFavorited = false;
+    private DarkButton starBtn;
+
+    public void onFavoriteSync(FavoriteScreen fav) {
+        isFavorited = fav == FavoriteScreen.LIVE_CONTROL;
+        if (starBtn != null) {
+            starBtn.setAccentBg(isFavorited ? 0xFF3A3000 : -1);
+            starBtn.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable(
+                    isFavorited ? "gui.universalkeyboard.tooltip.unfavorite"
+                                : "gui.universalkeyboard.tooltip.favorite")));
+        }
+    }
 
     // ── Constructor ───────────────────────────────────────────────────────────
     public LiveControlScreen(BlockPos keyboardPos,
@@ -194,12 +210,34 @@ public class LiveControlScreen extends Screen {
         confirmDialog = new ConfirmDialog(font);
         confirmDialog.setParentBounds(panelX, panelY, PANEL_W, panelH);
 
-        // Bottom row: Start | Profile 1-4 | Revert | Prev | Next  (32×16 each, 2px gap)
+        // Top-right corner: wiki and star buttons
+        int topBtnY = panelY + (PAD + TITLE_H - BTN_H) / 2 + 2;
+        addRenderableWidget(DarkButton.make(Component.literal("?"),
+                Component.translatable("gui.universalkeyboard.tooltip.wiki"),
+                b -> net.minecraft.client.Minecraft.getInstance().setScreen(new WikiScreen(this)),
+                panelX + PANEL_W - PAD - BTN_H * 2 - 2, topBtnY, BTN_H, BTN_H));
+        isFavorited = MenuNav.currentFavorite == FavoriteScreen.LIVE_CONTROL;
+        starBtn = DarkButton.make(Component.literal("★"),
+                Component.translatable(isFavorited
+                        ? "gui.universalkeyboard.tooltip.unfavorite"
+                        : "gui.universalkeyboard.tooltip.favorite"),
+                b -> toggleFavorite(),
+                panelX + PANEL_W - PAD - BTN_H, topBtnY, BTN_H, BTN_H);
+        starBtn.setAccentBg(isFavorited ? 0xFF3A3000 : -1);
+        addRenderableWidget(starBtn);
+
+        // Bottom row: Back (left) | gap | Start | Profile 1-4 | Revert | Prev | Next  (32×16 each, 2px gap)
         final int BTN_W   = 32;
         final int BTN_GAP = 2;
         final int NUM_BTNS = 8; // 1 start + 4 profiles + 1 revert + 2 nav
         int btnY  = panelY + panelH - PAD - BTN_H;
         int bx    = panelX + (PANEL_W - (NUM_BTNS * BTN_W + (NUM_BTNS - 1) * BTN_GAP)) / 2;
+
+        // Back button — bottom left, isolated from the rest
+        addRenderableWidget(IconButton.make(ModIcons.PREV_PAGE,
+                Component.translatable("gui.universalkeyboard.tooltip.back"),
+                b -> goBack(),
+                panelX + PAD, btnY, BTN_W, BTN_H));
 
         // Green start button
         addRenderableWidget(IconButton.make(ModIcons.PLAY,
@@ -245,6 +283,14 @@ public class LiveControlScreen extends Screen {
     }
 
     public BlockPos getKeyboardPos() { return keyboardPos; }
+
+    private void goBack() {
+        if (!MenuNav.back()) super.onClose();
+    }
+
+    private void toggleFavorite() {
+        ModPackets.sendSetFavorite(keyboardPos, isFavorited ? FavoriteScreen.NONE : FavoriteScreen.LIVE_CONTROL);
+    }
 
     /** Push the current bindings to the server if they differ from what was last saved. */
     private void autosave() {
@@ -346,9 +392,9 @@ public class LiveControlScreen extends Screen {
             case REDSTONE        -> I18n.get("gui.universalkeyboard.label.action_rs");
             case THRUSTER_POWER  -> I18n.get("gui.universalkeyboard.label.action_thr");
             case THRUSTER_VECTOR -> I18n.get("gui.universalkeyboard.label.action_vec");
-            case RPM_CONTROL     -> I18n.get("gui.universalkeyboard.label.action_rpm");
             case VARIABLE        -> I18n.get("gui.universalkeyboard.label.action_var");
             case OVERDRIVE       -> I18n.get("gui.universalkeyboard.label.action_od");
+            default              -> I18n.get(ChannelMode.byType(b.actionType).labelKey); // channel modes (RPM family)
         };
         boolean tHov = isIn(mx, my, tx, ry, TYPE_W, ROW_H);
         g.fill(tx, ry, tx + TYPE_W, ry + ROW_H, tHov ? 0xFF333355 : 0xFF1F1F3A);
@@ -365,9 +411,9 @@ public class LiveControlScreen extends Screen {
             case REDSTONE        -> renderRsConfig(g, mx, my, b, x, y);
             case THRUSTER_POWER  -> renderPwrConfig(g, mx, my, b, x, y);
             case THRUSTER_VECTOR -> renderVecConfig(g, mx, my, b, idx, x, y);
-            case RPM_CONTROL     -> renderRpmConfig(g, mx, my, b, x, y);
             case VARIABLE        -> renderVarConfig(g, mx, my, b, x, y);
             case OVERDRIVE       -> renderOdConfig(g, mx, my, b, x, y);
+            default              -> renderChannelConfig(g, mx, my, b, x, y); // channel modes (RPM family)
         }
     }
 
@@ -476,8 +522,11 @@ public class LiveControlScreen extends Screen {
         }
     }
 
-    // RPM_CONTROL config — [ch:40][mode:20][value:28] = 88px
-    private void renderRpmConfig(GuiGraphics g, int mx, int my, LiveControlBinding b, int x, int y) {
+    // Channel-mode config (RPM family) — [ch:40][mode:20][value:28] = 88px.
+    // Generic: any registered ChannelMode renders here, value cell driven by the descriptor.
+    private void renderChannelConfig(GuiGraphics g, int mx, int my, LiveControlBinding b, int x, int y) {
+        ChannelMode m = ChannelMode.byType(b.actionType);
+
         boolean cHov = isIn(mx, my, x, y, 40, ROW_H);
         g.fill(x, y, x + 40, y + ROW_H, cHov ? 0xFF252535 : 0xFF1A1A2A);
         drawBorder(g, x, y, 40, ROW_H, 0xFF333355);
@@ -503,8 +552,8 @@ public class LiveControlScreen extends Screen {
             drawBorder(g, x, y, 28, ROW_H, b.incPlus ? 0xFF448844 : 0xFF884444);
             g.drawCenteredString(font, b.incPlus ? "§a++" : "§c--", x + 14, y + 4, 0xFFFFFF);
         } else {
-            drawBorder(g, x, y, 28, ROW_H, 0xFF3355AA);
-            g.drawCenteredString(font, "§b" + b.rpmTarget, x + 14, y + 4, 0xFFFFFF);
+            drawBorder(g, x, y, 28, ROW_H, m.valueColor);
+            g.drawCenteredString(font, "§b" + m.targetValue(b), x + 14, y + 4, 0xFFFFFF);
         }
     }
 
@@ -789,23 +838,6 @@ public class LiveControlScreen extends Screen {
                 x += 22;
                 if (isIn(mx, my, x, y, 28, ROW_H)) { vectorOverlaySlot = (vectorOverlaySlot == idx) ? -1 : idx; return true; }
             }
-            case RPM_CONTROL -> {
-                if (isIn(mx, my, x, y, 40, ROW_H)) {
-                    if (mx < x + 12) b.channel = b.channel == 1 ? LinkedKeyboardBlockEntity.MAX_CHANNELS : b.channel - 1;
-                    else if (mx > x + 28) b.channel = b.channel == LinkedKeyboardBlockEntity.MAX_CHANNELS ? 1 : b.channel + 1;
-                    return true;
-                }
-                x += 42;
-                if (isIn(mx, my, x, y, 20, ROW_H)) {
-                    b.mode = nextMode(b.actionType, b.mode, right ? -1 : 1); return true;
-                }
-                x += 22;
-                if (isIn(mx, my, x, y, 28, ROW_H)) {
-                    if (b.mode == Mode.INC) b.incPlus = !b.incPlus;
-                    else b.rpmTarget = Math.max(-256, Math.min(256, b.rpmTarget + (right ? -1 : 1)));
-                    return true;
-                }
-            }
             case VARIABLE -> {
                 if (isIn(mx, my, x, y, 40, ROW_H)) {
                     if (mx < x + 12)      b.varIndex = (b.varIndex + 15) % 16;
@@ -841,6 +873,25 @@ public class LiveControlScreen extends Screen {
                     return true;
                 }
             }
+            default -> { // channel modes (RPM family) — [ch:40][mode:20][value:28]
+                ChannelMode m = ChannelMode.byType(b.actionType);
+                if (m == null) return false;
+                if (isIn(mx, my, x, y, 40, ROW_H)) {
+                    if (mx < x + 12) b.channel = b.channel == 1 ? LinkedKeyboardBlockEntity.MAX_CHANNELS : b.channel - 1;
+                    else if (mx > x + 28) b.channel = b.channel == LinkedKeyboardBlockEntity.MAX_CHANNELS ? 1 : b.channel + 1;
+                    return true;
+                }
+                x += 42;
+                if (isIn(mx, my, x, y, 20, ROW_H)) {
+                    b.mode = nextMode(b.actionType, b.mode, right ? -1 : 1); return true;
+                }
+                x += 22;
+                if (isIn(mx, my, x, y, 28, ROW_H)) {
+                    if (b.mode == Mode.INC) b.incPlus = !b.incPlus;
+                    else m.stepTarget(b, right ? -1 : 1);
+                    return true;
+                }
+            }
         }
         return false;
     }
@@ -871,10 +922,12 @@ public class LiveControlScreen extends Screen {
                 switch (b.actionType) {
                     case REDSTONE       -> b.signalStrength = Math.max(0, Math.min(15, b.signalStrength + dir));
                     case THRUSTER_POWER -> b.powerLevel = stepPower(b.powerLevel, dir);
-                    case RPM_CONTROL    -> b.rpmTarget = Math.max(-256, Math.min(256, b.rpmTarget + dir));
                     case VARIABLE       -> b.varOnValue = Math.max(1, Math.min(100, b.varOnValue + dir));
                     case OVERDRIVE      -> b.overdriveMultiplier = cycleOverdrive(b.overdriveMultiplier, dir);
-                    default -> {}
+                    default -> { // channel modes (RPM family)
+                        ChannelMode m = ChannelMode.byType(b.actionType);
+                        if (m != null) m.stepTarget(b, dir);
+                    }
                 }
                 return true;
             }

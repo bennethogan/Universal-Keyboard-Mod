@@ -149,7 +149,8 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
 
     // Sequencer TYPE_TEXT steps replace that functionality.
 
-    // right-click (empty hand): open the mode selection screen for the linked target
+    // right-click (empty hand): open the mode selection screen, or jump to a favorited screen.
+    // Shift+right-click always opens the main mode selection menu.
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos,
                                                Player player, BlockHitResult hit) {
@@ -157,6 +158,12 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
         if (!(player instanceof ServerPlayer sp)) return InteractionResult.CONSUME;
         if (!(level.getBlockEntity(pos) instanceof LinkedKeyboardBlockEntity be))
             return InteractionResult.CONSUME;
+
+        // Shift+click always opens the main mode-selection menu
+        if (!player.isShiftKeyDown() && be.getFavoriteScreen() != dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen.NONE) {
+            ModPackets.openFavoriteForPlayer(sp, pos, be);
+            return InteractionResult.CONSUME;
+        }
 
         BlockPos targetPos = be.getLinkedTargetPos();
         if (targetPos == null) {

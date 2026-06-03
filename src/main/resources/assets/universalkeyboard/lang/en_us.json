@@ -123,6 +123,10 @@
 
   "gui.universalkeyboard.tooltip.start": "Start",
   "gui.universalkeyboard.tooltip.revert": "Revert",
+  "gui.universalkeyboard.tooltip.favorite": "★ Mark as Favorite — click keyboard to go straight here",
+  "gui.universalkeyboard.tooltip.unfavorite": "★ Favorited — click again to remove. Shift+click keyboard for main menu",
+  "gui.universalkeyboard.tooltip.wiki": "Help / Wiki",
+  "gui.universalkeyboard.screen.wiki.title": "Universal Keyboard — Help",
   "gui.universalkeyboard.tooltip.prev_page": "Previous Page",
   "gui.universalkeyboard.tooltip.next_page": "Next Page",
   "gui.universalkeyboard.tooltip.profile_n": "Profile %s",

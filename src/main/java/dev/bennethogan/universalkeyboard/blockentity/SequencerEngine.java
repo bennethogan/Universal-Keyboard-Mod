@@ -1,5 +1,6 @@
 package dev.bennethogan.universalkeyboard.blockentity;
 
+import dev.bennethogan.universalkeyboard.compat.CreateValueHelper;
 import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import dev.bennethogan.universalkeyboard.compat.SableCompat;
 import dev.bennethogan.universalkeyboard.compat.wireless.WirelessPresence;
@@ -9,6 +10,7 @@ import dev.bennethogan.universalkeyboard.sequencer.SequencerStep;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.level.block.entity.BlockEntity;
 
 import java.util.Arrays;
 import java.util.List;
@@ -338,8 +340,18 @@ class SequencerEngine {
         if (targets.isEmpty() || be.getLevel() == null) return;
         double rangeSq = ModConfig.COMMON.keyboardRange.get();
         rangeSq *= rangeSq;
+        boolean valuePanel = step.setMethod.equals(CreateValueHelper.VALUE_PANEL_SETTER);
         for (BlockPos targetPos : targets) {
             if (be.getBlockPos().distSqr(targetPos) > rangeSq) continue;
+            if (valuePanel) {
+                BlockEntity tbe = be.getLevel().getBlockEntity(targetPos);
+                if (CreateValueHelper.hasScrollValue(tbe)) {
+                    int min = CreateValueHelper.getMin(tbe);
+                    int max = CreateValueHelper.getMax(tbe);
+                    CreateValueHelper.setValue(tbe, Math.max(min, Math.min(max, (int) Math.round(value))));
+                }
+                continue;
+            }
             Object p = PeripheralHelper.getPeripheral(be.getLevel(), targetPos);
             if (p == null) continue;
             String err = PeripheralHelper.callMethodWithDouble(p, step.setMethod, value);

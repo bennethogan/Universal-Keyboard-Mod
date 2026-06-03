@@ -132,9 +132,24 @@ public class SequencerScreen extends Screen {
 
     private final List<RowWidgets> rows = new ArrayList<>();
     private IconButton runStopBtn;
+    private DarkButton starBtn;
     private EditBox saveName;
 
     boolean refreshing = false;
+
+    // Favorite
+    private boolean isFavorited = false;
+
+    public void onFavoriteSync(dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen fav) {
+        isFavorited = fav == dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen.SEQUENCER;
+        if (starBtn != null) {
+            starBtn.setAccentBg(isFavorited ? 0xFF3A3000 : -1);
+            starBtn.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
+                    net.minecraft.network.chat.Component.translatable(
+                            isFavorited ? "gui.universalkeyboard.tooltip.unfavorite"
+                                        : "gui.universalkeyboard.tooltip.favorite")));
+        }
+    }
 
     // ── Construction ──────────────────────────────────────────────────────────
 
@@ -212,6 +227,27 @@ public class SequencerScreen extends Screen {
 
         revertDialog = new ConfirmDialog(font);
         revertDialog.setParentBounds(panelX, panelY, PANEL_W, panelH);
+
+        // Top-right: wiki and star buttons
+        int IBTN = 16;
+        addRenderableWidget(DarkButton.make(net.minecraft.network.chat.Component.literal("?"),
+                net.minecraft.network.chat.Component.translatable("gui.universalkeyboard.tooltip.wiki"),
+                b -> net.minecraft.client.Minecraft.getInstance().setScreen(new WikiScreen(this)),
+                panelX + PANEL_W - PAD - IBTN * 2 - 2, panelY + PAD - 2, IBTN, IBTN));
+        isFavorited = MenuNav.currentFavorite == dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen.SEQUENCER;
+        starBtn = DarkButton.make(net.minecraft.network.chat.Component.literal("★"),
+                net.minecraft.network.chat.Component.translatable(
+                        isFavorited ? "gui.universalkeyboard.tooltip.unfavorite"
+                                    : "gui.universalkeyboard.tooltip.favorite"),
+                b -> {
+                    dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen next =
+                            isFavorited ? dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen.NONE
+                                        : dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen.SEQUENCER;
+                    ModPackets.sendSetFavorite(keyboardPos, next);
+                },
+                panelX + PANEL_W - PAD - IBTN, panelY + PAD - 2, IBTN, IBTN);
+        starBtn.setAccentBg(isFavorited ? 0xFF3A3000 : -1);
+        addRenderableWidget(starBtn);
 
         // Save-name input centred under title text
         int nameW = 200;

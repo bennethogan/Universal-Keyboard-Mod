@@ -57,6 +57,22 @@ public class ThrusterControlScreen extends Screen {
     private ThrottleSlider       thrustSlider;
     private ThrottleSlider       configSlider;  // creative only
     private int                  currentChannel;
+    private boolean              isFavorited = false;
+    private DarkButton           starBtn;
+
+    public void onFavoriteSync(dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen fav) {
+        isFavorited = fav == dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen.THRUSTER_CONTROL;
+        if (starBtn != null) {
+            starBtn.setAccentBg(isFavorited ? 0xFF3A3000 : -1);
+            starBtn.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
+                    net.minecraft.network.chat.Component.translatable(
+                            isFavorited ? "gui.universalkeyboard.tooltip.unfavorite"
+                                        : "gui.universalkeyboard.tooltip.favorite")));
+        }
+    }
+
+    public BlockPos getKeyboardPos() { return keyboardPos; }
+    public int getCurrentChannel()   { return currentChannel; }
 
     // ── Constructor ───────────────────────────────────────────────────────────
     public ThrusterControlScreen(BlockPos keyboardPos, String peripheralType,
@@ -85,9 +101,6 @@ public class ThrusterControlScreen extends Screen {
         this.currentChannel    = channel;
         this.sublevelSnapshot  = sublevelSnapshot != null ? sublevelSnapshot : new double[0];
     }
-
-    public BlockPos getKeyboardPos()  { return keyboardPos; }
-    public int getCurrentChannel()    { return currentChannel; }
 
     // ── updateState — only updates telemetry, never slider positions ──────────
     public void updateState(String peripheralType,
@@ -179,6 +192,28 @@ public class ThrusterControlScreen extends Screen {
                     (vx, vy) -> ModPackets.sendSetThrusterVector(keyboardPos, vx, vy));
             addRenderableWidget(grid);
         }
+
+        // Top-right corner of title bar: wiki and star buttons (16×16 each)
+        int IBTN = 16;
+        int topBtnY = panelY + (PAD + TITLE_H - IBTN) / 2;
+        addRenderableWidget(DarkButton.make(Component.literal("?"),
+                Component.translatable("gui.universalkeyboard.tooltip.wiki"),
+                b -> net.minecraft.client.Minecraft.getInstance().setScreen(new WikiScreen(this)),
+                panelX + panelW - PAD - IBTN * 2 - 2, topBtnY, IBTN, IBTN));
+        isFavorited = MenuNav.currentFavorite == dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen.THRUSTER_CONTROL;
+        starBtn = DarkButton.make(Component.literal("★"),
+                Component.translatable(isFavorited
+                        ? "gui.universalkeyboard.tooltip.unfavorite"
+                        : "gui.universalkeyboard.tooltip.favorite"),
+                b -> {
+                    dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen next =
+                            isFavorited ? dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen.NONE
+                                        : dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen.THRUSTER_CONTROL;
+                    dev.bennethogan.universalkeyboard.network.ModPackets.sendSetFavorite(keyboardPos, next);
+                },
+                panelX + panelW - PAD - IBTN, topBtnY, IBTN, IBTN);
+        starBtn.setAccentBg(isFavorited ? 0xFF3A3000 : -1);
+        addRenderableWidget(starBtn);
 
         // Bottom row: [Channel N] [Close]
         int btnRowY   = panelY + panelH - PAD - BTN_H;

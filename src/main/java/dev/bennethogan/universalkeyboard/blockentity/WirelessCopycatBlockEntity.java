@@ -1,6 +1,9 @@
 package dev.bennethogan.universalkeyboard.blockentity;
 
 import com.simibubi.create.content.decoration.copycat.CopycatBlockEntity;
+import dev.bennethogan.universalkeyboard.block.WirelessCopycatPanelBlock;
+import dev.bennethogan.universalkeyboard.block.WirelessCopycatStepBlock;
+import dev.bennethogan.universalkeyboard.compat.SableCompat;
 import dev.bennethogan.universalkeyboard.config.ModConfig;
 import dev.bennethogan.universalkeyboard.wireless.rs.WirelessRSNetwork;
 import net.minecraft.core.BlockPos;
@@ -40,6 +43,7 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity {
     public WirelessCopycatBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
         super(type, pos, state);
         for (int i = 0; i < FACES; i++) freqs[i] = "";
+        setLazyTickRate(20); // poll Sable ship mass ~once per second
     }
 
     public static String generateFreq() {
@@ -110,7 +114,7 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity {
             if (!enabled[i]) power[i] = 0;
         }
         for (int i = 0; i < FACES; i++)
-            if (enabled[i]) WirelessRSNetwork.register((Level) level, freqs[i], worldPosition);
+            if (enabled[i] && !freqs[i].isEmpty()) WirelessRSNetwork.register((Level) level, freqs[i], worldPosition);
         setChanged();
         level.updateNeighborsAt(worldPosition, getBlockState().getBlock());
     }
@@ -118,7 +122,7 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity {
     public void setFreqPower(String freq, int pw) {
         boolean changed = false;
         for (int i = 0; i < FACES; i++) {
-            if (enabled[i] && freqs[i].equals(freq) && power[i] != pw) {
+            if (enabled[i] && freq != null && freq.equals(freqs[i]) && power[i] != pw) {
                 power[i] = pw;
                 changed  = true;
             }
@@ -141,13 +145,72 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity {
         super.onLoad();
         if (level != null && !level.isClientSide)
             for (int i = 0; i < FACES; i++)
-                if (enabled[i]) WirelessRSNetwork.register((Level) level, freqs[i], worldPosition);
+                if (enabled[i] && !freqs[i].isEmpty()) WirelessRSNetwork.register((Level) level, freqs[i], worldPosition);
+    }
+
+    @Override
+    public void lazyTick() {
+        super.lazyTick();
+        if (level != null && !level.isClientSide)
+            updateShipMass(level, worldPosition, getBlockState());
     }
 
     @Override
     public void remove() {
-        if (level != null && !level.isClientSide) WirelessRSNetwork.unregisterAll((Level) level, worldPosition);
+        if (level != null && !level.isClientSide) {
+            WirelessRSNetwork.unregisterAll((Level) level, worldPosition);
+            reverseShipMass();
+        }
         super.remove();
+    }
+
+    // ── Sable weight compat ──────────────────────────────────────────────────
+    // The amount of downloads for the Copycats / Aero weight compat told me I needed to
+    // make my Copycats have the same mass
+    private static final double STEP_MASS  = 0.25;
+    private static final double PANEL_MASS = 0.125;
+
+    private java.lang.ref.WeakReference<Object> massSublevelRef = null;
+    private double appliedMassDelta = 0.0;
+
+    private double targetShipMass(BlockState state) {
+        var block = state.getBlock();
+        if (block instanceof WirelessCopycatStepBlock)  return STEP_MASS;
+        if (block instanceof WirelessCopycatPanelBlock) return PANEL_MASS;
+        return 1.0;
+    }
+
+    private void updateShipMass(Level level, BlockPos pos, BlockState state) {
+        if (!SableCompat.isPresent()) return;
+        Object sub  = SableCompat.getSublevel(level, pos);
+        Object prev = massSublevelRef == null ? null : massSublevelRef.get();
+        if (sub == prev) return;
+
+        if (sub == null) {
+            massSublevelRef  = null;
+            appliedMassDelta = 0.0;
+            return;
+        }
+
+        double def   = SableCompat.getDefaultBlockMass(state);
+        double delta = targetShipMass(state) - def;
+        if (Math.abs(delta) < 1.0e-9) {
+            appliedMassDelta = 0.0;
+        } else if (SableCompat.addBlockMass(level, pos, state, delta)) {
+            appliedMassDelta = delta;
+        } else {
+            appliedMassDelta = 0.0;
+        }
+        massSublevelRef = new java.lang.ref.WeakReference<>(sub); // avoid retry spam
+    }
+
+    private void reverseShipMass() {
+        if (appliedMassDelta == 0.0 || level == null || level.isClientSide) return;
+        Object prev = massSublevelRef == null ? null : massSublevelRef.get();
+        if (prev != null && SableCompat.getSublevel(level, worldPosition) == prev)
+            SableCompat.addBlockMass(level, worldPosition, getBlockState(), -appliedMassDelta);
+        appliedMassDelta = 0.0;
+        massSublevelRef  = null;
     }
 
     @Override

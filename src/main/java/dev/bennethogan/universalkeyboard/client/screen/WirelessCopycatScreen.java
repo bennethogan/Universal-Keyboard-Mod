@@ -104,6 +104,11 @@ public class WirelessCopycatScreen extends PanelScreen {
                     panelX + COL_TEST, rowY + 2, BTN));
         }
 
+        addRenderableWidget(DarkButton.make(Component.literal("?"),
+                Component.translatable("gui.universalkeyboard.tooltip.wiki"),
+                b -> Minecraft.getInstance().setScreen(new WikiScreen(this)),
+                panelX + PANEL_W - PAD - BTN, panelY + 4, BTN, BTN));
+
         int footY = panelY + getPanelH() - BTN - PAD;
         addRenderableWidget(IconButton.make(ModIcons.REVERT,
                 Component.translatable("gui.universalkeyboard.tooltip.revert"),
@@ -124,7 +129,13 @@ public class WirelessCopycatScreen extends PanelScreen {
     private void autoSave() {
         if (suppressSave) return;
         String[] newFreqs = new String[6];
-        for (int i = 0; i < 6; i++) newFreqs[i] = freqBoxes[i] != null ? freqBoxes[i].getValue() : freqs[i];
+        for (int i = 0; i < 6; i++) {
+            if (freqBoxes[i] == null) { newFreqs[i] = freqs[i]; continue; }
+            // server-side sync issue with leaving frequency blanks, so fill here
+            if (enabledState[i] && freqBoxes[i].getValue().isEmpty())
+                freqBoxes[i].setValue(WirelessCopycatBlockEntity.generateFreq());
+            newFreqs[i] = freqBoxes[i].getValue();
+        }
         ModPackets.sendSaveWirelessCopycatConfig(blockPos, newFreqs, enabledState);
     }
 

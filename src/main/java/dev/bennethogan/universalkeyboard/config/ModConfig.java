@@ -26,6 +26,7 @@ public class ModConfig {
 
         public final ModConfigSpec.IntValue keyboardRange;
         public final ModConfigSpec.IntValue copycatLocateDuration;
+        public final ModConfigSpec.BooleanValue favoriteLiveControlAutoStart;
 
         Common(ModConfigSpec.Builder builder) {
             builder.comment("Universal Keyboard Settings").push("keyboard");
@@ -33,15 +34,22 @@ public class ModConfig {
             keyboardRange = builder
                     .comment("Max wireless range in blocks between the keyboard and its linked target.",
                              "Events are dropped if the player exceeds this distance.",
-                             "Set to a very large value for effectively unlimited range.",
+                             "Set to greater than 2 million for range capable of reaching sub-levels",
                              "Range: 1–2147483647. Default: 32.")
                     .defineInRange("keyboardRange", 32, 1, Integer.MAX_VALUE);
 
             copycatLocateDuration = builder
-                    .comment("Duration in seconds for the Wireless Copycat locate/test feature.",
+                    .comment("Duration in seconds for the Wireless Copycat test-face feature.",
                              "Applies to both the per-face Test button on the Copycat and the Locate button on the keyboard.",
-                             "Range: 1–300. Default: 15.")
-                    .defineInRange("copycatLocateDuration", 15, 1, 300);
+                             "Range: 1–300. Default: 5.")
+                    .defineInRange("copycatLocateDuration", 5, 1, 300);
+
+            favoriteLiveControlAutoStart = builder
+                    .comment("Mark this option 'true' to start Live Controls immediately when you right-click keyboard",
+                             "Live Controller menu must also be marked 'favorite'.",
+                             "Shift-click the keyboard to open the main menu instead",
+                             "Default: false.")
+                    .define("favoriteLiveControlAutoStart", false);
 
             builder.pop();
         }

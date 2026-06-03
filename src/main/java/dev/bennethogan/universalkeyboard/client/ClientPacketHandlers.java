@@ -3,11 +3,14 @@ package dev.bennethogan.universalkeyboard.client;
 import dev.bennethogan.universalkeyboard.client.screen.AutoTypeScreen;
 import dev.bennethogan.universalkeyboard.client.screen.LinkFrequencyScreen;
 import dev.bennethogan.universalkeyboard.client.screen.LiveControlScreen;
+import dev.bennethogan.universalkeyboard.client.screen.MenuNav;
 import dev.bennethogan.universalkeyboard.client.screen.ModeSelectionScreen;
 import dev.bennethogan.universalkeyboard.client.screen.PeripheralMethodScreen;
 import dev.bennethogan.universalkeyboard.client.screen.SequencerScreen;
 import dev.bennethogan.universalkeyboard.client.screen.ThrusterControlScreen;
+import dev.bennethogan.universalkeyboard.client.screen.WikiScreen;
 import dev.bennethogan.universalkeyboard.client.screen.WirelessCopycatScreen;
+import dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlManager;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
 import dev.bennethogan.universalkeyboard.network.ModPackets.*;
@@ -32,6 +35,7 @@ public class ClientPacketHandlers {
         registrar.playToClient(ModPackets.TypewriterImportOfferPacket.TYPE,   ModPackets.TypewriterImportOfferPacket.CODEC,   ClientPacketHandlers::handleTypewriterOffer);
         registrar.playToClient(ChannelChangedPacket.TYPE,          ChannelChangedPacket.CODEC,          ClientPacketHandlers::handleChannelChanged);
         registrar.playToClient(OpenLiveControlScreenPacket.TYPE, OpenLiveControlScreenPacket.CODEC, ClientPacketHandlers::handleOpenLiveControlScreen);
+        registrar.playToClient(ModPackets.SyncFavoritePacket.TYPE, ModPackets.SyncFavoritePacket.CODEC, ClientPacketHandlers::handleSyncFavorite);
         registrar.optional().playToClient(ModPackets.OpenWirelessCopycatScreenPacket.TYPE, ModPackets.OpenWirelessCopycatScreenPacket.STREAM_CODEC, ClientPacketHandlers::handleOpenWirelessCopycatScreen);
         registrar.optional().playToClient(ModPackets.OpenLinkFreqScreenPacket.TYPE,        ModPackets.OpenLinkFreqScreenPacket.STREAM_CODEC,        ClientPacketHandlers::handleOpenLinkFreqScreen);
     }
@@ -140,14 +144,37 @@ public class ClientPacketHandlers {
     }
 
     private static void handleOpenLiveControlScreen(OpenLiveControlScreenPacket packet, IPayloadContext ctx) {
-        ctx.enqueueWork(() ->
+        ctx.enqueueWork(() -> {
+            if (packet.autoStart()) {
+                // Favorite shortcut with autoStart=true: activate live controls without opening UI.
+                LiveControlManager.activate(
+                        packet.keyboardPos(), packet.bindings(),
+                        packet.localRsOutputs(), packet.wirelessPowers(), packet.thrusterPowers(),
+                        packet.varValues(), packet.rpmValues());
+            } else {
                 Minecraft.getInstance().setScreen(
                         new LiveControlScreen(
                                 packet.keyboardPos(), packet.wirelessCount(),
                                 packet.hasThrusters(), packet.hasVectorThrusters(), packet.hasRpm(),
                                 packet.localRsOutputs(), packet.wirelessPowers(), packet.thrusterPowers(),
                                 packet.varValues(), packet.rpmValues(),
-                                packet.activeProfile(), packet.allProfiles())));
+                                packet.activeProfile(), packet.allProfiles()));
+            }
+        });
+    }
+
+    private static void handleSyncFavorite(ModPackets.SyncFavoritePacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            FavoriteScreen fav = FavoriteScreen.fromByte(packet.favorite());
+            MenuNav.currentFavorite = fav;
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.screen instanceof LiveControlScreen lcs && lcs.getKeyboardPos().equals(packet.keyboardPos()))
+                lcs.onFavoriteSync(fav);
+            else if (mc.screen instanceof SequencerScreen ss && ss.getKeyboardPos().equals(packet.keyboardPos()))
+                ss.onFavoriteSync(fav);
+            else if (mc.screen instanceof ThrusterControlScreen ts && ts.getKeyboardPos().equals(packet.keyboardPos()))
+                ts.onFavoriteSync(fav);
+        });
     }
 
     private static void handleOpenWirelessCopycatScreen(ModPackets.OpenWirelessCopycatScreenPacket packet, IPayloadContext ctx) {

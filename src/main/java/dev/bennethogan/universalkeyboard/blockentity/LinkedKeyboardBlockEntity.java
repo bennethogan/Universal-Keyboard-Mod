@@ -10,6 +10,7 @@ import dev.bennethogan.universalkeyboard.compat.wireless.CreateWirelessHelper;
 import dev.bennethogan.universalkeyboard.compat.wireless.WirelessEntry;
 import dev.bennethogan.universalkeyboard.compat.wireless.WirelessPresence;
 import dev.bennethogan.universalkeyboard.config.ModConfig;
+import dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
 import dev.bennethogan.universalkeyboard.sequencer.SequencerStep;
@@ -59,6 +60,13 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     private static final double SHIP_MASS_FACTOR = 0.10;
     private java.lang.ref.WeakReference<Object> massSublevelRef = null;
     private double appliedMassDelta = 0.0;
+
+    // ----- Favorite Screen -----
+
+    private FavoriteScreen favoriteScreen = FavoriteScreen.NONE;
+
+    public FavoriteScreen getFavoriteScreen() { return favoriteScreen; }
+    public void setFavoriteScreen(FavoriteScreen fav) { this.favoriteScreen = fav; setChanged(); }
 
     // ----- Live Control -----
 
@@ -845,6 +853,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             }
             tag.put("link_freqs", lfl);
         }
+        if (favoriteScreen != FavoriteScreen.NONE)
+            tag.putByte("favorite_screen", (byte) favoriteScreen.ordinal());
     }
 
     @Override
@@ -962,6 +972,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                 linkFreqs[i] = v.isEmpty() ? null : v;
             }
         }
+        favoriteScreen = tag.contains("favorite_screen")
+                ? FavoriteScreen.fromByte(tag.getByte("favorite_screen")) : FavoriteScreen.NONE;
     }
 
     @Override

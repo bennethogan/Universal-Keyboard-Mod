@@ -77,6 +77,11 @@ public class PeripheralMethodScreen extends Screen {
         panelX = (width  - PANEL_W) / 2;
         panelY = (height - panelH)  / 2;
 
+        addRenderableWidget(DarkButton.make(Component.literal("?"),
+                Component.translatable("gui.universalkeyboard.tooltip.wiki"),
+                b -> net.minecraft.client.Minecraft.getInstance().setScreen(new WikiScreen(this)),
+                panelX + PANEL_W - PAD - 16, panelY + 2, 16, 16));
+
         int y = panelY + PAD + 12 + 4;
 
         // Getter section

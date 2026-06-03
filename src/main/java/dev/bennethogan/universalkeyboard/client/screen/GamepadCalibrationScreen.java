@@ -42,6 +42,11 @@ public class GamepadCalibrationScreen extends Screen {
             for (int i = 0; i < 4 && i < cal.size(); i++) recorded[i] = cal.get(i);
         } catch (Exception ignored) {}
 
+        addRenderableWidget(DarkButton.make(Component.literal("?"),
+                Component.translatable("gui.universalkeyboard.tooltip.wiki"),
+                b -> Minecraft.getInstance().setScreen(new WikiScreen(this)),
+                panelX + PANEL_W - PAD - BTN_H, panelY + 4, BTN_H, BTN_H));
+
         int by = panelY + PANEL_H - PAD - BTN_H;
 
         addRenderableWidget(IconButton.make(ModIcons.PREV_PAGE,

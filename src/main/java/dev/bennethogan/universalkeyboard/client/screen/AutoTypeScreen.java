@@ -45,6 +45,11 @@ public class AutoTypeScreen extends Screen {
         int buttonsY = boxY + boxHeight + 8;
         int centerX  = width / 2;
 
+        addRenderableWidget(DarkButton.make(Component.literal("?"),
+                Component.translatable("gui.universalkeyboard.tooltip.wiki"),
+                b -> minecraft.setScreen(new WikiScreen(this)),
+                boxX + boxWidth - 16, PADDING - 4, 16, 16));
+
         addRenderableWidget(Button.builder(
                 Component.translatable("gui.universalkeyboard.btn.save"),
                 btn -> { ModPackets.sendSaveAutoTypeScript(keyboardPos, scriptBox.getValue()); onClose(); })
