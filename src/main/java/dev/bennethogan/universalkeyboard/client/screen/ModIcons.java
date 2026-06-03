@@ -23,7 +23,6 @@ public class ModIcons {
     public static final ModIcons CONFIG_SAVE  = new ModIcons(3, 10);
     public static final ModIcons PREV_PAGE    = new ModIcons(6, 10);
     public static final ModIcons NEXT_PAGE    = new ModIcons(7, 10);
-    public static final ModIcons ADD          = new ModIcons(0,  0);
     public static final ModIcons ACTIVE       = ENABLED;
     public static final ModIcons PASSIVE      = DISABLED;
     public static final ModIcons REVERT       = new ModIcons(4,  5);
