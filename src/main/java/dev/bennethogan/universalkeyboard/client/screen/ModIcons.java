@@ -28,8 +28,6 @@ public class ModIcons {
     public static final ModIcons PASSIVE      = DISABLED;
     public static final ModIcons REVERT       = new ModIcons(4,  5);
     public static final ModIcons DICE         = new ModIcons(5, 12);
-    public static final ModIcons STAR         = new ModIcons(6, 12);
-    public static final ModIcons WIKI         = new ModIcons(3,  9);
     public static final ModIcons LOCATE       = PLAY;
 
     private final int iconX;
