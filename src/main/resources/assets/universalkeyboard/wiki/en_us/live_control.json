@@ -1,7 +1,213 @@
 {
-  "label": "Live Control",
+  "label": "Live Controller",
   "entries": [
-    {"type": "heading", "text": "Live Control"},
-    {"type": "text", "body": "Wiki not done"}
+    {
+      "type": "heading",
+      "text": "Live Controller"
+    },
+    {
+      "type": "text",
+      "body": "§6§lGetting Familiar with the UI§r\n§7Hover your mouse over parts of \n§7the image to learn more!"
+    },
+    {
+      "type": "image",
+      "texture": "textures/wiki/en_us/livecontrol_ui_1.png",
+      "width": 1600,
+      "height": 880,
+      "hotspots": [
+        {
+          "px0": 240,
+          "py0": 88,
+          "px1": 424,
+          "py1": 526,
+          "title": "Redstone",
+          "body": "You can send analog redstone signals to a local side. Or with Create installed, you can send wireless redstone signals through Wireless Copycats & Redstone Links"
+        },
+        {
+          "px0": 80,
+          "py0": 88,
+          "px1": 232,
+          "py1": 488,
+          "title": "Gamepad Support",
+          "body": "Plug & play gamepad support for standard controllers! HOTAS or other non-standard controllers need to set \"Enable Advanced Input\" to \"true\" in the client-side config files"
+        },
+        {
+          "px0": 432,
+          "py0": 88,
+          "px1": 632,
+          "py1": 215,
+          "title": "Local Redstone",
+          "body": "Local redstone sides only, without Create installed"
+        },
+        {
+          "px0": 432,
+          "py0": 224,
+          "px1": 632,
+          "py1": 352,
+          "title": "Redstone Links",
+          "body": "Go to the \"Setup\" menu area to add up to 20 frequencies (L1-L20), with items from your inventory, go to the \"Redstone Links\" wiki page for more details"
+        },
+        {
+          "px0": 432,
+          "py0": 360,
+          "px1": 632,
+          "py1": 488,
+          "title": "Wireless Copycats",
+          "body": "Go to the \"Setup\" menu area to add up to 100 frequencies (W1-W100), which uses a custom or randomized 6 character alphanumeric string. See \"Wireless Copycats\" wiki page for more details"
+        },
+        {
+          "px0": 640,
+          "py0": 88,
+          "px1": 720,
+          "py1": 352,
+          "title": "Key Action - Hold",
+          "body": "With 'Hld', the signal stays active only while the key is being held down"
+        },
+        {
+          "px0": 728,
+          "py0": 88,
+          "px1": 808,
+          "py1": 352,
+          "title": "Power Setting",
+          "body": "Scroll the mouse wheel to adjust the signal strength that is used when the key is pressed (no more dealing with full power key presses from the Typewriter!)"
+        },
+        {
+          "px0": 640,
+          "py0": 360,
+          "px1": 808,
+          "py1": 488,
+          "title": "Key Action - Toggle",
+          "body": "With 'Tog', the signal switched between an on and off state with a key press"
+        },
+        {
+          "px0": 240,
+          "py0": 564,
+          "px1": 592,
+          "py1": 760,
+          "title": "Variable Mode",
+          "body": "Works in parallel with Sequencer mode. Allows for as much complexity as you need. You can set a variable to hold, toggle, or increment between 0 and 100. It is then picked up by the sequencer, where you can do a whole lot with it! See the wiki examples for\"Variable Mode\" to learn more (this isn't done yet, sorry!)"
+        },
+        {
+          "px0": 600,
+          "py0": 564,
+          "px1": 800,
+          "py1": 692,
+          "title": "Key Action - Increment",
+          "body": "With 'Inc', you set up two keybinds: one for increasing '++', another for decreasing '--'. This replaced the need for the Redstone Accumulator entirely! Step up/down the signal strength, by pressing or holding down the key. Apply Overdrive Mode if you want to increment faster. Chosen power persists on save/load!"
+        },
+        {
+          "px0": 1376,
+          "py0": 360,
+          "px1": 1576,
+          "py1": 488,
+          "title": "Key Action - Increment",
+          "body": "With 'Inc', you set up two keybinds: one for increasing '++', another for decreasing '--'. This replaced the need for the Redstone Accumulator entirely! Step up/down the signal strength, by pressing or holding down the key. Apply Overdrive Mode if you want to increment faster. Chosen power persists on save/load!"
+        },
+        {
+          "px0": 856,
+          "py0": 88,
+          "px1": 1008,
+          "py1": 760,
+          "title": "Keybinds",
+          "body": "Bind up to 40 keyboard keys and/or gamepad inputs. You can also bind 1 key to multiple lines, if you want 1 key press to do multiple things"
+        },
+        {
+          "px0": 1016,
+          "py0": 88,
+          "px1": 1576,
+          "py1": 148,
+          "title": "Thruster Mode",
+          "body": "Link a 'Create Propulsion: Simulated' thruster through peripheral linking (see \"Linking Mode\"). No redstone needed! Set the power between 0-100% (only allows 6.5% increments due to thruster limitations at the moment). CC:Tweaked must be installed. "
+        },
+        {
+          "px0": 1016,
+          "py0": 156,
+          "px1": 1576,
+          "py1": 284,
+          "title": "Vector Mode",
+          "body": "'VEC' mode is also available if linked to a Vector Thruster. Click the arrow on the right side to set this keybind to any angle! You place a dot on a circle, showing the thruster where to point, from its point-of-view."
+        },
+        {
+          "px0": 1016,
+          "py0": 360,
+          "px1": 1200,
+          "py1": 488,
+          "title": "RPM Mode",
+          "body": "Hold, toggle, or increment RPM from -256 to 256. Currently works with Rotation Speed Controller, Creative Motor, and 'Crafts & Additions' Electric Motor. They have CC:Tweaked compat built in, which allows this to work. CC:Tweaked must be installed to use this mode"
+        },
+        {
+          "px0": 1208,
+          "py0": 360,
+          "px1": 1368,
+          "py1": 488,
+          "title": "Wireless Channels",
+          "body": "Peripherals like the thrusters and RPM setters connect in \"Linking Mode\". Supports up to 16 channels of different peripherals. See the wiki examples for\"Thruster Examples\" to learn more about how this can be used (this isn't done yet, sorry!)"
+        },
+        {
+          "px0": 1016,
+          "py0": 564,
+          "px1": 1568,
+          "py1": 760,
+          "title": "Overdrive Mode",
+          "body": "Multiply the power (or increment speed) of all the other lines. To exclude lines, click 'Excl' and write the line numbers, separated by comma. You can stack multiple overdrive states together to make a transmission, effectively"
+        },
+        {
+          "px0": 32,
+          "py0": 784,
+          "px1": 160,
+          "py1": 848,
+          "title": "Back Button",
+          "body": "Return to Main Menu"
+        },
+        {
+          "px0": 260,
+          "py0": 784,
+          "px1": 388,
+          "py1": 848,
+          "title": "Start Button",
+          "body": "Start Live Controls! Captures your keyboard once active, so you must press 'Esc' to quit. You can still move your mouse and press F1-F12 to toggle POV or other essential keybinds."
+        },
+        {
+          "px0": 396,
+          "py0": 784,
+          "px1": 932,
+          "py1": 848,
+          "title": "Profile Selection",
+          "body": "Save up to 4 completely different keybind profiles to the same keyboard! I use one for gamepad, and one for WASD."
+        },
+        {
+          "px0": 940,
+          "py0": 784,
+          "px1": 1068,
+          "py1": 848,
+          "title": "Revert Button",
+          "body": "'Revert' will erase, upon confirmation, all auto-saved changes. This reverts the page to a snapshot of when the menu was first opened"
+        },
+        {
+          "px0": 1076,
+          "py0": 784,
+          "px1": 1340,
+          "py1": 848,
+          "title": "Next / Previous Page",
+          "body": "There is a 2nd page, so you can have up to 40 keybinds! Switch pages here"
+        },
+        {
+          "px0": 1432,
+          "py0": 12,
+          "px1": 1496,
+          "py1": 76,
+          "title": "Wiki Button",
+          "body": "Access this in-game wiki anytime with this button"
+        },
+        {
+          "px0": 1504,
+          "py0": 12,
+          "px1": 1568,
+          "py1": 76,
+          "title": "Favorite Button",
+          "body": "You can autostart live controls by just right clicking the keyboard! Look for ‘Autostart’ in the config file. Set that to true, and then select this ‘favorite’ icon"
+        }
+      ]
+    }
   ]
 }
