@@ -1,11 +1,12 @@
-const WIKI_BASE   = './src/main/resources/assets/universalkeyboard/wiki/';
-const TEXTURE_BASE = './src/main/resources/assets/universalkeyboard/';
+const WIKI_BASE    = '/src/main/resources/assets/universalkeyboard/wiki/';
+const TEXTURE_BASE = '/src/main/resources/assets/universalkeyboard/';
 
 let pages = [];
 let currentIdx = 0;
-let lbEntry = null;   // the WikiEntry currently in the lightbox
+let lbEntry = null;   // the WikiEntry currently shown in the lightbox
 
-// -- Boot ----
+// ── Boot ─────────────────────────────────────────────────────────────────────
+
 async function init() {
   const lang = navigator.language.toLowerCase().replace('-', '_');
 
@@ -18,7 +19,7 @@ async function init() {
   }
 
   for (const id of manifest) {
-    // locale logic
+    // Try browser locale first, fall back to en_us — same logic as in-game
     let page = null;
     for (const locale of [lang, 'en_us']) {
       try {
@@ -46,7 +47,8 @@ async function init() {
   });
 }
 
-//-- Sidebar--
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+
 function renderSidebar() {
   const sidebar = document.getElementById('sidebar');
   sidebar.innerHTML = '';
@@ -63,7 +65,8 @@ function renderSidebar() {
   });
 }
 
-//-- Page content --
+// ── Page content ──────────────────────────────────────────────────────────────
+
 function renderPage(idx) {
   const page = pages[idx];
   const content = document.getElementById('content');
@@ -107,13 +110,13 @@ function buildImage(entry) {
   img.draggable = false;
   wrap.appendChild(img);
 
-  // Hotspot overlays
+  // Hotspot overlays (positioned as % of image)
   for (const spot of (entry.hotspots || [])) {
     const div = buildHotspotDiv(spot, entry.width, entry.height);
     wrap.appendChild(div);
   }
 
-  // Click to open lightbox
+  // Click anywhere on image (including hotspots) opens lightbox
   wrap.addEventListener('click', () => openLightbox(entry));
 
   return wrap;
@@ -134,7 +137,7 @@ function buildHotspotDiv(spot, imgW, imgH) {
   return div;
 }
 
-// --- Lightbox ----
+// ── Lightbox ──────────────────────────────────────────────────────────────────
 
 function openLightbox(entry) {
   lbEntry = entry;
@@ -144,10 +147,10 @@ function openLightbox(entry) {
 
   img.src = TEXTURE_BASE + entry.texture;
 
-  // Remove previous overlays
+  // Remove any previous hotspot overlays
   wrap.querySelectorAll('.lb-hotspot').forEach(el => el.remove());
 
-  // Add hotspot overlays sized to the image element
+  // Add hotspot overlays sized to the image element (percentage-based, same approach)
   for (const spot of (entry.hotspots || [])) {
     const div = document.createElement('div');
     div.className = 'lb-hotspot';
@@ -173,7 +176,7 @@ function closeLightbox() {
   lbEntry = null;
 }
 
-// -- Tooltip ----
+// ── Tooltip ───────────────────────────────────────────────────────────────────
 
 const tooltip = document.getElementById('tooltip');
 
@@ -199,9 +202,10 @@ function hideTooltip() {
   tooltip.classList.add('hidden');
 }
 
-// -- Minecraft § formatting ----
+// ── Minecraft § formatting ────────────────────────────────────────────────────
 
 function mcFormat(text) {
+  // Split on § codes and wrap in spans
   const parts = text.split(/§([0-9a-flonmr])/i);
   let html = '';
   let openTags = 0;
@@ -228,7 +232,7 @@ function escHtml(str) {
             .replace(/\n/g,'<br>');
 }
 
-//-- Start ----
+// ── Start ─────────────────────────────────────────────────────────────────────
 
 window.closeLightbox = closeLightbox; // expose for onclick in HTML
 init();

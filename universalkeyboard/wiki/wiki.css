@@ -12,7 +12,7 @@ body {
   padding: 20px;
 }
 
-/* --- Main Panel --- */
+/* ── Main panel ─────────────────────────────────────────────────────────── */
 
 #wiki-wrap {
   width: 100%;
@@ -36,7 +36,7 @@ body {
   min-height: 480px;
 }
 
-/* --- Side Bar --- */
+/* ── Sidebar ────────────────────────────────────────────────────────────── */
 
 #sidebar {
   width: 150px;
@@ -66,7 +66,7 @@ body {
   border-left-color: #ffcc33;
 }
 
-/* -- Content area ----- */
+/* ── Content area ───────────────────────────────────────────────────────── */
 
 #content {
   flex: 1;
@@ -96,7 +96,7 @@ body {
   white-space: pre-wrap;
 }
 
-/* -- Images & hotspots --- */
+/* ── Images & hotspots ──────────────────────────────────────────────────── */
 
 .wiki-image-wrap {
   position: relative;
@@ -118,7 +118,7 @@ body {
   cursor: crosshair;
 }
 
-/* -- Tooltip --- */
+/* ── Tooltip ────────────────────────────────────────────────────────────── */
 
 #tooltip {
   position: fixed;
@@ -145,7 +145,7 @@ body {
 
 .hidden { display: none !important; }
 
-/* --- Lightbox --- */
+/* ── Lightbox ───────────────────────────────────────────────────────────── */
 
 #lightbox {
   position: fixed;
@@ -186,7 +186,7 @@ body {
   font-size: 12px;
 }
 
-/* ------ Minecraft formatting colours ------- */
+/* ── Minecraft formatting colours ───────────────────────────────────────── */
 .mc-0 { color: #000000; } .mc-1 { color: #0000AA; } .mc-2 { color: #00AA00; }
 .mc-3 { color: #00AAAA; } .mc-4 { color: #AA0000; } .mc-5 { color: #AA00AA; }
 .mc-6 { color: #FFAA00; } .mc-7 { color: #AAAAAA; } .mc-8 { color: #555555; }
