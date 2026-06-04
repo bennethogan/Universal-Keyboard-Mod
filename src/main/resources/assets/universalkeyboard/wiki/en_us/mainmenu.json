@@ -22,6 +22,38 @@
           "py1": 80,
           "title": "Wiki Button",
           "body": "Access this in-game wiki anytime with this button"
+        },
+        {
+          "px0": 48,
+          "py0": 128,
+          "px1": 328,
+          "py1": 408,
+          "title": "Live Controller Mode",
+          "body": "Control redstone signals or peripheral links with your keyboard or gamepad! This mode has a lot of parts to it. I do my best in the Live Controller page to explain it clearly, but ask if you need help setting up what you want!"
+        },
+        {
+          "px0": 368,
+          "py0": 128,
+          "px1": 648,
+          "py1": 408,
+          "title": "Sequencer Mode",
+          "body": "Visual scripting mode-- there's so much you can do with it! This is my attempt to make the amazing features of CC:Tweaked / Aeronautics integration accessible for more people. Again, ask me if you need help. Especially because the wiki is not started for this mode yet. It will take the longest."
+        },
+        {
+          "px0": 48,
+          "py0": 448,
+          "px1": 328,
+          "py1": 728,
+          "title": "Setup Menu",
+          "body": "Submenu area for wireless and other setup features. See the \"Setup Menu\" page to get familiar with that UI"
+        },
+        {
+          "px0": 368,
+          "py0": 448,
+          "px1": 648,
+          "py1": 728,
+          "title": "Other modes",
+          "body": "Submenu area for all other features. See the \"Misc\" page to learn more. These modes were the part of the first versions of this mod, so I haven't refined them. The Sequencer and Live Controller have really taken over as the stars of the show."
         }
       ]
     }
