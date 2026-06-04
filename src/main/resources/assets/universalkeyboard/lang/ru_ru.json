@@ -15,7 +15,6 @@
   "gui.universalkeyboard.screen.mode_selection.title": "§bУниверсальная клавиатура",
   "gui.universalkeyboard.screen.live_controller.title": "§bКонтроллер реального времени",
   "gui.universalkeyboard.screen.wireless_config.title": "Беспроводной редстоун",
-  "gui.universalkeyboard.screen.auto_type.title": "Тип скрипта: автоматический",
   "gui.universalkeyboard.screen.sequencer.title": "§bПериферийный секвенсор",
 
   "gui.universalkeyboard.btn.reset_data": "Сброс данных",
@@ -62,10 +61,7 @@
   "gui.universalkeyboard.label.no_getter": "(нет)",
   "gui.universalkeyboard.label.no_getters": "(не задано)",
   "gui.universalkeyboard.label.manual_input": "[Ввод вручную]",
-  "gui.universalkeyboard.label.script": "Скрипт",
 
-  "gui.universalkeyboard.hint.script_placeholder": "Введите скрипт здесь...",
-  "gui.universalkeyboard.hint.script_info": "§7Скрипт выполняется, когда клавиатура получает редстоун-сигнал.",
   "gui.universalkeyboard.hint.save_name": "§7сохранить название...",
   "gui.universalkeyboard.hint.insert_step": "§8Наведите курсор в любом месте, чтобы добавить шаг",
   "gui.universalkeyboard.hint.select_control": "§7Выберите элемент управления выше",

@@ -1,0 +1,7 @@
+{
+  "label": "Favorites",
+  "entries": [
+    {"type": "heading", "text": "Favorites"},
+    {"type": "text", "body": "Wiki not done"}
+  ]
+}

@@ -36,12 +36,14 @@ public class ModConfig {
                              "Events are dropped if the player exceeds this distance.",
                              "Set to greater than 2 million for range capable of reaching sub-levels",
                              "Range: 1–2147483647. Default: 32.")
+                    .translation("config.universalkeyboard.keyboard.keyboardRange")
                     .defineInRange("keyboardRange", 32, 1, Integer.MAX_VALUE);
 
             copycatLocateDuration = builder
                     .comment("Duration in seconds for the Wireless Copycat test-face feature.",
                              "Applies to both the per-face Test button on the Copycat and the Locate button on the keyboard.",
                              "Range: 1–300. Default: 5.")
+                    .translation("config.universalkeyboard.keyboard.copycatLocateDuration")
                     .defineInRange("copycatLocateDuration", 5, 1, 300);
 
             favoriteLiveControlAutoStart = builder
@@ -49,6 +51,7 @@ public class ModConfig {
                              "Live Controller menu must also be marked 'favorite'.",
                              "Shift-click the keyboard to open the main menu instead",
                              "Default: false.")
+                    .translation("config.universalkeyboard.keyboard.favoriteLiveControlAutoStart")
                     .define("favoriteLiveControlAutoStart", false);
 
             builder.pop();
@@ -73,6 +76,7 @@ public class ModConfig {
                              "Uses GLFW's standard gamepad mapping, so any recognized controller works.",
                              "Multiple standard gamepads can be used at once; each is shown with its number.",
                              "Default: true.")
+                    .translation("config.universalkeyboard.gamepad.enableGamepad")
                     .define("enableGamepad", true);
 
             enableAdvancedInput = builder
@@ -82,17 +86,20 @@ public class ModConfig {
                              "polled raw, exposing all of its axes, buttons and hat switches by number.",
                              "Bindings will show unmapped names (e.g. A3+, B12, H0↑) rather than A/B/RT/LS.",
                              "Leave off if you only use standard gamepads. Default: false.")
+                    .translation("config.universalkeyboard.gamepad.enableAdvancedInput")
                     .define("enableAdvancedInput", false);
 
 
             stickThreshold = builder
                     .comment("How far an analog stick must be pushed before it counts as a directional press.",
                              "Range: 0.1–1.0. Default: 0.2.")
+                    .translation("config.universalkeyboard.gamepad.stickThreshold")
                     .defineInRange("stickThreshold", 0.2, 0.1, 1.0);
 
             triggerThreshold = builder
                     .comment("How far a trigger (LT/RT) must be pulled before it counts as a press.",
                              "Range: 0.1–1.0. Default: 0.5.")
+                    .translation("config.universalkeyboard.gamepad.triggerThreshold")
                     .defineInRange("triggerThreshold", 0.5, 0.1, 1.0);
 
             joystickScaling = builder
@@ -103,6 +110,7 @@ public class ModConfig {
                              "Buttons and Inc/Overdrive bindings are never scaled.",
                              "Turn off to make analog inputs behave as plain on/off like buttons.",
                              "Default: true.")
+                    .translation("config.universalkeyboard.gamepad.joystickScaling")
                     .define("joystickScaling", true);
 
             stickCalibration = builder
@@ -112,6 +120,7 @@ public class ModConfig {
                              "physically falls short, and analog output is rescaled so that the stick's real",
                              "maximum still maps to 100%. Fixes sticks that cap below full and asymmetric axes.",
                              "Set these with the Calibrate button in the Live Controller. Default: 1.0 each.")
+                    .translation("config.universalkeyboard.gamepad.stickCalibration")
                     .defineList("stickCalibration",
                             List.of(1.0, 1.0, 1.0, 1.0),
                             () -> 1.0,

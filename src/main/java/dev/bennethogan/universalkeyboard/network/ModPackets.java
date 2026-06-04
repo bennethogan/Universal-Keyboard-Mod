@@ -84,28 +84,6 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    public record SaveAutoTypeScriptPacket(BlockPos keyboardPos, String script) implements CustomPacketPayload {
-        public static final Type<SaveAutoTypeScriptPacket> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "save_autotype_script"));
-        public static final StreamCodec<FriendlyByteBuf, SaveAutoTypeScriptPacket> CODEC =
-                StreamCodec.composite(
-                        BlockPos.STREAM_CODEC,     SaveAutoTypeScriptPacket::keyboardPos,
-                        ByteBufCodecs.STRING_UTF8, SaveAutoTypeScriptPacket::script,
-                        SaveAutoTypeScriptPacket::new);
-        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
-    }
-
-    public record OpenAutoTypeScreenPacket(BlockPos keyboardPos, String currentScript) implements CustomPacketPayload {
-        public static final Type<OpenAutoTypeScreenPacket> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "open_autotype_screen"));
-        public static final StreamCodec<FriendlyByteBuf, OpenAutoTypeScreenPacket> CODEC =
-                StreamCodec.composite(
-                        BlockPos.STREAM_CODEC,     OpenAutoTypeScreenPacket::keyboardPos,
-                        ByteBufCodecs.STRING_UTF8, OpenAutoTypeScreenPacket::currentScript,
-                        OpenAutoTypeScreenPacket::new);
-        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
-    }
-
     public record StartCreateCapturePacket(
             BlockPos keyboardPos, int currentValue, int minValue, int maxValue
     ) implements CustomPacketPayload {
@@ -386,7 +364,6 @@ public class ModPackets {
         // playToServer — handlers run on the server, safe to register from the common @Mod class
         registrar.playToServer(KeyInputPacket.TYPE,               KeyInputPacket.CODEC,               ModPackets::handleKeyInput);
         registrar.playToServer(KeyboardReleasePacket.TYPE,        KeyboardReleasePacket.CODEC,        ModPackets::handleKeyboardRelease);
-        registrar.playToServer(SaveAutoTypeScriptPacket.TYPE,     SaveAutoTypeScriptPacket.CODEC,     ModPackets::handleSaveAutoTypeScript);
         registrar.playToServer(CallPeripheralMethodPacket.TYPE,   CallPeripheralMethodPacket.CODEC,   ModPackets::handleCallPeripheralMethod);
         registrar.playToServer(SelectModePacket.TYPE,             SelectModePacket.CODEC,             ModPackets::handleSelectMode);
         registrar.playToServer(SetThrusterValuePacket.TYPE,       SetThrusterValuePacket.CODEC,       ModPackets::handleSetThrusterValue);
@@ -420,7 +397,6 @@ public class ModPackets {
         // to avoid double-registration. No-op lambdas contain no client-only class references.
         if (!net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
             registrar.playToClient(KeyboardCapturePacket.TYPE,     KeyboardCapturePacket.CODEC,     (p, c) -> {});
-            registrar.playToClient(OpenAutoTypeScreenPacket.TYPE,  OpenAutoTypeScreenPacket.CODEC,  (p, c) -> {});
             registrar.playToClient(StartCreateCapturePacket.TYPE,  StartCreateCapturePacket.CODEC,  (p, c) -> {});
             registrar.playToClient(OpenPeripheralMenuPacket.TYPE,  OpenPeripheralMenuPacket.CODEC,  (p, c) -> {});
             registrar.playToClient(OpenModeSelectionPacket.TYPE,   OpenModeSelectionPacket.CODEC,   (p, c) -> {});
@@ -465,17 +441,6 @@ public class ModPackets {
             BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
             if (be instanceof LinkedKeyboardBlockEntity keyboard && keyboard.isInlineCapturing())
                 keyboard.inlineCaptureEsc();
-        });
-    }
-
-    static void handleSaveAutoTypeScript(SaveAutoTypeScriptPacket packet, IPayloadContext ctx) {
-        ctx.enqueueWork(() -> {
-            if (!(ctx.player() instanceof ServerPlayer sp)) return;
-            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
-            if (!(be instanceof LinkedKeyboardBlockEntity keyboard)) return;
-            keyboard.setAutoTypeScript(packet.script());
-            sp.displayClientMessage(
-                    net.minecraft.network.chat.Component.literal("§aAuto-type script saved."), true);
         });
     }
 
@@ -684,9 +649,6 @@ public class ModPackets {
     public static void sendKeyboardReleasePacket(BlockPos pos) {
         PacketDistributor.sendToServer(new KeyboardReleasePacket(pos));
     }
-    public static void sendSaveAutoTypeScript(BlockPos pos, String script) {
-        PacketDistributor.sendToServer(new SaveAutoTypeScriptPacket(pos, script));
-    }
     public static void sendSetActiveChannel(BlockPos keyboardPos, int channel) {
         PacketDistributor.sendToServer(new SetActiveChannelPacket(keyboardPos, channel));
     }
@@ -700,9 +662,6 @@ public class ModPackets {
     // server → client senders
     public static void sendKeyboardCapturePacket(ServerPlayer player, BlockPos pos, boolean capture) {
         PacketDistributor.sendToPlayer(player, new KeyboardCapturePacket(pos, capture));
-    }
-    public static void sendOpenAutoTypeScreen(ServerPlayer player, BlockPos pos, String currentScript) {
-        PacketDistributor.sendToPlayer(player, new OpenAutoTypeScreenPacket(pos, currentScript));
     }
     public static void sendStartCreateCapture(ServerPlayer player, BlockPos keyboardPos,
                                                int currentValue, int min, int max) {

@@ -103,7 +103,7 @@ public class ModeSelectionScreen extends Screen {
         wikiBtn = DarkButton.make(Component.literal("?"),
                 Component.translatable("gui.universalkeyboard.tooltip.wiki"),
                 b -> Minecraft.getInstance().setScreen(new WikiScreen(this)),
-                panelX + panelW - PAD - 16, panelY + (TITLE_H - 16) / 2, 16, 16);
+                panelX + panelW - PAD - 16, panelY + (TITLE_H - 16) / 2 + 2, 16, 16);
         addRenderableWidget(wikiBtn);
     }
 
@@ -146,7 +146,7 @@ public class ModeSelectionScreen extends Screen {
         if (confirmDialog != null) confirmDialog.setParentBounds(panelX, panelY, panelW, panelH);
         if (wikiBtn != null) {
             wikiBtn.setX(panelX + panelW - PAD - 16);
-            wikiBtn.setY(panelY + (TITLE_H - 16) / 2);
+            wikiBtn.setY(panelY + (TITLE_H - 16) / 2 + 2);
         }
     }
 
@@ -416,6 +416,8 @@ public class ModeSelectionScreen extends Screen {
 
         if (twOfferPos != null)
             renderTypewriterDialog(g, mx, my);
+
+        for (var r : this.renderables) r.render(g, mx, my, pt);
     }
 
     private int[] twDialogLayout() {

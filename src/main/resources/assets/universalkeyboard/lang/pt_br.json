@@ -15,7 +15,6 @@
   "gui.universalkeyboard.screen.mode_selection.title": "§bTeclado Universal",
   "gui.universalkeyboard.screen.live_controller.title": "§bControle Ao Vivo",
   "gui.universalkeyboard.screen.wireless_config.title": "Redstone Sem-fio",
-  "gui.universalkeyboard.screen.auto_type.title": "Script de Digitação Automática",
   "gui.universalkeyboard.screen.sequencer.title": "§bSequenciador de Periféricos",
 
   "gui.universalkeyboard.btn.reset_data": "Redefinir dados",
@@ -62,10 +61,7 @@
   "gui.universalkeyboard.label.no_getter": "(nenhum)",
   "gui.universalkeyboard.label.no_getters": "(no getters)",
   "gui.universalkeyboard.label.manual_input": "[Entrada Manual]",
-  "gui.universalkeyboard.label.script": "Script",
 
-  "gui.universalkeyboard.hint.script_placeholder": "Digite o seu script aqui...",
-  "gui.universalkeyboard.hint.script_info": "§7O script inicia quando o teclado recebe um sinal de redstone.",
   "gui.universalkeyboard.hint.save_name": "§7salvar o nome...",
   "gui.universalkeyboard.hint.insert_step": "§8Passe o mouse em qualquer lugar para inserir uma etapa",
   "gui.universalkeyboard.hint.select_control": "§7selecione o controle acima",

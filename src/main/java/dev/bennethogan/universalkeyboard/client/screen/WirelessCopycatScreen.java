@@ -136,6 +136,8 @@ public class WirelessCopycatScreen extends PanelScreen {
                 freqBoxes[i].setValue(WirelessCopycatBlockEntity.generateFreq());
             newFreqs[i] = freqBoxes[i].getValue();
         }
+        // Keep freqs in sync so switching back and forth from wiki works better
+        System.arraycopy(newFreqs, 0, freqs, 0, 6);
         ModPackets.sendSaveWirelessCopycatConfig(blockPos, newFreqs, enabledState);
     }
 
@@ -174,6 +176,12 @@ public class WirelessCopycatScreen extends PanelScreen {
     public void onClose() {
         autoSave();
         super.onClose();
+    }
+
+    @Override
+    public void removed() {
+        autoSave();
+        super.removed();
     }
 
     @Override

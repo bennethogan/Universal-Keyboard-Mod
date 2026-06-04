@@ -1,6 +1,5 @@
 package dev.bennethogan.universalkeyboard.client;
 
-import dev.bennethogan.universalkeyboard.client.screen.AutoTypeScreen;
 import dev.bennethogan.universalkeyboard.client.screen.LinkFrequencyScreen;
 import dev.bennethogan.universalkeyboard.client.screen.LiveControlScreen;
 import dev.bennethogan.universalkeyboard.client.screen.MenuNav;
@@ -25,7 +24,6 @@ public class ClientPacketHandlers {
     public static void onRegisterClientPayloads(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar("1");
         registrar.playToClient(KeyboardCapturePacket.TYPE,      KeyboardCapturePacket.CODEC,      ClientPacketHandlers::handleKeyboardCapture);
-        registrar.playToClient(OpenAutoTypeScreenPacket.TYPE,   OpenAutoTypeScreenPacket.CODEC,   ClientPacketHandlers::handleOpenAutoTypeScreen);
         registrar.playToClient(StartCreateCapturePacket.TYPE,   StartCreateCapturePacket.CODEC,   ClientPacketHandlers::handleStartCreateCapture);
         registrar.playToClient(OpenPeripheralMenuPacket.TYPE,   OpenPeripheralMenuPacket.CODEC,   ClientPacketHandlers::handleOpenPeripheralMenu);
         registrar.playToClient(OpenModeSelectionPacket.TYPE,    OpenModeSelectionPacket.CODEC,    ClientPacketHandlers::handleOpenModeSelection);
@@ -43,12 +41,6 @@ public class ClientPacketHandlers {
     private static void handleKeyboardCapture(KeyboardCapturePacket packet, IPayloadContext ctx) {
         ctx.enqueueWork(() ->
                 KeyboardCaptureManager.setCaptureMode(packet.keyboardPos(), packet.capture()));
-    }
-
-    private static void handleOpenAutoTypeScreen(OpenAutoTypeScreenPacket packet, IPayloadContext ctx) {
-        ctx.enqueueWork(() ->
-                Minecraft.getInstance().setScreen(
-                        new AutoTypeScreen(packet.keyboardPos(), packet.currentScript())));
     }
 
     private static void handleStartCreateCapture(StartCreateCapturePacket packet, IPayloadContext ctx) {

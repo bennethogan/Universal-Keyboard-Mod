@@ -23,7 +23,6 @@
   "gui.universalkeyboard.screen.live_controller.title": "§bLive Controller",
   "gui.universalkeyboard.screen.wireless_config.title": "Redstone Links",
   "gui.universalkeyboard.screen.wireless_copycat.title": "Wireless Copycat",
-  "gui.universalkeyboard.screen.auto_type.title": "Auto-Type Script",
   "gui.universalkeyboard.screen.sequencer.title": "§bPeripheral Sequencer",
 
   "gui.universalkeyboard.box.live_controller": "Live Controller",
@@ -97,10 +96,7 @@
   "gui.universalkeyboard.label.no_getter": "(none)",
   "gui.universalkeyboard.label.no_getters": "(no getters)",
   "gui.universalkeyboard.label.manual_input": "[Manual Input]",
-  "gui.universalkeyboard.label.script": "Script",
 
-  "gui.universalkeyboard.hint.script_placeholder": "Type your script here...",
-  "gui.universalkeyboard.hint.script_info": "§7Script runs when keyboard receives a redstone pulse.",
   "gui.universalkeyboard.hint.save_name": "§7save name...",
   "gui.universalkeyboard.hint.insert_step": "§8Hover anywhere to insert a step",
   "gui.universalkeyboard.hint.select_control": "§7select a control above",
@@ -185,5 +181,25 @@
   "gui.universalkeyboard.mode.cc_peripheral.unavailable": "no peripheral",
   "gui.universalkeyboard.mode.cc_computer.name": "CC Computer",
   "gui.universalkeyboard.mode.cc_computer.desc": "Type to a CC:Tweaked computer",
-  "gui.universalkeyboard.mode.cc_computer.unavailable": "not a CC computer"
+  "gui.universalkeyboard.mode.cc_computer.unavailable": "not a CC computer",
+
+  "config.universalkeyboard.keyboard.keyboardRange": "Keyboard Range",
+  "config.universalkeyboard.keyboard.keyboardRange.tooltip": "Max wireless range in blocks between the keyboard and its linked target. Events are dropped if the player exceeds this distance. Set above 2 million to reach sub-levels. Default: 32.",
+  "config.universalkeyboard.keyboard.copycatLocateDuration": "Copycat Locate Duration",
+  "config.universalkeyboard.keyboard.copycatLocateDuration.tooltip": "Duration in seconds for the Wireless Copycat test-face feature. Applies to both the per-face Test button on the Copycat and the Locate button on the keyboard. Default: 5.",
+  "config.universalkeyboard.keyboard.favoriteLiveControlAutoStart": "Favorite Auto-Start",
+  "config.universalkeyboard.keyboard.favoriteLiveControlAutoStart.tooltip": "When true, right-clicking the keyboard immediately starts Live Controls without opening the main menu. The Live Controller screen must also be marked as Favorite. Shift-click the keyboard to open the main menu instead. Default: false.",
+
+  "config.universalkeyboard.gamepad.enableGamepad": "Enable Gamepad",
+  "config.universalkeyboard.gamepad.enableGamepad.tooltip": "Allow a connected gamepad to drive Live Controller bindings. When on, gamepad buttons, triggers, and sticks can be bound just like keyboard keys. Uses GLFW standard gamepad mapping, so any recognized controller works. Default: true.",
+  "config.universalkeyboard.gamepad.enableAdvancedInput": "Enable Advanced Input",
+  "config.universalkeyboard.gamepad.enableAdvancedInput.tooltip": "Read controllers as raw joysticks instead of mapped gamepads. Turn on for HOTAS, flight sticks, racing wheels, and other devices GLFW does not recognise as standard gamepads. Exposes all axes, buttons, and hat switches by number. Leave off if you only use standard gamepads. Default: false.",
+  "config.universalkeyboard.gamepad.stickThreshold": "Stick Threshold",
+  "config.universalkeyboard.gamepad.stickThreshold.tooltip": "How far an analog stick must be pushed before it counts as a directional press. Range: 0.1–1.0. Default: 0.2.",
+  "config.universalkeyboard.gamepad.triggerThreshold": "Trigger Threshold",
+  "config.universalkeyboard.gamepad.triggerThreshold.tooltip": "How far a trigger (LT/RT) must be pulled before it counts as a press. Range: 0.1–1.0. Default: 0.5.",
+  "config.universalkeyboard.gamepad.joystickScaling": "Joystick Scaling",
+  "config.universalkeyboard.gamepad.joystickScaling.tooltip": "Scale a binding's output by how far the stick or trigger is pushed. When on, an analog input bound to 50% power outputs proportionally — pushing the stick halfway sends 25%, fully sends 50%. Applies to RS, Thruster Power, Vector, and Variable bindings in Hld/Tog modes. Buttons and Inc/Overdrive bindings are never scaled. Default: true.",
+  "config.universalkeyboard.gamepad.stickCalibration": "Stick Calibration",
+  "config.universalkeyboard.gamepad.stickCalibration.tooltip": "Per-axis maximum stick deflection recorded by calibration. Order: [Left X, Left Y, Right X, Right Y]. Values below 1.0 mean the stick physically falls short of the theoretical edge; analog output is rescaled so the stick's real maximum maps to 100%. Set with the Calibrate button in the Live Controller. Default: 1.0 each."
 }

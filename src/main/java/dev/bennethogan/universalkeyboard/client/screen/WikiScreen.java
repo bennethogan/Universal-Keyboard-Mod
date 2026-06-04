@@ -1,11 +1,16 @@
 package dev.bennethogan.universalkeyboard.client.screen;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FormattedCharSequence;
 
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,7 +30,6 @@ public class WikiScreen extends Screen {
 
     // ── Content definition ───────────────────────────────────────────────────
 
-
     private record WikiEntry(String heading, String body, ResourceLocation image, int imageW, int imageH) {
         static WikiEntry heading(String text) { return new WikiEntry(text, null, null, 0, 0); }
         static WikiEntry text(String body)    { return new WikiEntry(null, body, null, 0, 0); }
@@ -34,60 +38,18 @@ public class WikiScreen extends Screen {
         }
     }
 
-    private record WikiPage(String label, List<WikiEntry> entries) {
-        static WikiPage of(String label, WikiEntry... entries) {
-            return new WikiPage(label, List.of(entries));
-        }
-    }
+    private record WikiPage(String label, List<WikiEntry> entries) {}
 
-    private static final List<WikiPage> PAGES = new ArrayList<>();
-
-    static {
-        PAGES.add(WikiPage.of("Overview",
-                WikiEntry.heading("Overview"),
-                WikiEntry.text("Wiki not done")));
-
-        PAGES.add(WikiPage.of("Keyboard",
-                WikiEntry.heading("Keyboard"),
-                WikiEntry.text("Wiki not done")));
-
-        PAGES.add(WikiPage.of("Live Control",
-                WikiEntry.heading("Live Control"),
-                WikiEntry.text("Wiki not done")));
-
-        PAGES.add(WikiPage.of("Sequencer",
-                WikiEntry.heading("Sequencer"),
-                WikiEntry.text("Wiki not done")));
-
-        PAGES.add(WikiPage.of("Thruster",
-                WikiEntry.heading("Thruster Control"),
-                WikiEntry.text("Wiki not done")));
-
-        PAGES.add(WikiPage.of("Favorites",
-                WikiEntry.heading("Favorites"),
-                WikiEntry.text("Wiki not done")));
-
-        PAGES.add(WikiPage.of("Gamepad",
-                WikiEntry.heading("Gamepad & Joystick"),
-                WikiEntry.text("Wiki not done")));
-
-        PAGES.add(WikiPage.of("Copycats",
-                WikiEntry.heading("Copycats"),
-                WikiEntry.text("Wiki not done")));
-    }
-
-    // -- State ----------------------------
+    // ── State ────────────────────────────────────────────────────────────────
 
     private final Screen returnScreen;
+    private final List<WikiPage> pages = new ArrayList<>();
     private int currentPage = 0;
     private int scrollY = 0;
     private int contentHeight = 0;
     private int panelX, panelY, panelH;
 
-
-    private final List<int[]> imageHitboxes = new ArrayList<>(); // {x0,y0,x1,y1,entryIndex}
-
-
+    private final List<int[]> imageHitboxes = new ArrayList<>();
     private WikiEntry expandedImage = null;
 
     public WikiScreen(Screen returnScreen) {
@@ -95,15 +57,81 @@ public class WikiScreen extends Screen {
         this.returnScreen = returnScreen;
     }
 
+    // ── Loading ──────────────────────────────────────────────────────────────
+
+    private void loadPages() {
+        pages.clear();
+        var rm = minecraft.getResourceManager();
+        String lang = minecraft.options.languageCode;
+
+        List<String> pageIds = new ArrayList<>();
+        var manifestLoc = ResourceLocation.fromNamespaceAndPath("universalkeyboard", "wiki/manifest.json");
+        var manifestOpt = rm.getResource(manifestLoc);
+        if (manifestOpt.isEmpty()) return;
+        try (var reader = new InputStreamReader(manifestOpt.get().open(), StandardCharsets.UTF_8)) {
+            JsonArray arr = JsonParser.parseReader(reader).getAsJsonArray();
+            for (var el : arr) pageIds.add(el.getAsString());
+        } catch (Exception e) {
+            return;
+        }
+
+        for (String id : pageIds) {
+            WikiPage page = loadPage(rm, lang, id);
+            if (page != null) pages.add(page);
+        }
+
+        currentPage = Math.min(currentPage, Math.max(0, pages.size() - 1));
+    }
+
+    private WikiPage loadPage(net.minecraft.server.packs.resources.ResourceManager rm, String lang, String id) {
+        for (String locale : new String[]{lang, "en_us"}) {
+            var loc = ResourceLocation.fromNamespaceAndPath("universalkeyboard", "wiki/" + locale + "/" + id + ".json");
+            var opt = rm.getResource(loc);
+            if (opt.isEmpty()) continue;
+            try (var reader = new InputStreamReader(opt.get().open(), StandardCharsets.UTF_8)) {
+                JsonObject obj = JsonParser.parseReader(reader).getAsJsonObject();
+                String label = obj.has("label") ? obj.get("label").getAsString() : id;
+                List<WikiEntry> entries = new ArrayList<>();
+                if (obj.has("entries")) {
+                    for (var el : obj.getAsJsonArray("entries")) {
+                        WikiEntry entry = parseEntry(el.getAsJsonObject());
+                        if (entry != null) entries.add(entry);
+                    }
+                }
+                return new WikiPage(label, entries);
+            } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
+    private WikiEntry parseEntry(JsonObject obj) {
+        if (!obj.has("type")) return null;
+        return switch (obj.get("type").getAsString()) {
+            case "heading" -> WikiEntry.heading(obj.get("text").getAsString());
+            case "text"    -> WikiEntry.text(obj.get("body").getAsString());
+            case "image"   -> WikiEntry.image(
+                    ResourceLocation.fromNamespaceAndPath("universalkeyboard", obj.get("texture").getAsString()),
+                    obj.get("width").getAsInt(),
+                    obj.get("height").getAsInt());
+            default -> null;
+        };
+    }
+
+    // ── Layout ───────────────────────────────────────────────────────────────
+
     @Override
     protected void init() {
         panelX = (width  - PANEL_W) / 2;
         panelH = Math.min(height - 20, PANEL_MAX_H);
         panelY = (height - panelH) / 2;
+        loadPages();
         clampScroll();
     }
 
-    private List<WikiEntry> entries() { return PAGES.get(currentPage).entries(); }
+    private List<WikiEntry> entries() {
+        if (pages.isEmpty()) return List.of();
+        return pages.get(currentPage).entries();
+    }
 
     private int contentX()      { return panelX + SIDEBAR_W + PAD; }
     private int contentW()      { return PANEL_W - SIDEBAR_W - PAD * 2; }
@@ -115,15 +143,13 @@ public class WikiScreen extends Screen {
         scrollY = Math.max(0, Math.min(scrollY, Math.max(0, contentHeight - avail)));
     }
 
-    // ---- Render -------------------------------
+    // ── Render ───────────────────────────────────────────────────────────────
 
     @Override
     public void render(GuiGraphics g, int mx, int my, float pt) {
-        // Panel frame
         g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, 0xEE111111);
         drawBorder(g, panelX, panelY, panelX + PANEL_W, panelY + panelH, 0xFF666666);
 
-        // Title bar
         g.fill(panelX, panelY, panelX + PANEL_W, panelY + TITLE_BAR_H, 0x44FFFFFF);
         g.drawCenteredString(font, getTitle(), panelX + PANEL_W / 2, panelY + 4, 0xFFFFFF);
         g.drawString(font, "§7[Esc]", panelX + PANEL_W - PAD - font.width("§7[Esc]"),
@@ -143,12 +169,11 @@ public class WikiScreen extends Screen {
         int sx1 = panelX + SIDEBAR_W;
         int sy1 = panelY + panelH;
 
-        // Sidebar background + divider
         g.fill(sx0, sy0, sx1, sy1, 0x55000000);
         g.fill(sx1 - 1, sy0, sx1, sy1, 0xFF555555);
 
         int rowY = sy0 + 6;
-        for (int i = 0; i < PAGES.size(); i++) {
+        for (int i = 0; i < pages.size(); i++) {
             int top = rowY + i * SIDE_ROW_H;
             int bot = top + SIDE_ROW_H;
             boolean active  = i == currentPage;
@@ -159,7 +184,7 @@ public class WikiScreen extends Screen {
             if (active)       g.fill(sx0, top, sx0 + 2, bot, 0xFFFFCC33);
 
             int color = active ? 0xFFDD44 : (hovered ? 0xFFFFFF : 0xBBBBBB);
-            g.drawString(font, PAGES.get(i).label(), sx0 + 8, top + 3, color, false);
+            g.drawString(font, pages.get(i).label(), sx0 + 8, top + 3, color, false);
         }
     }
 
@@ -210,7 +235,6 @@ public class WikiScreen extends Screen {
 
         g.disableScissor();
 
-        // Scroll indicator
         int availH = cBot - cTop;
         if (contentHeight > availH) {
             int barH = Math.max(16, availH * availH / contentHeight);
@@ -237,7 +261,6 @@ public class WikiScreen extends Screen {
         g.drawCenteredString(font, "§7[Esc] or [Tab] to return", width / 2, y + dh + 6, 0xAAAAAA);
     }
 
-
     private int[] fitImage(WikiEntry entry, int maxW) {
         int nw = Math.max(1, entry.imageW());
         int nh = Math.max(1, entry.imageH());
@@ -253,7 +276,7 @@ public class WikiScreen extends Screen {
         g.fill(x1 - 1, y0, x1, y1, color);
     }
 
-    // ----- Input ------------------------------------
+    // ── Input ────────────────────────────────────────────────────────────────
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
@@ -261,18 +284,16 @@ public class WikiScreen extends Screen {
 
         if (expandedImage != null) { expandedImage = null; return true; }
 
-        // Sidebar page selection
         int sx0 = panelX, sx1 = panelX + SIDEBAR_W - 1;
         int rowY = panelY + TITLE_BAR_H + 6;
         if (mx >= sx0 && mx < sx1 && my >= rowY) {
             int row = (int) ((my - rowY) / SIDE_ROW_H);
-            if (row >= 0 && row < PAGES.size()) {
+            if (row >= 0 && row < pages.size()) {
                 if (row != currentPage) { currentPage = row; scrollY = 0; }
                 return true;
             }
         }
 
-        // Image click -> expand into lightbox
         for (int[] box : imageHitboxes) {
             if (mx >= box[0] && mx < box[2] && my >= box[1] && my < box[3]) {
                 expandedImage = entries().get(box[4]);
@@ -293,7 +314,6 @@ public class WikiScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // Esc and Tab both return to the wiki rather than closing the screen
         if (expandedImage != null
                 && (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE
                  || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB)) {
