@@ -146,7 +146,7 @@ public class ModeSelectionScreen extends Screen {
         if (confirmDialog != null) confirmDialog.setParentBounds(panelX, panelY, panelW, panelH);
         if (wikiBtn != null) {
             wikiBtn.setX(panelX + panelW - PAD - 16);
-            wikiBtn.setY(panelY + (TITLE_H - 16) / 2 + 2);
+            wikiBtn.setY(panelY + (TITLE_H - 16) / 2 + 4);
         }
     }
 
