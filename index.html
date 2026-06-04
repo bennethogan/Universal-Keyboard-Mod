@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>bennethogan.dev</title>
-  <link rel="preconnect" href="https://googleapis.com">
-  <link rel="preconnect" href="https://gstatic.com" crossorigin>
-  <link href="https://googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
   <style>
     body {
       background: #111111;
@@ -16,7 +16,23 @@
       line-height: 2;
       margin: 1;
       padding: 200px 40px 40px 40px;
-      max-width: 600px;
+    }
+
+    #columns {
+      display: flex;
+      align-items: flex-start;
+      gap: 48px;
+      max-width: 900px;
+    }
+
+    #text {
+      flex: 1;
+    }
+
+    #photo img {
+      width: 220px;
+      border-radius: 8px;
+      display: block;
     }
 
     a {
@@ -31,21 +47,29 @@
 </head>
 <body>
 
-  <p>Welcome to my website-- my name is Bennet. <br>
-    Right now, all this is used for is a wiki for my Minecraft mod.</p>
+  <div id="columns">
+    <div id="text">
+      <p>My name is Bennet. Welcome to my website.<br>
+         Right now, all this is used for is a wiki for my Minecraft mod.</p>
 
-  <br>
+      <br>
 
-  <p>You can download that mod here:<br>
-  <a href="https://modrinth.com/mod/universal-keyboard">https://modrinth.com/mod/universal-keyboard</a></p>
+      <p>You can download that mod here:<br>
+      <a href="https://modrinth.com/mod/universal-keyboard">https://modrinth.com/mod/universal-keyboard</a></p>
 
-  <br>
+      <br>
 
-  <p>And view the wiki by clicking <a href="/universalkeyboard/wiki/">[here]</a></p>
+      <p>And view the wiki by clicking <a href="/universalkeyboard/wiki/">[here]</a></p>
 
-  <br>
+      <br>
 
-  <p>If you have questions about my mod, please join my Discord server <a href="https://discord.gg/Gj4fw2A3uZ">[here]</a></p>
+      <p>If you have questions about my mod, please join my Discord server <a href="https://discord.gg/Gj4fw2A3uZ">[here]</a></p>
+    </div>
+
+    <div id="photo">
+      <img src="/universalkeyboard/mycat.jpg" alt="My cat">
+    </div>
+  </div>
 
 </body>
 </html>
