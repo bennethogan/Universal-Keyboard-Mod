@@ -77,7 +77,7 @@
           "px1": 808,
           "py1": 488,
           "title": "Key Action - Toggle",
-          "body": "With 'Tog', the signal switched between an on and off state with a key press"
+          "body": "With 'Tog', the signal switches between an on and off state with a key press"
         },
         {
           "px0": 240,
@@ -93,7 +93,7 @@
           "px1": 800,
           "py1": 692,
           "title": "Key Action - Increment",
-          "body": "With 'Inc', you set up two keybinds: one for increasing '++', another for decreasing '--'. This replaced the need for the Redstone Accumulator entirely! Step up/down the signal strength, by pressing or holding down the key. Apply Overdrive Mode if you want to increment faster. Chosen power persists on save/load!"
+          "body": "With 'Inc', you set up two keybinds: one for increasing '++', another for decreasing '--'. This replaces the need for the Redstone Accumulator entirely! Step up/down the signal strength, by pressing or holding down the key. Apply Overdrive Mode if you want to increment faster. Chosen power persists on save/load!"
         },
         {
           "px0": 1376,
@@ -101,7 +101,7 @@
           "px1": 1576,
           "py1": 488,
           "title": "Key Action - Increment",
-          "body": "With 'Inc', you set up two keybinds: one for increasing '++', another for decreasing '--'. This replaced the need for the Redstone Accumulator entirely! Step up/down the signal strength, by pressing or holding down the key. Apply Overdrive Mode if you want to increment faster. Chosen power persists on save/load!"
+          "body": "With 'Inc', you set up two keybinds: one for increasing '++', another for decreasing '--'. This replaces the need for the Redstone Accumulator entirely! Step up/down the signal strength, by pressing or holding down the key. Apply Overdrive Mode if you want to increment faster. Chosen power persists on save/load!"
         },
         {
           "px0": 856,

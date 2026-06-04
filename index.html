@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Universal Keyboard — Wiki</title>
+  <link rel="stylesheet" href="wiki.css">
+</head>
+<body>
+
+  <div id="wiki-wrap">
+    <div id="title-bar">
+      <span id="wiki-title">Universal Keyboard — Help</span>
+    </div>
+    <div id="wiki-body">
+      <div id="sidebar"></div>
+      <div id="content"></div>
+    </div>
+  </div>
+
+  <!-- Lightbox -->
+  <div id="lightbox" class="hidden" onclick="closeLightbox()">
+    <div id="lb-image-wrap">
+      <img id="lb-img" src="" alt="">
+    </div>
+    <p id="lb-hint">Click anywhere or press Esc to return</p>
+  </div>
+
+  <!-- Hover tooltip -->
+  <div id="tooltip" class="hidden">
+    <div id="tooltip-title"></div>
+    <div id="tooltip-body"></div>
+  </div>
+
+  <script src="wiki.js"></script>
+</body>
+</html>

@@ -1,0 +1,199 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #0a0a0a;
+  color: #cccccc;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+/* --- Main Panel --- */
+
+#wiki-wrap {
+  width: 100%;
+  max-width: 860px;
+  background: #111111;
+  border: 1px solid #666666;
+}
+
+#title-bar {
+  background: rgba(255,255,255,0.08);
+  border-bottom: 1px solid #444444;
+  padding: 5px 12px;
+  text-align: center;
+  color: #ffffff;
+  font-size: 14px;
+  letter-spacing: 0.05em;
+}
+
+#wiki-body {
+  display: flex;
+  min-height: 480px;
+}
+
+/* --- Side Bar --- */
+
+#sidebar {
+  width: 150px;
+  flex-shrink: 0;
+  background: rgba(0,0,0,0.3);
+  border-right: 1px solid #555555;
+  padding: 8px 0;
+}
+
+.sidebar-row {
+  padding: 5px 12px;
+  cursor: pointer;
+  color: #bbbbbb;
+  border-left: 2px solid transparent;
+  transition: background 0.1s;
+  user-select: none;
+}
+
+.sidebar-row:hover {
+  background: rgba(255,255,255,0.07);
+  color: #ffffff;
+}
+
+.sidebar-row.active {
+  background: rgba(255,204,51,0.15);
+  color: #ffdd44;
+  border-left-color: #ffcc33;
+}
+
+/* -- Content area ----- */
+
+#content {
+  flex: 1;
+  padding: 14px 16px;
+  overflow-y: auto;
+  max-height: 640px;
+}
+
+.wiki-heading {
+  color: #ffdd44;
+  font-weight: bold;
+  font-size: 15px;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+
+.wiki-heading-rule {
+  border: none;
+  border-top: 1px solid #555533;
+  margin-bottom: 8px;
+}
+
+.wiki-text {
+  color: #cccccc;
+  line-height: 1.55;
+  margin-bottom: 6px;
+  white-space: pre-wrap;
+}
+
+/* -- Images & hotspots --- */
+
+.wiki-image-wrap {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+  margin-bottom: 8px;
+  cursor: zoom-in;
+  border: 1px solid #777777;
+}
+
+.wiki-image-wrap img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.hotspot {
+  position: absolute;
+  cursor: crosshair;
+}
+
+/* -- Tooltip --- */
+
+#tooltip {
+  position: fixed;
+  z-index: 1000;
+  background: rgba(17,17,17,0.95);
+  border: 1px solid #ffcc33;
+  padding: 8px 10px;
+  max-width: 220px;
+  pointer-events: none;
+}
+
+#tooltip-title {
+  color: #ffdd44;
+  font-weight: bold;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+#tooltip-body {
+  color: #cccccc;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hidden { display: none !important; }
+
+/* --- Lightbox --- */
+
+#lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.82);
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  cursor: zoom-out;
+}
+
+#lb-image-wrap {
+  position: relative;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 80px);
+  border: 1px solid #aaaaaa;
+}
+
+#lb-image-wrap img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 80px);
+  width: auto;
+  height: auto;
+}
+
+.lb-hotspot {
+  position: absolute;
+  cursor: crosshair;
+}
+
+#lb-hint {
+  margin-top: 10px;
+  color: #888888;
+  font-size: 12px;
+}
+
+/* ------ Minecraft formatting colours ------- */
+.mc-0 { color: #000000; } .mc-1 { color: #0000AA; } .mc-2 { color: #00AA00; }
+.mc-3 { color: #00AAAA; } .mc-4 { color: #AA0000; } .mc-5 { color: #AA00AA; }
+.mc-6 { color: #FFAA00; } .mc-7 { color: #AAAAAA; } .mc-8 { color: #555555; }
+.mc-9 { color: #5555FF; } .mc-a { color: #55FF55; } .mc-b { color: #55FFFF; }
+.mc-c { color: #FF5555; } .mc-d { color: #FF55FF; } .mc-e { color: #FFFF55; }
+.mc-f { color: #FFFFFF; }
+.mc-l { font-weight: bold; }
+.mc-o { font-style: italic; }
+.mc-n { text-decoration: underline; }
+.mc-m { text-decoration: line-through; }

@@ -187,7 +187,7 @@ public class WikiScreen extends Screen {
 
         for (var r : this.renderables) r.render(g, mx, my, pt);
 
-        if (expandedImage != null) renderLightbox(g);
+        if (expandedImage != null) renderLightbox(g, mx, my);
     }
 
     private void renderSidebar(GuiGraphics g, int mx, int my) {
@@ -293,36 +293,12 @@ public class WikiScreen extends Screen {
     private void renderHoveredHotspot(GuiGraphics g, int mx, int my) {
         for (int[] pos : hotspotScreenPos) {
             if (!isInHotspot(mx, my, pos[0], pos[1], pos[2], pos[3])) continue;
-            WikiHotspot spot = entries().get(pos[4]).hotspots().get(pos[5]);
-
-            List<FormattedCharSequence> bodyLines =
-                    font.split(Component.literal(spot.body()), TOOLTIP_W - PAD * 2);
-            int panelH = PAD + HEADING_H + 3 + bodyLines.size() * LINE_H + PAD;
-            int panelW = TOOLTIP_W;
-
-            // Flip to the left of the cursor when on the right half of the screen,
-            // so the tooltip never covers the mouse over the area it's describing.
-            int px = (mx > width / 2) ? mx - 14 - panelW : mx + 14;
-            int py = my - panelH / 2;
-            px = Math.max(4, Math.min(px, width  - panelW - 4));
-            py = Math.max(4, Math.min(py, height - panelH - 4));
-
-            g.fill(px, py, px + panelW, py + panelH, 0xEE111111);
-            drawBorder(g, px, py, px + panelW, py + panelH, 0xFFFFCC33);
-
-            if (!spot.title().isEmpty())
-                g.drawString(font, "§e§l" + spot.title(), px + PAD, py + PAD, 0xFFDD44, false);
-
-            int ty = py + PAD + HEADING_H + 3;
-            for (FormattedCharSequence line : bodyLines) {
-                g.drawString(font, line, px + PAD, ty, 0xCCCCCC, false);
-                ty += LINE_H;
-            }
-            break; // only one tooltip at a time
+            drawHotspotTooltip(g, mx, my, entries().get(pos[4]).hotspots().get(pos[5]));
+            break;
         }
     }
 
-    private void renderLightbox(GuiGraphics g) {
+    private void renderLightbox(GuiGraphics g, int mx, int my) {
         g.fill(0, 0, width, height, 0xCC000000);
 
         int maxW = width  - 40;
@@ -331,12 +307,48 @@ public class WikiScreen extends Screen {
                                 (double) maxH / expandedImage.imageH());
         int dw = (int)(expandedImage.imageW() * scale);
         int dh = (int)(expandedImage.imageH() * scale);
-        int x = (width  - dw) / 2;
-        int y = (height - dh) / 2;
+        int ix = (width  - dw) / 2;
+        int iy = (height - dh) / 2;
 
-        blitScaled(g, expandedImage.image(), x, y, dw, dh, expandedImage.imageW(), expandedImage.imageH());
-        drawBorder(g, x - 1, y - 1, x + dw + 1, y + dh + 1, 0xFFAAAAAA);
-        g.drawCenteredString(font, "§7[Esc] or [Tab] to return", width / 2, y + dh + 6, 0xAAAAAA);
+        blitScaled(g, expandedImage.image(), ix, iy, dw, dh, expandedImage.imageW(), expandedImage.imageH());
+        drawBorder(g, ix - 1, iy - 1, ix + dw + 1, iy + dh + 1, 0xFFAAAAAA);
+        g.drawCenteredString(font, "§7[Esc] or [Tab] to return", width / 2, iy + dh + 6, 0xAAAAAA);
+
+        // Check hotspots scaled to the lightbox rect
+        for (WikiHotspot spot : expandedImage.hotspots()) {
+            int hx0 = ix + (int)(spot.nx0() * dw);
+            int hy0 = iy + (int)(spot.ny0() * dh);
+            int hx1 = ix + (int)(spot.nx1() * dw);
+            int hy1 = iy + (int)(spot.ny1() * dh);
+            if (isInHotspot(mx, my, hx0, hy0, hx1, hy1)) {
+                drawHotspotTooltip(g, mx, my, spot);
+                break;
+            }
+        }
+    }
+
+    private void drawHotspotTooltip(GuiGraphics g, int mx, int my, WikiHotspot spot) {
+        List<FormattedCharSequence> bodyLines =
+                font.split(Component.literal(spot.body()), TOOLTIP_W - PAD * 2);
+        int panelH = PAD + HEADING_H + 3 + bodyLines.size() * LINE_H + PAD;
+        int panelW = TOOLTIP_W;
+
+        int px = (mx > width / 2) ? mx - 14 - panelW : mx + 14;
+        int py = my - panelH / 2;
+        px = Math.max(4, Math.min(px, width  - panelW - 4));
+        py = Math.max(4, Math.min(py, height - panelH - 4));
+
+        g.fill(px, py, px + panelW, py + panelH, 0xEE111111);
+        drawBorder(g, px, py, px + panelW, py + panelH, 0xFFFFCC33);
+
+        if (!spot.title().isEmpty())
+            g.drawString(font, "§e§l" + spot.title(), px + PAD, py + PAD, 0xFFDD44, false);
+
+        int ty = py + PAD + HEADING_H + 3;
+        for (FormattedCharSequence line : bodyLines) {
+            g.drawString(font, line, px + PAD, ty, 0xCCCCCC, false);
+            ty += LINE_H;
+        }
     }
 
     // ── Drawing helpers ──────────────────────────────────────────────────────
@@ -386,11 +398,6 @@ public class WikiScreen extends Screen {
                 if (row != currentPage) { currentPage = row; scrollY = 0; }
                 return true;
             }
-        }
-
-        // fix this if I decide that clicking hotspots can enlarge the image
-        for (int[] pos : hotspotScreenPos) {
-            if (isInHotspot((int) mx, (int) my, pos[0], pos[1], pos[2], pos[3])) return true;
         }
 
         for (int[] box : imageHitboxes) {
