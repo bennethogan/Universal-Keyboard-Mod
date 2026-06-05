@@ -1,5 +1,5 @@
 ## <span style ="color:lightgreen">Update 1.3.0 has released!</span> There is a lot of new content. Luckily, there is now a built-in wiki (will be finished in 1.3.1), which you can also view on the web using the link below:
-## [Interactive Wiki - Web Version](bennethogan.dev/keyboardmod/wiki)
+## [Interactive Wiki - Web Version](bennethogan.dev/universalkeyboard/wiki)
 
 -----------------------------
 ### 🌐 Multi-language README's: 
@@ -13,7 +13,7 @@
 ### If you have <span style="color:magenta">Create: Connected</span> installed-- then the Wireless Redstone Links WILL NOT WORK UNTIL you set "Redstone Link Wildcard" to "False" in the configs. Thats Create: Connected --> Common --> Features --> "Redstone Link Wildcard" --> "False" or "X"
 
 ---------------------------------
-### > I suggest taking a look at the [web-version of the wiki](bennethogan.dev/keyboardmod/wiki) to learn about the features described below. There are interactive images of the UI-- you hover over the parts you want to learn more about
+### > I suggest taking a look at the [web-version of the wiki](bennethogan.dev/universalkeyboard/wiki) to learn about the features described below. There are interactive images of the UI-- you hover over the parts you want to learn more about
 
 ----------------------
 
