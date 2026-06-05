@@ -101,7 +101,7 @@ body {
 .wiki-image-wrap {
   position: relative;
   display: inline-block;
-  width: 100%;
+  max-width: 100%;
   margin-bottom: 8px;
   cursor: zoom-in;
   border: 1px solid #777777;

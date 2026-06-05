@@ -1,7 +1,7 @@
 {
-  "label": "Keyboard",
+  "label": "Misc",
   "entries": [
-    {"type": "heading", "text": "Keyboard"},
-    {"type": "text", "body": "Wiki not done"}
+    {"type": "heading", "text": "Misc"},
+    {"type": "text", "body": "This section is coming in the next update. You can check the web-version of this wiki for the most up-to-date content! \nbennethogan.dev"}
   ]
 }

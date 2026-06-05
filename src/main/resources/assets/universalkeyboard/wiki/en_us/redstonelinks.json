@@ -1,29 +1,7 @@
 {
   "label": "Redstone Links",
   "entries": [
-    {
-      "type": "heading",
-      "text": "Main Menu"
-    },
-    {
-      "type": "text",
-      "body": "§6§lGetting Familiar with the UI§r\n§7Hover your mouse over parts of \n§7the image to learn more!"
-    },
-    {
-      "type": "image",
-      "texture": "textures/wiki/en_us/mainmenu_ui_1.png",
-      "width": 692,
-      "height": 776,
-      "hotspots": [
-        {
-          "px0": 584,
-          "py0": 16,
-          "px1": 648,
-          "py1": 80,
-          "title": "Wiki Button",
-          "body": "Access this in-game wiki anytime with this button"
-        }
-      ]
-    }
+    {"type": "heading", "text": "Misc"},
+    {"type": "text", "body": "This section is coming in the next update. You can check the web-version of this wiki for the most up-to-date content! \nbennethogan.dev"}
   ]
 }

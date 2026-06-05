@@ -103,6 +103,7 @@ function buildText(entry) {
 function buildImage(entry) {
   const wrap = document.createElement('div');
   wrap.className = 'wiki-image-wrap';
+  if (entry.max_width) wrap.style.maxWidth = (entry.max_width * 100) + '%';
 
   const img = document.createElement('img');
   img.src = TEXTURE_BASE + entry.texture;
