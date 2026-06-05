@@ -7,9 +7,21 @@ body {
   font-size: 13px;
   min-height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 20px;
+  gap: 24px;
+}
+
+#wiki-footer {
+  width: 100%;
+  max-width: 860px;
+  padding-top: 12px;
+  border-top: 1px solid #333333;
+  color: #555555;
+  font-size: 11px;
+  line-height: 1.8;
 }
 
 /* ── Main panel ─────────────────────────────────────────────────────────── */
