@@ -34,15 +34,16 @@ public class WikiScreen extends Screen {
     private record WikiHotspot(float nx0, float ny0, float nx1, float ny1, String title, String body) {}
 
     private record WikiEntry(String heading, String body, ResourceLocation image,
-                             int imageW, int imageH, float scale, List<WikiHotspot> hotspots) {
+                             int imageW, int imageH, float scale, float maxWidthFraction,
+                             List<WikiHotspot> hotspots) {
         static WikiEntry heading(String text) {
-            return new WikiEntry(text, null, null, 0, 0, 1.0f, List.of());
+            return new WikiEntry(text, null, null, 0, 0, 1.0f, 1.0f, List.of());
         }
         static WikiEntry text(String body, float scale) {
-            return new WikiEntry(null, body, null, 0, 0, scale, List.of());
+            return new WikiEntry(null, body, null, 0, 0, scale, 1.0f, List.of());
         }
-        static WikiEntry image(ResourceLocation loc, int w, int h, List<WikiHotspot> hotspots) {
-            return new WikiEntry(null, null, loc, w, h, 1.0f, hotspots);
+        static WikiEntry image(ResourceLocation loc, int w, int h, float maxWidthFraction, List<WikiHotspot> hotspots) {
+            return new WikiEntry(null, null, loc, w, h, 1.0f, maxWidthFraction, hotspots);
         }
     }
 
@@ -135,9 +136,10 @@ public class WikiScreen extends Screen {
                                 s.has("body")  ? s.get("body").getAsString()  : ""));
                     }
                 }
+                float maxW = obj.has("max_width") ? obj.get("max_width").getAsFloat() : 1.0f;
                 yield WikiEntry.image(
                         ResourceLocation.fromNamespaceAndPath("universalkeyboard", obj.get("texture").getAsString()),
-                        imgW, imgH, spots);
+                        imgW, imgH, maxW, spots);
             }
             default -> null;
         };
@@ -370,7 +372,8 @@ public class WikiScreen extends Screen {
     private static int[] fitImage(WikiEntry entry, int maxW) {
         int nw = Math.max(1, entry.imageW());
         int nh = Math.max(1, entry.imageH());
-        int dw = Math.min(maxW, nw);
+        int cappedW = (int)(maxW * entry.maxWidthFraction());
+        int dw = Math.min(cappedW, nw);
         int dh = dw * nh / nw;
         return new int[]{dw, dh};
     }

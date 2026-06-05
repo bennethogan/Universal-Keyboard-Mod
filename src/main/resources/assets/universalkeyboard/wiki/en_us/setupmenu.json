@@ -1,0 +1,78 @@
+{
+  "label": "Setup Menu",
+  "entries": [
+    {
+      "type": "heading",
+      "text": "Setup Menu"
+    },
+    {
+      "type": "text",
+      "body": "§6§lGetting Familiar with the UI§r\n§7Hover your mouse over parts of \n§7the image to learn more!"
+    },
+    {
+      "type": "image",
+      "texture": "textures/wiki/en_us/setupmenu_ui_1.png",
+      "width": 1016,
+      "height": 776,
+      "max_width": 0.50,
+      "hotspots": [
+        {
+          "px0": 904,
+          "py0": 16,
+          "px1": 968,
+          "py1": 80,
+          "title": "Wiki Button",
+          "body": "Access this in-game wiki anytime with this button"
+        },
+        {
+          "px0": 48,
+          "py0": 128,
+          "px1": 328,
+          "py1": 408,
+          "title": "Redstone Links",
+          "body": "Set up to 20 frequencies that can send and receive redstone from Create's Redstone Links! Internally named L1-L20"
+        },
+        {
+          "px0": 368,
+          "py0": 128,
+          "px1": 648,
+          "py1": 408,
+          "title": "Wireless Copycats",
+          "body": "Set up to 100 alphanumeric frequencies with my own Wireless Copycat blocks! Requires Create. These wireless upgrades of normal Copycat blocks can send / receive different redstone signals on each side. Behaves like a normal Copycat otherwise"
+        },
+        {
+          "px0": 688,
+          "py0": 128,
+          "px1": 968,
+          "py1": 408,
+          "title": "Import Typewriter Data",
+          "body": "You can click here to import Redstone Link frequencies and keybinds directly from a Typewriter that is placed within 20 blocks away. Easy upgrade!"
+        },
+        {
+          "px0": 48,
+          "py0": 448,
+          "px1": 328,
+          "py1": 728,
+          "title": "Gamepad Calibration",
+          "body": "This screen lets you re-calibrate your gamepad's analog sticks. Helpful if you have an older, worn out controller that cant hit every corner of the input anymore. Most people can ignore this."
+        },
+        {
+          "px0": 368,
+          "py0": 448,
+          "px1": 648,
+          "py1": 728,
+          "title": "Reset Keyboard Data",
+          "body": "Reset all data, or just the peripheral links (helpful when you print a schematic, and need to relink the peripherals without erasing the other settings)"
+        },
+        {
+          "px0": 15,
+          "py0": 15,
+          "px1": 195,
+          "py1": 95,
+          "title": "<< Tab",
+          "body": "Pressing 'tab' on your keyboard goes back from any menu. Or press here"
+        }
+      ]
+    }
+  ]
+}
