@@ -1,7 +1,15 @@
 {
   "label": "Redstone Links",
   "entries": [
-    {"type": "heading", "text": "Misc"},
-    {"type": "text", "body": "This section is coming in the next update. You can check the web-version of this wiki for the most up-to-date content! \nbennethogan.dev"}
+    {"type": "heading", "text": "Redstone Links"},
+    {"type": "text", "body": "With this mod, you can control Redstone Links, just like the typewriter or Tweaked Controller. Below you will see the dedicated sub-menu for adding these frequencies. It works exactly the same as other Create add-ons, so I won't take the time to add tooltips to this image:"},
+    {
+      "type": "image",
+      "texture": "textures/wiki/en_us/redstonelinks_ui_1.png",
+      "width": 888,
+      "height": 992,
+      "max_width": 0.50
+    },
+    {"type": "text", "body": "As you can see above, there are up to 20 configurable frequencies, interally called L1 - L20 \n\n You can also receive redstone signals in the Sequencer mode, if you set up that receiving frequency here."}
   ]
 }

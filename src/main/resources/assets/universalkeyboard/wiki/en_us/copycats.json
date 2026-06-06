@@ -1,7 +1,22 @@
 {
   "label": "Copycats",
   "entries": [
-    {"type": "heading", "text": "Misc"},
-    {"type": "text", "body": "This section is coming in the next update. You can check the web-version of this wiki for the most up-to-date content! \nbennethogan.dev"}
+    {"type": "heading", "text": "Wireless Copycats"},
+    {"type": "text", "body": "These blocks behave just like the Copycats you know and love, except you can also send a different redstone signal to each side! \n\n Take the 6 character alphanumric string from one menu, paste it into the other menu, and thats it! Figuring out the side can be a little confusing at first, and I will tell you now that assembling/dissassembling swapped the faces for me in one test. I'm still working that out.\n\n Hover over the image below to learn more about the 2 Wireless Copycat Menus. The first image is the \"Keyboard-side\" menu, while the second image is the \"Copycat-side\" menu.\n"},
+    {
+      "type": "image",
+      "texture": "textures/wiki/en_us/copycats_ui_1.png",
+      "width": 1008,
+      "height": 712,
+      "max_width": 0.50
+    },
+    {
+      "type": "image",
+      "texture": "textures/wiki/en_us/copycats_ui_2.png",
+      "width": 1008,
+      "height": 712,
+      "max_width": 0.50
+    }
+
   ]
 }
