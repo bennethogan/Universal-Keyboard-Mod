@@ -1,6 +1,8 @@
 {
   "block.universalkeyboard.universal_keyboard": "Universal Keyboard",
   "item.universalkeyboard.universal_keyboard": "Universal Keyboard",
+  "block.universalkeyboard.universal_controlwheel": "Universal Control Wheel",
+  "item.universalkeyboard.universal_controlwheel": "Universal Control Wheel",
   "block.universalkeyboard.trans_keyboard": "Trans Keyboard",
   "item.universalkeyboard.trans_keyboard": "Trans Keyboard",
   "block.universalkeyboard.rainbow_keyboard": "Rainbow Keyboard",
@@ -201,5 +203,9 @@
   "config.universalkeyboard.gamepad.joystickScaling": "Joystick Scaling",
   "config.universalkeyboard.gamepad.joystickScaling.tooltip": "Scale a binding's output by how far the stick or trigger is pushed. When on, an analog input bound to 50% power outputs proportionally — pushing the stick halfway sends 25%, fully sends 50%. Applies to RS, Thruster Power, Vector, and Variable bindings in Hld/Tog modes. Buttons and Inc/Overdrive bindings are never scaled. Default: true.",
   "config.universalkeyboard.gamepad.stickCalibration": "Stick Calibration",
-  "config.universalkeyboard.gamepad.stickCalibration.tooltip": "Per-axis maximum stick deflection recorded by calibration. Order: [Left X, Left Y, Right X, Right Y]. Values below 1.0 mean the stick physically falls short of the theoretical edge; analog output is rescaled so the stick's real maximum maps to 100%. Set with the Calibrate button in the Live Controller. Default: 1.0 each."
+  "config.universalkeyboard.gamepad.stickCalibration.tooltip": "Per-axis maximum stick deflection recorded by calibration. Order: [Left X, Left Y, Right X, Right Y]. Values below 1.0 mean the stick physically falls short of the theoretical edge; analog output is rescaled so the stick's real maximum maps to 100%. Set with the Calibrate button in the Live Controller. Default: 1.0 each.",
+  "config.universalkeyboard.controlwheel.controlWheelLeftKey": "Control Wheel — Turn Left Key",
+  "config.universalkeyboard.controlwheel.controlWheelLeftKey.tooltip": "Key that animates the Control Wheel turning left while in Live Control mode. Purely cosmetic — never triggers or interferes with your live control bindings. Use a GLFW key name such as a, d, left, right. Default: a.",
+  "config.universalkeyboard.controlwheel.controlWheelRightKey": "Control Wheel — Turn Right Key",
+  "config.universalkeyboard.controlwheel.controlWheelRightKey.tooltip": "Key that animates the Control Wheel turning right while in Live Control mode. Purely cosmetic — never triggers or interferes with your live control bindings. Use a GLFW key name such as a, d, left, right. Default: d."
 }

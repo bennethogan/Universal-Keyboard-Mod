@@ -27,6 +27,8 @@ public class KeyboardInputHandler {
         } else {
             GamepadLiveDriver.resetLive();
         }
+        // poll the animator every tick
+        ControlWheelAnimator.tick();
 
         // Persistent linking-mode action bar
         if (mc.player == null || mc.screen != null) return;
@@ -53,7 +55,9 @@ public class KeyboardInputHandler {
     public static void onKeyInput(InputEvent.Key event) {
         // Live control mode intercepts all keys (including before CC capture)
         if (LiveControlManager.isActive()) {
+            // Running handleKey first so toggle/INC counter state is current when the animator polls it
             LiveControlManager.handleKey(event.getKey(), event.getAction());
+            ControlWheelAnimator.onKey(event.getKey(), event.getAction());
             if (event.getAction() != GLFW.GLFW_RELEASE && !isSafePassthroughKey(event.getKey())) {
                 suppressMovementKey(event.getKey(), event.getScanCode());
             }

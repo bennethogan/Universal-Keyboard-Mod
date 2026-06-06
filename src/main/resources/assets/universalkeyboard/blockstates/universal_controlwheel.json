@@ -1,0 +1,16 @@
+{
+  "variants": {
+    "face=floor,facing=north":   { "model": "universalkeyboard:block/universal_controlwheel" },
+    "face=floor,facing=east":    { "model": "universalkeyboard:block/universal_controlwheel", "y": 90 },
+    "face=floor,facing=south":   { "model": "universalkeyboard:block/universal_controlwheel", "y": 180 },
+    "face=floor,facing=west":    { "model": "universalkeyboard:block/universal_controlwheel", "y": 270 },
+    "face=ceiling,facing=north": { "model": "universalkeyboard:block/universal_controlwheel", "x": 180 },
+    "face=ceiling,facing=east":  { "model": "universalkeyboard:block/universal_controlwheel", "x": 180, "y": 90 },
+    "face=ceiling,facing=south": { "model": "universalkeyboard:block/universal_controlwheel", "x": 180, "y": 180 },
+    "face=ceiling,facing=west":  { "model": "universalkeyboard:block/universal_controlwheel", "x": 180, "y": 270 },
+    "face=wall,facing=north":    { "model": "universalkeyboard:block/universal_controlwheel_wall", "y": 180 },
+    "face=wall,facing=south":    { "model": "universalkeyboard:block/universal_controlwheel_wall" },
+    "face=wall,facing=east":     { "model": "universalkeyboard:block/universal_controlwheel_wall", "y": 270 },
+    "face=wall,facing=west":     { "model": "universalkeyboard:block/universal_controlwheel_wall", "y": 90 }
+  }
+}

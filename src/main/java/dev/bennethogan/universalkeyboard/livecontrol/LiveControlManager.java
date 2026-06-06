@@ -151,6 +151,87 @@ public class LiveControlManager {
     public static boolean isActive()       { return active; }
     public static BlockPos getKeyboardPos() { return keyboardPos; }
 
+    // ── Control Wheel animation query ─────────────────────────────────────────
+
+
+    // Computes the combined signed wheel angle target based on configred keys
+    // Inc bindings are treated like a fluid valve for animation purposes, I dont
+    // know when else you would increment a turn, really. Someone tell me if I should do this differently
+    public static float computeWheelTarget(int leftKey, int rightKey, boolean leftHeld, boolean rightHeld) {
+        if (!active) return 0f;
+
+        Float valve = incValveFraction(leftKey, rightKey);
+        if (valve != null) return -clamp01(valve); // tighten to the right
+
+        float combined = keyContribution(leftKey, leftHeld) - keyContribution(rightKey, rightHeld);
+        return Math.max(-1f, Math.min(1f, combined));
+    }
+
+
+    //wheel target counts only persistant inputs from toggle and inc valve and ignores hld inputs
+    public static float computeRestingWheelTarget(int leftKey, int rightKey) {
+        if (!active) return 0f;
+        Float valve = incValveFraction(leftKey, rightKey);
+        if (valve != null) return -clamp01(valve);
+        float combined = keyContribution(leftKey, false) - keyContribution(rightKey, false);
+        return Math.max(-1f, Math.min(1f, combined));
+    }
+
+    // Magnitude 0–1 for a key's HLD/TGL bindings (default to HLD)
+    private static float keyContribution(int keyCode, boolean physicalHeld) {
+        boolean found = false;
+        float   mag   = 0f;
+        for (int i = 0; i < bindings.size(); i++) {
+            LiveControlBinding b = bindings.get(i);
+            if (b.keyCode != keyCode) continue;
+            found = true;
+            switch (b.mode) {
+                case HLD -> mag = Math.max(mag, physicalHeld ? 1f : 0f);
+                case TGL -> mag = Math.max(mag, toggledOn.contains(i) ? 1f : 0f);
+                case INC -> { /* handled by incValveFraction */ }
+            }
+        }
+        return found ? mag : (physicalHeld ? 1f : 0f);
+    }
+
+    // Largest INC power fraction among the two animation keys, or null if neither is INC
+    private static Float incValveFraction(int leftKey, int rightKey) {
+        Float frac = null;
+        for (LiveControlBinding b : bindings) {
+            if (b.mode != Mode.INC) continue;
+            if (b.keyCode != leftKey && b.keyCode != rightKey) continue;
+            float f = incFractionForBinding(b);
+            frac = (frac == null) ? f : Math.max(frac, f);
+        }
+        return frac;
+    }
+
+    private static float clamp01(float v) { return Math.max(0f, Math.min(1f, v)); }
+
+   // Normalised fraction (0–1) of the INC counter for a binding, post-increment
+    private static float incFractionForBinding(LiveControlBinding b) {
+        return switch (b.actionType) {
+            case REDSTONE -> {
+                int v = rsIncCounters.getOrDefault(rsKey(b.wirelessIdx, b.rsSide), 0);
+                yield Math.max(0f, Math.min(1f, v / 15.0f));
+            }
+            case THRUSTER_POWER -> {
+                int v = thrIncCounters.getOrDefault(b.channel, 0);
+                yield Math.max(0f, Math.min(1f, v / 15.0f));
+            }
+            case VARIABLE -> {
+                int v = varIncCounters.getOrDefault(b.varIndex, 0);
+                yield b.varOnValue > 0 ? Math.max(0f, Math.min(1f, (float) v / b.varOnValue)) : 0f;
+            }
+            default -> {
+                // Channel modes (RPM_CONTROL, etc.)
+                int v = chIncCounters.getOrDefault(b.actionType, Map.of()).getOrDefault(b.channel, 0);
+                int maxAbs = Math.max(1, Math.abs(b.rpmTarget));
+                yield Math.max(0f, Math.min(1f, Math.abs((float) v / maxAbs)));
+            }
+        };
+    }
+
     // ── Tick ─────────────────────────────────────────────────────────────────
 
     public static void tick() {

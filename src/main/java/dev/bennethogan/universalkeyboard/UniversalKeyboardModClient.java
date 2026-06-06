@@ -31,6 +31,8 @@ public class UniversalKeyboardModClient {
         modEventBus.addListener(ClientPacketHandlers::onRegisterClientPayloads);
         modEventBus.addListener(this::onRegisterCapabilities);
         modEventBus.addListener(this::onRegisterMenuScreens);
+        modEventBus.addListener(this::onRegisterRenderers);
+        modEventBus.addListener(this::onRegisterAdditionalModels);
         if (ModList.get().isLoaded("create")) {
             modEventBus.addListener(this::onModelBake);
         }
@@ -65,6 +67,17 @@ public class UniversalKeyboardModClient {
         });
     }
 
+    private void onRegisterRenderers(net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers event) {
+        event.registerBlockEntityRenderer(
+                ModBlockEntities.LINKED_KEYBOARD.get(),
+                dev.bennethogan.universalkeyboard.client.render.ControlWheelRenderer::new);
+    }
+
+    private void onRegisterAdditionalModels(ModelEvent.RegisterAdditional event) {
+        event.register(dev.bennethogan.universalkeyboard.client.render.ControlWheelRenderer.WHEEL_MODEL);
+        event.register(dev.bennethogan.universalkeyboard.client.render.ControlWheelRenderer.WALL_MODEL);
+    }
+
     private void onRegisterMenuScreens(net.neoforged.neoforge.client.event.RegisterMenuScreensEvent event) {
         event.register(dev.bennethogan.universalkeyboard.menu.ModMenus.WIRELESS_CONFIG_MENU.get(),
                 dev.bennethogan.universalkeyboard.client.screen.WirelessConfigScreen::new);
@@ -76,6 +89,7 @@ public class UniversalKeyboardModClient {
 
     private static void onPlayerLogout(ClientPlayerNetworkEvent.LoggingOut event) {
         if (LiveControlManager.isActive()) LiveControlManager.deactivate();
+        dev.bennethogan.universalkeyboard.client.ControlWheelAnimator.reset();
         if (KeyboardCaptureManager.isCapturing()) {
             KeyboardCaptureManager.setCaptureMode(null, false);
         }

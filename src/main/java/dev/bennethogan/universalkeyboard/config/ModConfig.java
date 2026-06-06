@@ -66,6 +66,8 @@ public class ModConfig {
         public final ModConfigSpec.DoubleValue  triggerThreshold;
         public final ModConfigSpec.BooleanValue joystickScaling;
         public final ModConfigSpec.ConfigValue<List<? extends Double>> stickCalibration;
+        public final ModConfigSpec.ConfigValue<String> controlWheelLeftKey;
+        public final ModConfigSpec.ConfigValue<String> controlWheelRightKey;
 
         Client(ModConfigSpec.Builder builder) {
             builder.comment("Universal Keyboard — Client Settings").push("gamepad");
@@ -125,6 +127,24 @@ public class ModConfig {
                             List.of(1.0, 1.0, 1.0, 1.0),
                             () -> 1.0,
                             o -> o instanceof Double d && d >= 0.3 && d <= 1.0);
+
+            builder.pop();
+
+            builder.comment("Universal Control Wheel").push("controlwheel");
+
+            controlWheelLeftKey = builder
+                    .comment("Key that animates the Control Wheel turning LEFT while in Live Control mode.",
+                             "Purely cosmetic - this never triggers or interferes with your live control bindings.",
+                             "Use a GLFW key name such as: a, d, left, right, comma, period. Default: a.")
+                    .translation("config.universalkeyboard.controlwheel.controlWheelLeftKey")
+                    .define("controlWheelLeftKey", "a");
+
+            controlWheelRightKey = builder
+                    .comment("Key that animates the Control Wheel turning RIGHT while in Live Control mode.",
+                             "Purely cosmetic - this never triggers or interferes with your live control bindings.",
+                             "Use a GLFW key name such as: a, d, left, right, comma, period. Default: d.")
+                    .translation("config.universalkeyboard.controlwheel.controlWheelRightKey")
+                    .define("controlWheelRightKey", "d");
 
             builder.pop();
         }

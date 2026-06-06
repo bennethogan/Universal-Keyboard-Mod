@@ -61,6 +61,58 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     private java.lang.ref.WeakReference<Object> massSublevelRef = null;
     private double appliedMassDelta = 0.0;
 
+    // ----- Client side control wheel animation-----
+    public static final float WHEEL_OUT_TICKS    = 12.0f; // turning further from centre
+    public static final float WHEEL_RETURN_TICKS = 16.0f; // settling back toward centre
+
+    private float wheelStartFraction  = 0f;
+    private float wheelTargetFraction = 0f;
+    private long  wheelAnimStartTick  = Long.MIN_VALUE;
+
+    private float wheelFraction = 0f;
+
+    public void setStoredWheelFraction(float fraction) {
+        fraction = Math.max(-1f, Math.min(1f, fraction));
+        if (fraction == wheelFraction) return;
+        this.wheelFraction = fraction;
+        setChanged(); // persist; tracking clients already got the smooth relay packet
+    }
+
+    public float getStoredWheelFraction() { return wheelFraction; }
+
+    public void setWheelTarget(float target) {
+        if (level == null) return;
+        target = Math.max(-1f, Math.min(1f, target));
+        if (target == wheelTargetFraction) return;
+        long now = level.getGameTime();
+        this.wheelStartFraction  = computeFractionAt(now);
+        this.wheelTargetFraction = target;
+        this.wheelAnimStartTick  = now;
+    }
+
+    private float computeFractionAt(long tick) {
+        if (wheelAnimStartTick == Long.MIN_VALUE) return wheelTargetFraction;
+        float delta = wheelTargetFraction - wheelStartFraction;
+        if (delta == 0f) return wheelTargetFraction;
+        float duration = wheelDuration(wheelStartFraction, wheelTargetFraction);
+        float t = Math.max(0f, Math.min(1f, (tick - wheelAnimStartTick) / duration));
+        return wheelStartFraction + delta * wheelSmoothstep(t);
+    }
+
+    public static float wheelDuration(float from, float to) {
+        return Math.abs(to) >= Math.abs(from) ? WHEEL_OUT_TICKS : WHEEL_RETURN_TICKS;
+    }
+
+    public static float wheelSmoothstep(float t) {
+        if (t <= 0f) return 0f;
+        if (t >= 1f) return 1f;
+        return t * t * (3f - 2f * t);
+    }
+
+    public float getWheelStartFraction()  { return wheelStartFraction; }
+    public float getWheelTargetFraction() { return wheelTargetFraction; }
+    public long  getWheelAnimStartTick()  { return wheelAnimStartTick; }
+
     // ----- Favorite Screen -----
 
     private FavoriteScreen favoriteScreen = FavoriteScreen.NONE;
@@ -855,6 +907,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         }
         if (favoriteScreen != FavoriteScreen.NONE)
             tag.putByte("favorite_screen", (byte) favoriteScreen.ordinal());
+        if (wheelFraction != 0f)
+            tag.putFloat("wheel_fraction", wheelFraction);
     }
 
     @Override
@@ -974,6 +1028,14 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         }
         favoriteScreen = tag.contains("favorite_screen")
                 ? FavoriteScreen.fromByte(tag.getByte("favorite_screen")) : FavoriteScreen.NONE;
+
+        wheelFraction = tag.contains("wheel_fraction") ? tag.getFloat("wheel_fraction") : 0f;
+        // On the client, snap the visual to the synced resting position. Easier for loading purposes
+        if (level != null && level.isClientSide) {
+            wheelStartFraction  = wheelFraction;
+            wheelTargetFraction = wheelFraction;
+            wheelAnimStartTick  = Long.MIN_VALUE;
+        }
     }
 
     @Override

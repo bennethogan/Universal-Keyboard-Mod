@@ -37,6 +37,11 @@ public class ModBlocks {
                     BlockBehaviour.Properties.of().strength(1.0f).sound(SoundType.STONE).noOcclusion()
             ));
 
+    public static final DeferredBlock<LinkedControlWheelBlock> LINKED_CONTROLWHEEL =
+            BLOCKS.register("universal_controlwheel", () -> new LinkedControlWheelBlock(
+                    BlockBehaviour.Properties.of().strength(1.0f).sound(SoundType.STONE).noOcclusion()
+            ));
+
     @Nullable public static DeferredBlock<WirelessCopycatBlock> WIRELESS_COPYCAT;
     @Nullable public static DeferredBlock<WirelessCopycatPanelBlock> WIRELESS_COPYCAT_PANEL;
     @Nullable public static DeferredBlock<WirelessCopycatStepBlock> WIRELESS_COPYCAT_STEP;

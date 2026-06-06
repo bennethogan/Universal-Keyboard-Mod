@@ -1,0 +1,8 @@
+{
+  "parent": "universalkeyboard:custom/controlwheel_base",
+  "textures": {
+    "0":        "universalkeyboard:block/univerval_controlwheel",
+    "particle": "universalkeyboard:block/univerval_controlwheel"
+  },
+  "render_type": "solid"
+}

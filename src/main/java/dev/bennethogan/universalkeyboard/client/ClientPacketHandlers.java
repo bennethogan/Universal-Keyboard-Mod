@@ -33,6 +33,7 @@ public class ClientPacketHandlers {
         registrar.playToClient(ModPackets.TypewriterImportOfferPacket.TYPE,   ModPackets.TypewriterImportOfferPacket.CODEC,   ClientPacketHandlers::handleTypewriterOffer);
         registrar.playToClient(ChannelChangedPacket.TYPE,          ChannelChangedPacket.CODEC,          ClientPacketHandlers::handleChannelChanged);
         registrar.playToClient(OpenLiveControlScreenPacket.TYPE, OpenLiveControlScreenPacket.CODEC, ClientPacketHandlers::handleOpenLiveControlScreen);
+        registrar.playToClient(ModPackets.ControlWheelAnimateClientPacket.TYPE, ModPackets.ControlWheelAnimateClientPacket.CODEC, ClientPacketHandlers::handleControlWheelAnimate);
         registrar.playToClient(ModPackets.SyncFavoritePacket.TYPE, ModPackets.SyncFavoritePacket.CODEC, ClientPacketHandlers::handleSyncFavorite);
         registrar.optional().playToClient(ModPackets.OpenWirelessCopycatScreenPacket.TYPE, ModPackets.OpenWirelessCopycatScreenPacket.STREAM_CODEC, ClientPacketHandlers::handleOpenWirelessCopycatScreen);
         registrar.optional().playToClient(ModPackets.OpenLinkFreqScreenPacket.TYPE,        ModPackets.OpenLinkFreqScreenPacket.STREAM_CODEC,        ClientPacketHandlers::handleOpenLinkFreqScreen);
@@ -151,6 +152,17 @@ public class ClientPacketHandlers {
                                 packet.localRsOutputs(), packet.wirelessPowers(), packet.thrusterPowers(),
                                 packet.varValues(), packet.rpmValues(),
                                 packet.activeProfile(), packet.allProfiles()));
+            }
+        });
+    }
+
+    private static void handleControlWheelAnimate(ModPackets.ControlWheelAnimateClientPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.level == null) return;
+            if (mc.level.getBlockEntity(packet.pos())
+                    instanceof dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity kb) {
+                kb.setWheelTarget(packet.fractionPct() / 100.0f);
             }
         });
     }

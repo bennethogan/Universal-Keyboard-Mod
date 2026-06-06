@@ -21,8 +21,10 @@ import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -381,6 +383,7 @@ public class ModPackets {
         registrar.playToServer(OpenLiveControlPacket.TYPE,          OpenLiveControlPacket.CODEC,          ModPackets::handleOpenLiveControl);
         registrar.playToServer(SaveLiveBindingsPacket.TYPE,         SaveLiveBindingsPacket.CODEC,         ModPackets::handleSaveLiveBindings);
         registrar.playToServer(LiveActionPacket.TYPE,               LiveActionPacket.CODEC,               ModPackets::handleLiveAction);
+        registrar.playToServer(ControlWheelAnimatePacket.TYPE,      ControlWheelAnimatePacket.CODEC,      ModPackets::handleControlWheelAnimate);
         registrar.optional().playToServer(RequestThrusterRefreshPacket.TYPE,   RequestThrusterRefreshPacket.CODEC,   ModPackets::handleRequestThrusterRefresh);
         registrar.optional().playToServer(OpenWirelessConfigPacket.TYPE,       OpenWirelessConfigPacket.CODEC,       ModPackets::handleOpenWirelessConfig);
         registrar.optional().playToServer(WirelessAddRemovePacket.TYPE,        WirelessAddRemovePacket.CODEC,        ModPackets::handleWirelessAddRemove);
@@ -406,6 +409,7 @@ public class ModPackets {
             registrar.playToClient(TypewriterImportOfferPacket.TYPE,  TypewriterImportOfferPacket.CODEC,  (p, c) -> {});
             registrar.playToClient(ChannelChangedPacket.TYPE,          ChannelChangedPacket.CODEC,          (p, c) -> {});
             registrar.playToClient(OpenLiveControlScreenPacket.TYPE, OpenLiveControlScreenPacket.CODEC, (p, c) -> {});
+            registrar.playToClient(ControlWheelAnimateClientPacket.TYPE, ControlWheelAnimateClientPacket.CODEC, (p, c) -> {});
             registrar.playToClient(SyncFavoritePacket.TYPE,            SyncFavoritePacket.CODEC,            (p, c) -> {});
             registrar.optional().playToClient(OpenWirelessCopycatScreenPacket.TYPE, OpenWirelessCopycatScreenPacket.STREAM_CODEC, (p, c) -> {});
             registrar.optional().playToClient(OpenLinkFreqScreenPacket.TYPE,        OpenLinkFreqScreenPacket.STREAM_CODEC,        (p, c) -> {});
@@ -1453,6 +1457,48 @@ public class ModPackets {
                     return new LiveActionPacket(pos, acts);
                 });
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // Client to server handling for animation ---------------------------------
+    public record ControlWheelAnimatePacket(BlockPos pos, int fractionPct) implements CustomPacketPayload {
+        public static final Type<ControlWheelAnimatePacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "control_wheel_animate"));
+        public static final StreamCodec<FriendlyByteBuf, ControlWheelAnimatePacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, ControlWheelAnimatePacket::pos,
+                        ByteBufCodecs.INT,     ControlWheelAnimatePacket::fractionPct,
+                        ControlWheelAnimatePacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public record ControlWheelAnimateClientPacket(BlockPos pos, int fractionPct) implements CustomPacketPayload {
+        public static final Type<ControlWheelAnimateClientPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "control_wheel_animate_client"));
+        public static final StreamCodec<FriendlyByteBuf, ControlWheelAnimateClientPacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, ControlWheelAnimateClientPacket::pos,
+                        ByteBufCodecs.INT,     ControlWheelAnimateClientPacket::fractionPct,
+                        ControlWheelAnimateClientPacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public static void sendControlWheelAnimate(BlockPos pos, float fraction) {
+        int pct = Math.max(-100, Math.min(100, Math.round(fraction * 100f)));
+        PacketDistributor.sendToServer(new ControlWheelAnimatePacket(pos, pct));
+    }
+
+    private static void handleControlWheelAnimate(ControlWheelAnimatePacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            ServerLevel level = sp.serverLevel();
+            BlockEntity be = level.getBlockEntity(packet.pos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            if (!(level.getBlockState(packet.pos()).getBlock()
+                    instanceof dev.bennethogan.universalkeyboard.block.LinkedControlWheelBlock)) return;
+            kb.setStoredWheelFraction(packet.fractionPct() / 100.0f);
+            PacketDistributor.sendToPlayersTrackingChunk(level, new ChunkPos(packet.pos()),
+                    new ControlWheelAnimateClientPacket(packet.pos(), packet.fractionPct()));
+        });
     }
 
     public static void sendOpenLiveControl(BlockPos keyboardPos) {
