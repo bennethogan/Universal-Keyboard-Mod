@@ -2,8 +2,8 @@
   "parent": "universalkeyboard:block/universal_controlwheel_wall_spin",
   "display": {
     "gui": {
-      "rotation": [15, -20, 0],
-      "translation": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "translation": [0, -5, -5],
       "scale": [0.8, 0.8, 0.8]
     },
     "thirdperson_righthand": {
