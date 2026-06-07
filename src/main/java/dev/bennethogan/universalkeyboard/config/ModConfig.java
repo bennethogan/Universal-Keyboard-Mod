@@ -94,15 +94,15 @@ public class ModConfig {
 
             stickThreshold = builder
                     .comment("How far an analog stick must be pushed before it counts as a directional press.",
-                             "Range: 0.1–1.0. Default: 0.2.")
+                             "Range: 0.1–1.0. Default: 0.1.")
                     .translation("config.universalkeyboard.gamepad.stickThreshold")
-                    .defineInRange("stickThreshold", 0.2, 0.1, 1.0);
+                    .defineInRange("stickThreshold", 0.1, 0.0, 1.0);
 
             triggerThreshold = builder
                     .comment("How far a trigger (LT/RT) must be pulled before it counts as a press.",
-                             "Range: 0.1–1.0. Default: 0.5.")
+                             "Range: 0.1–1.0. Default: 0.1.")
                     .translation("config.universalkeyboard.gamepad.triggerThreshold")
-                    .defineInRange("triggerThreshold", 0.5, 0.1, 1.0);
+                    .defineInRange("triggerThreshold", 0.1, 0, 1.0);
 
             joystickScaling = builder
                     .comment("Scale a binding's output by how far the stick/trigger is pushed.",
