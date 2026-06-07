@@ -53,6 +53,14 @@
           "py0": 448,
           "px1": 328,
           "py1": 728,
+          "title": "Peripheral Manager",
+          "body": "View all of your peripheral links made in Linking Mode. This is the first of a few planned steps to improve the ease-of-use around Linking Mode. More to come."
+        },
+        {
+          "px0": 688,
+          "py0": 448,
+          "px1": 968,
+          "py1": 728,
           "title": "Gamepad Calibration",
           "body": "This screen lets you re-calibrate your gamepad's analog sticks. Helpful if you have an older, worn out controller that cant hit every corner of the input anymore. Most people can ignore this."
         },
