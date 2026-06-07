@@ -2,6 +2,6 @@
   "label": "Overview",
   "entries": [
     {"type": "heading", "text": "Overview"},
-    {"type": "text", "body": "§6§lThank for downloading the Universal Keyboard Controller!§r\n§7This wiki is a work-in-progress, so I appreciate your patience while I finish it. I wanted to publish whatever I could, as soon as it was ready.\n\n You can join my Discord Server (link can be found on the mod's Modrinth page) to ask any questions you have. I'm very friendly and helpful!"}
+    {"type": "text", "body": "§6§lThank for downloading the Universal Keyboard Controller!§r\n§7\nThis mod allows you to control redstone signals or CC:Tweaked peripherals remotely. There is a lot you can do from there\n\nThis wiki is a work-in-progress, so I appreciate your patience while I finish it. I wanted to publish whatever I could, as soon as it was ready.\n\n You can join my Discord Server (link can be found on the mod's Modrinth page) to ask any questions you have. I'm very friendly and helpful!"}
   ]
 }
