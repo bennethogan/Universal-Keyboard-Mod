@@ -7,15 +7,49 @@
       "type": "image",
       "texture": "textures/wiki/en_us/copycats_ui_1.png",
       "width": 1008,
-      "height": 712,
-      "max_width": 0.50
+      "height": 720,
+      "max_width": 0.75,
+      "hotspots": [
+        {
+          "px0": 768,
+          "py0": 24,
+          "px1": 832,
+          "py1": 88,
+          "title": "Wiki Button",
+          "body": "Access this in-game wiki anytime with this button"
+        },
+        {
+          "px0": 840,
+          "py0": 24,
+          "px1": 904,
+          "py1": 88,
+          "title": "Revert Button",
+          "body": "'Revert' will erase, upon confirmation, all auto-saved changes. This reverts the page to a snapshot of when the menu was first opened"
+        },
+        {
+        "px0": 912,
+        "py0": 24,
+        "px1": 976,
+        "py1": 88,
+        "title": "<< Tab - Back",
+        "body": "Pressing 'tab' on your keyboard goes back to the previous menu. Or press here"
+        },
+        {
+          "px0": 560,
+          "py0": 116,
+          "px1": 624,
+          "py1": 612,
+          "title": "Randomize",
+          "body": "Click here to randomize the frequency with an alphanumeric string"
+        }
+        ]
     },
     {
       "type": "image",
       "texture": "textures/wiki/en_us/copycats_ui_2.png",
       "width": 1008,
       "height": 712,
-      "max_width": 0.50
+      "max_width": 0.75
     }
 
   ]
