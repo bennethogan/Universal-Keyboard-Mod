@@ -58,8 +58,11 @@ public class LiveControlBinding {
     // INC mode — true = ++, false = --
     public boolean incPlus = true;
 
+    // HLD inversion — output is active (full value) when key is NOT held
+    public boolean inverted = false;
+
     // VARIABLE
-    /** Target sequencer variable, 0-15 → V1..V16 */
+    // Target sequencer variable, V1-16 options
     public int varIndex   = 0;
     /** HLD/TGL "on" value, 1-100; the variable switches between 0 and this */
     public int varOnValue = 100;
@@ -88,6 +91,7 @@ public class LiveControlBinding {
         tag.putDouble("vectorX",     vectorX);
         tag.putDouble("vectorY",     vectorY);
         tag.putBoolean("incPlus",    incPlus);
+        if (inverted) tag.putBoolean("inverted", true);
         tag.putInt("varIndex",       varIndex);
         tag.putInt("varOnValue",     varOnValue);
         tag.putDouble("overdriveMultiplier", overdriveMultiplier);
@@ -130,6 +134,7 @@ public class LiveControlBinding {
         b.vectorX    = tag.getDouble("vectorX");
         b.vectorY    = tag.getDouble("vectorY");
         b.incPlus    = !tag.contains("incPlus") || tag.getBoolean("incPlus");
+        b.inverted   = tag.contains("inverted") && tag.getBoolean("inverted");
 
         b.varIndex   = Math.max(0, Math.min(15, tag.getInt("varIndex")));
         b.varOnValue = tag.contains("varOnValue") ? Math.max(1, Math.min(100, tag.getInt("varOnValue"))) : 100;
@@ -156,6 +161,7 @@ public class LiveControlBinding {
         buf.writeDouble(vectorX);
         buf.writeDouble(vectorY);
         buf.writeBoolean(incPlus);
+        buf.writeBoolean(inverted);
         buf.writeByte(Math.max(0, Math.min(15, varIndex)));
         buf.writeByte(Math.max(1, Math.min(100, varOnValue)));
         buf.writeDouble(overdriveMultiplier);
@@ -192,6 +198,7 @@ public class LiveControlBinding {
         b.vectorX    = buf.readDouble();
         b.vectorY    = buf.readDouble();
         b.incPlus    = buf.readBoolean();
+        b.inverted   = buf.readBoolean();
         b.varIndex   = buf.readByte() & 0xFF;
         b.varOnValue = buf.readByte() & 0xFF;
         if (b.varOnValue < 1) b.varOnValue = 1;

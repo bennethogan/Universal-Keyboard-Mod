@@ -467,11 +467,11 @@ public class LiveControlManager {
         for (int i = 0; i < bindings.size(); i++) {
             LiveControlBinding b = bindings.get(i);
             if (b.actionType != LiveControlBinding.ActionType.OVERDRIVE) continue;
-            boolean odActive = (b.mode == Mode.HLD && heldKeys.contains(b.keyCode))
-                            || (b.mode == Mode.TGL && toggledOn.contains(i));
+            boolean odActive = isBindingActive(i);
             if (!odActive) continue;
             if (bindingIdx >= 0 && isExcluded(b.odExcludes, bindingIdx + 1)) continue;
-            factor *= b.overdriveMultiplier;
+            // Inverted OD: when active (key not held for -Hld), divide instead of multiply
+            factor *= b.inverted ? (1.0 / b.overdriveMultiplier) : b.overdriveMultiplier;
         }
         return factor;
     }
@@ -666,6 +666,11 @@ public class LiveControlManager {
 
     private static boolean isBindingActive(int idx) {
         LiveControlBinding b = bindings.get(idx);
+        if (b.inverted && b.mode == Mode.HLD) {
+            // for analog inverted, always active, magnitude handles the curve
+            if (GamepadCodes.isAnalogCode(b.keyCode) && scalingOn()) return true;
+            return !heldKeys.contains(b.keyCode);
+        }
         return switch (b.mode) {
             case HLD -> heldKeys.contains(b.keyCode);
             case TGL -> toggledOn.contains(idx);
@@ -689,6 +694,8 @@ public class LiveControlManager {
     }
 
     private static double joystickMagnitude(LiveControlBinding b, int bindingIdx) {
+        if (b.inverted && b.mode == Mode.HLD && GamepadCodes.isAnalogCode(b.keyCode) && scalingOn())
+            return 1.0 - GamepadLiveDriver.analogMagnitude(b.keyCode);
         if (b.mode == Mode.TGL && bindingIdx >= 0 && GamepadCodes.isAnalogCode(b.keyCode) && scalingOn())
             return tglLockedMag.getOrDefault(bindingIdx, 1.0);
         if (!isScaledAnalog(b)) return 1.0;

@@ -167,7 +167,8 @@ public class LiveControlScreen extends Screen {
                 && a.varOnValue == b.varOnValue
                 && a.overdriveMultiplier == b.overdriveMultiplier
                 && java.util.Objects.equals(a.odExcludes, b.odExcludes)
-                && a.rpmTarget == b.rpmTarget;
+                && a.rpmTarget == b.rpmTarget
+                && a.inverted == b.inverted;
     }
 
     private static boolean listsEqual(List<LiveControlBinding> a, List<LiveControlBinding> b) {
@@ -196,6 +197,7 @@ public class LiveControlScreen extends Screen {
         b.overdriveMultiplier = src.overdriveMultiplier;
         b.odExcludes          = src.odExcludes;
         b.rpmTarget           = src.rpmTarget;
+        b.inverted            = src.inverted;
         return b;
     }
 
@@ -372,6 +374,23 @@ public class LiveControlScreen extends Screen {
             g.renderTooltip(font, Component.literal(wFreqTooltip), wFreqTooltipX, wFreqTooltipY);
     }
 
+    // ── Flagged-button visual helpers ─────────────────────────────────────────
+   // For now its just for invert hold mode (red = inverted, green = normal)
+
+    private static int modeBg(boolean hovered, boolean flagged) {
+        return flagged ? (hovered ? 0xFF352525 : 0xFF261A1A)
+                       : (hovered ? 0xFF253525 : 0xFF1A261A);
+    }
+    private static int modeBorder(boolean flagged) { return flagged ? 0xFF664444 : 0xFF446644; }
+    private static String modeLabel(LiveControlBinding b) {
+        String base = switch (b.mode) {
+            case HLD -> I18n.get("gui.universalkeyboard.label.mode_hld");
+            case TGL -> I18n.get("gui.universalkeyboard.label.mode_tog");
+            case INC -> I18n.get("gui.universalkeyboard.label.mode_inc");
+        };
+        return (b.inverted && b.mode == Mode.HLD) ? "-" + base : base;
+    }
+
     // ── Slot rendering ────────────────────────────────────────────────────────
     private void renderSlot(GuiGraphics g, int mx, int my, int idx, int rx, int ry) {
         LiveControlBinding b = bindings.get(idx);
@@ -420,12 +439,10 @@ public class LiveControlScreen extends Screen {
     // OVERDRIVE config — [mode:20][gap:2][mult:40][gap:2][excl:26] = 90px
     private void renderOdConfig(GuiGraphics g, int mx, int my, LiveControlBinding b, int x, int y) {
         boolean mHov = isIn(mx, my, x, y, 20, ROW_H);
-        String modeLabel = b.mode == Mode.TGL
-                ? I18n.get("gui.universalkeyboard.label.mode_tog")
-                : I18n.get("gui.universalkeyboard.label.mode_hld");
-        g.fill(x, y, x + 20, y + ROW_H, mHov ? 0xFF253525 : 0xFF1A261A);
-        drawBorder(g, x, y, 20, ROW_H, 0xFF446644);
-        g.drawCenteredString(font, modeLabel, x + 10, y + 4, 0xFFFFFF);
+        boolean inv  = b.inverted && b.mode == Mode.HLD;
+        g.fill(x, y, x + 20, y + ROW_H, modeBg(mHov, inv));
+        drawBorder(g, x, y, 20, ROW_H, modeBorder(inv));
+        g.drawCenteredString(font, modeLabel(b), x + 10, y + 4, 0xFFFFFF);
         x += 22;
 
         boolean vHov = isIn(mx, my, x, y, 40, ROW_H);
@@ -464,16 +481,12 @@ public class LiveControlScreen extends Screen {
         }
         x += 52;
 
-        // Mode button cycles Hld → Tog → Inc
+        // Mode button cycles Hld -> Tog -> Inc; right-click on Hld toggles inversion
         boolean mHov = isIn(mx, my, x, y, 20, ROW_H);
-        String modeLabel = switch (b.mode) {
-            case HLD -> I18n.get("gui.universalkeyboard.label.mode_hld");
-            case TGL -> I18n.get("gui.universalkeyboard.label.mode_tog");
-            case INC -> I18n.get("gui.universalkeyboard.label.mode_inc");
-        };
-        g.fill(x, y, x + 20, y + ROW_H, mHov ? 0xFF253525 : 0xFF1A261A);
-        drawBorder(g, x, y, 20, ROW_H, 0xFF446644);
-        g.drawCenteredString(font, modeLabel, x + 10, y + 4, 0xFFFFFF);
+        boolean inv  = b.inverted && b.mode == Mode.HLD;
+        g.fill(x, y, x + 20, y + ROW_H, modeBg(mHov, inv));
+        drawBorder(g, x, y, 20, ROW_H, modeBorder(inv));
+        g.drawCenteredString(font, modeLabel(b), x + 10, y + 4, 0xFFFFFF);
         x += 22;
 
         // Value widget: signal number (HLD/TGL) or ++/-- (INC)
@@ -500,14 +513,10 @@ public class LiveControlScreen extends Screen {
         x += 42;
 
         boolean mHov = isIn(mx, my, x, y, 20, ROW_H);
-        String modeLabel = switch (b.mode) {
-            case HLD -> I18n.get("gui.universalkeyboard.label.mode_hld");
-            case TGL -> I18n.get("gui.universalkeyboard.label.mode_tog");
-            case INC -> I18n.get("gui.universalkeyboard.label.mode_inc");
-        };
-        g.fill(x, y, x + 20, y + ROW_H, mHov ? 0xFF253525 : 0xFF1A261A);
-        drawBorder(g, x, y, 20, ROW_H, 0xFF446644);
-        g.drawCenteredString(font, modeLabel, x + 10, y + 4, 0xFFFFFF);
+        boolean inv  = b.inverted && b.mode == Mode.HLD;
+        g.fill(x, y, x + 20, y + ROW_H, modeBg(mHov, inv));
+        drawBorder(g, x, y, 20, ROW_H, modeBorder(inv));
+        g.drawCenteredString(font, modeLabel(b), x + 10, y + 4, 0xFFFFFF);
         x += 22;
 
         int pct = (int) Math.round(b.powerLevel * 100);
@@ -536,14 +545,10 @@ public class LiveControlScreen extends Screen {
         x += 42;
 
         boolean mHov = isIn(mx, my, x, y, 20, ROW_H);
-        String modeLabel = switch (b.mode) {
-            case HLD -> I18n.get("gui.universalkeyboard.label.mode_hld");
-            case TGL -> I18n.get("gui.universalkeyboard.label.mode_tog");
-            case INC -> I18n.get("gui.universalkeyboard.label.mode_inc");
-        };
-        g.fill(x, y, x + 20, y + ROW_H, mHov ? 0xFF253525 : 0xFF1A261A);
-        drawBorder(g, x, y, 20, ROW_H, 0xFF446644);
-        g.drawCenteredString(font, modeLabel, x + 10, y + 4, 0xFFFFFF);
+        boolean inv  = b.inverted && b.mode == Mode.HLD;
+        g.fill(x, y, x + 20, y + ROW_H, modeBg(mHov, inv));
+        drawBorder(g, x, y, 20, ROW_H, modeBorder(inv));
+        g.drawCenteredString(font, modeLabel(b), x + 10, y + 4, 0xFFFFFF);
         x += 22;
 
         boolean vHov = isIn(mx, my, x, y, 28, ROW_H);
@@ -569,10 +574,10 @@ public class LiveControlScreen extends Screen {
         x += 42;
 
         boolean mHov = isIn(mx, my, x, y, 20, ROW_H);
-        String modeLabel = b.mode == Mode.TGL ? I18n.get("gui.universalkeyboard.label.mode_tog") : I18n.get("gui.universalkeyboard.label.mode_hld");
-        g.fill(x, y, x + 20, y + ROW_H, mHov ? 0xFF253525 : 0xFF1A261A);
-        drawBorder(g, x, y, 20, ROW_H, 0xFF446644);
-        g.drawCenteredString(font, modeLabel, x + 10, y + 4, 0xFFFFFF);
+        boolean inv  = b.inverted && b.mode == Mode.HLD;
+        g.fill(x, y, x + 20, y + ROW_H, modeBg(mHov, inv));
+        drawBorder(g, x, y, 20, ROW_H, modeBorder(inv));
+        g.drawCenteredString(font, modeLabel(b), x + 10, y + 4, 0xFFFFFF);
         x += 22;
 
         boolean vHov = isIn(mx, my, x, y, 28, ROW_H) || vectorOverlaySlot == idx;
@@ -594,14 +599,10 @@ public class LiveControlScreen extends Screen {
         x += 42;
 
         boolean mHov = isIn(mx, my, x, y, 20, ROW_H);
-        String modeLabel = switch (b.mode) {
-            case HLD -> I18n.get("gui.universalkeyboard.label.mode_hld");
-            case TGL -> I18n.get("gui.universalkeyboard.label.mode_tog");
-            case INC -> I18n.get("gui.universalkeyboard.label.mode_inc");
-        };
-        g.fill(x, y, x + 20, y + ROW_H, mHov ? 0xFF253525 : 0xFF1A261A);
-        drawBorder(g, x, y, 20, ROW_H, 0xFF446644);
-        g.drawCenteredString(font, modeLabel, x + 10, y + 4, 0xFFFFFF);
+        boolean inv  = b.inverted && b.mode == Mode.HLD;
+        g.fill(x, y, x + 20, y + ROW_H, modeBg(mHov, inv));
+        drawBorder(g, x, y, 20, ROW_H, modeBorder(inv));
+        g.drawCenteredString(font, modeLabel(b), x + 10, y + 4, 0xFFFFFF);
         x += 22;
 
         boolean valHov = isIn(mx, my, x, y, 28, ROW_H);
@@ -781,6 +782,8 @@ public class LiveControlScreen extends Screen {
             if (b.mode == Mode.INC
                     && (b.actionType == ActionType.THRUSTER_VECTOR || b.actionType == ActionType.OVERDRIVE))
                 b.mode = Mode.HLD;
+            // VARIABLE doesn't support inversion
+            if (b.inverted && !canInvert(b.actionType)) b.inverted = false;
             return true;
         }
 
@@ -799,7 +802,7 @@ public class LiveControlScreen extends Screen {
                 }
                 x += 52;
                 if (isIn(mx, my, x, y, 20, ROW_H)) {
-                    b.mode = nextMode(b.actionType, b.mode, right ? -1 : 1); return true;
+                    cycleModeOrInvert(b, right); return true;
                 }
                 x += 22;
                 if (isIn(mx, my, x, y, 20, ROW_H)) {
@@ -816,7 +819,7 @@ public class LiveControlScreen extends Screen {
                 }
                 x += 42;
                 if (isIn(mx, my, x, y, 20, ROW_H)) {
-                    b.mode = nextMode(b.actionType, b.mode, right ? -1 : 1); return true;
+                    cycleModeOrInvert(b, right); return true;
                 }
                 x += 22;
                 if (isIn(mx, my, x, y, 28, ROW_H)) {
@@ -833,7 +836,7 @@ public class LiveControlScreen extends Screen {
                 }
                 x += 42;
                 if (isIn(mx, my, x, y, 20, ROW_H)) {
-                    b.mode = nextMode(b.actionType, b.mode, right ? -1 : 1); return true;
+                    cycleModeOrInvert(b, right); return true;
                 }
                 x += 22;
                 if (isIn(mx, my, x, y, 28, ROW_H)) { vectorOverlaySlot = (vectorOverlaySlot == idx) ? -1 : idx; return true; }
@@ -846,7 +849,7 @@ public class LiveControlScreen extends Screen {
                 }
                 x += 42;
                 if (isIn(mx, my, x, y, 20, ROW_H)) {
-                    b.mode = nextMode(b.actionType, b.mode, right ? -1 : 1); return true;
+                    cycleModeOrInvert(b, right); return true;
                 }
                 x += 22;
                 if (isIn(mx, my, x, y, 28, ROW_H)) {
@@ -857,7 +860,7 @@ public class LiveControlScreen extends Screen {
             }
             case OVERDRIVE -> {
                 if (isIn(mx, my, x, y, 20, ROW_H)) {
-                    b.mode = nextMode(b.actionType, b.mode, right ? -1 : 1); return true;
+                    cycleModeOrInvert(b, right); return true;
                 }
                 x += 22;
                 if (isIn(mx, my, x, y, 40, ROW_H)) {
@@ -883,7 +886,7 @@ public class LiveControlScreen extends Screen {
                 }
                 x += 42;
                 if (isIn(mx, my, x, y, 20, ROW_H)) {
-                    b.mode = nextMode(b.actionType, b.mode, right ? -1 : 1); return true;
+                    cycleModeOrInvert(b, right); return true;
                 }
                 x += 22;
                 if (isIn(mx, my, x, y, 28, ROW_H)) {
@@ -1001,6 +1004,20 @@ public class LiveControlScreen extends Screen {
     @Override public boolean isPauseScreen() { return false; }
 
     // ── Type / mode cycling ───────────────────────────────────────────────────
+    // Right click on HLD toggles inversion; any other click cycles mode and clears inversion on exit
+    private static void cycleModeOrInvert(LiveControlBinding b, boolean right) {
+        if (right && b.mode == Mode.HLD && canInvert(b.actionType)) {
+            b.inverted = !b.inverted;
+        } else {
+            b.mode = nextMode(b.actionType, b.mode, right ? -1 : 1);
+            if (b.mode != Mode.HLD) b.inverted = false;
+        }
+    }
+
+    //variable mode cant invert, others might not be able to later
+    private static boolean canInvert(ActionType t) {
+        return t != ActionType.VARIABLE;
+    }
     private boolean isTypeAvailable(ActionType t) {
         return switch (t) {
             case REDSTONE        -> true;
