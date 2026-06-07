@@ -55,7 +55,9 @@ public class PeripheralHelper {
     }
 
     private static boolean isRpmGetterName(String n) {
-        return n.equals("getSpeed") || n.equals("getTargetSpeed") || n.equals("getGeneratedSpeed");
+        // createpropulsion's stirling_engine exposes getRpm() instead of the Create-style getters.
+        return n.equals("getSpeed") || n.equals("getTargetSpeed") || n.equals("getGeneratedSpeed")
+                || n.equals("getRpm");
     }
 
 
@@ -90,7 +92,38 @@ public class PeripheralHelper {
         if (!ccPresent) return;
         String methodName = rpmSetterName(peripheral);
         if (methodName == null) return;
+        // special considered for Propulsion's stirling engine, which requires calling
+        // attach and detach
+        if ("stirling_engine".equals(getPeripheralType(peripheral)))
+            ensureStirlingComputerControlled(peripheral);
         callMethodWithDouble(peripheral, methodName, rpm);
+    }
+
+
+    //replicating the server-side effect of CC's attach(), sets its hasAttachedComputer flag and forces
+    // computerActive on
+    private static void ensureStirlingComputerControlled(Object peripheral) {
+        try {
+            Field beField = findField(peripheral.getClass(), "blockEntity");
+            if (beField == null) return;
+            beField.setAccessible(true);
+            Object be = beField.get(peripheral);
+            if (be == null) return;
+
+            Field cbField = findField(be.getClass(), "computerBehaviour");
+            if (cbField != null) {
+                cbField.setAccessible(true);
+                Object cb = cbField.get(be);
+                if (cb != null) {
+                    try { cb.getClass().getMethod("setHasAttachedComputer", boolean.class).invoke(cb, true); }
+                    catch (Exception ignored) {}
+                }
+            }
+            try { be.getClass().getMethod("setComputerActive", boolean.class).invoke(be, true); }
+            catch (Exception ignored) {}
+        } catch (Exception e) {
+            UniversalKeyboardMod.LOGGER.warn("ensureStirlingComputerControlled failed: {}", e.getMessage());
+        }
     }
 
     public static int getRpmValue(Level level, BlockPos pos) {

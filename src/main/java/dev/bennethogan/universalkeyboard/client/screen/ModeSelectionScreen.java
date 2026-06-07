@@ -240,7 +240,20 @@ public class ModeSelectionScreen extends Screen {
             tw.tooltip = List.of(Component.translatable("gui.universalkeyboard.tooltip.need_aeronautics"));
         }
 
-        // Calibrate Gamepad (gated by config)
+        // Peripheral Manager (bottom-left): lists all linked peripherals across channels
+        Box mgr = add();
+        mgr.kind  = IconKind.ITEM;
+        mgr.item  = stackOf("universalkeyboard", "rainbow_keyboard");
+        mgr.tooltip = List.of(Component.translatable("gui.universalkeyboard.box.peripheral_manager.desc"));
+        mgr.onClick = this::openPeripheralManager;
+
+        // Reset Data
+        Box reset = add();
+        reset.kind = IconKind.TRASH;
+        reset.tooltip = List.of(Component.translatable("gui.universalkeyboard.box.reset_data"));
+        reset.onClick = () -> setPage(Page.RESET);
+
+        // Calibrate Gamepad (gated by config) — pushed to the tile right of Reset Data
         Box cal = add();
         cal.kind = IconKind.GAMEPAD;
         if (gamepadEnabled()) {
@@ -250,12 +263,6 @@ public class ModeSelectionScreen extends Screen {
             cal.enabled = false;
             cal.tooltip = List.of(Component.translatable("gui.universalkeyboard.box.calibrate_gamepad"));
         }
-
-        // Reset Data
-        Box reset = add();
-        reset.kind = IconKind.TRASH;
-        reset.tooltip = List.of(Component.translatable("gui.universalkeyboard.box.reset_data"));
-        reset.onClick = () -> setPage(Page.RESET);
     }
 
     private void buildOther() {
@@ -357,6 +364,12 @@ public class ModeSelectionScreen extends Screen {
     private void openCalibration() {
         Minecraft.getInstance().setScreen(
                 new GamepadCalibrationScreen(
+                        new ModeSelectionScreen(keyboardPos, targetTypeName, availableBits, Page.SETUP)));
+    }
+
+    private void openPeripheralManager() {
+        Minecraft.getInstance().setScreen(
+                new PeripheralManagerScreen(keyboardPos,
                         new ModeSelectionScreen(keyboardPos, targetTypeName, availableBits, Page.SETUP)));
     }
 

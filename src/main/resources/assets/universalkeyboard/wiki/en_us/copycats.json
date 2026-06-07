@@ -2,13 +2,13 @@
   "label": "Copycats",
   "entries": [
     {"type": "heading", "text": "Wireless Copycats"},
-    {"type": "text", "body": "These blocks behave just like the Copycats you know and love, except you can also send a different redstone signal to each side! \n\n Take the 6 character alphanumric string from one menu, paste it into the other menu, and thats it! Figuring out the side can be a little confusing at first, and I will tell you now that assembling/dissassembling swapped the faces for me in one test. I'm still working that out.\n\n Hover over the image below to learn more about the 2 Wireless Copycat Menus. The first image is the \"Keyboard-side\" menu, while the second image is the \"Copycat-side\" menu.\n"},
+    {"type": "text", "body": "These blocks behave just like the Copycats you know and love, except you can also send a different redstone signal to each side! \n\n Take the 6 character alphanumeric string from one menu, paste it into the other menu, and that's it! Figuring out the side can be a little confusing at first, and I will tell you now that assembling/dissassembling swapped the faces for me in one test. I'm still working that out.\n\n Hover over the image below to learn more about the Wireless Copycat Menus.\n\n§6§lKeyboard's Menu§r"},
     {
       "type": "image",
       "texture": "textures/wiki/en_us/copycats_ui_1.png",
       "width": 1008,
       "height": 720,
-      "max_width": 0.75,
+      "max_width": 0.8,
       "hotspots": [
         {
           "px0": 768,
@@ -57,15 +57,154 @@
           "py1": 612,
           "title": "Paste",
           "body": "The frequency string needs to be copy/pasted between the keyboard menu and the copycat menu. It doesn't really matter which side you start on!"
+        },
+        {
+          "px0": 32,
+          "py0": 620,
+          "px1": 976,
+          "py1": 676,
+          "title": "New Line",
+          "body": "Click here to add a new line. Up to 100 frequencies!"
+        },
+        {
+          "px0": 208,
+          "py0": 128,
+          "px1": 544,
+          "py1": 384,
+          "title": "Custom Frequency Strings",
+          "body": "You can write your own frequency string, or randomize it. This is how I would set up links to an Aeronautics / offroad car with front wheel drive. The image below this one shows an example of W2's menu, which is a copycat panel on the front left of the front wheel mount on a car."
+        },
+        {
+          "px0": 208,
+          "py0": 416,
+          "px1": 544,
+          "py1": 600,
+          "title": "Randomized Frequency Strings",
+          "body": "58 billion possibilities! As opposed to ~2 million (assuming just Create installed, its more, with more items, of course)"
+        },
+        {
+          "px0": 32,
+          "py0": 116,
+          "px1": 96,
+          "py1": 612,
+          "title": "Delete line",
+          "body": "Luckily there's a 'revert' button if you accidentally press this!"
         }
         ]
     },
+    {"type": "text", "body": "\n§6§lCopycat Block's Menu§r"},
     {
       "type": "image",
       "texture": "textures/wiki/en_us/copycats_ui_2.png",
       "width": 1008,
       "height": 712,
-      "max_width": 0.75
+      "max_width": 0.8,
+      "hotspots": [
+        {
+          "px0": 912,
+          "py0": 16,
+          "px1": 976,
+          "py1": 80,
+          "title": "Wiki Button",
+          "body": "Access this in-game wiki anytime with this button"
+        },
+        {
+          "px0": 32,
+          "py0": 616,
+          "px1": 96,
+          "py1": 680,
+          "title": "Revert",
+          "body": "'Revert' will erase, upon confirmation, all auto-saved changes. This reverts the page to a snapshot of when the menu was first opened"
+        },
+        {
+          "px0": 912,
+          "py0": 616,
+          "px1": 976,
+          "py1": 680,
+          "title": "Exit",
+          "body": "Close the menu. Everything is auto-saved!"
+        },
+        {
+          "px0": 20,
+          "py0": 100,
+          "px1": 140,
+          "py1": 570,
+          "title": "Sending / Receiving Side",
+          "body": "The sun rises in the East! Maybe that will help here. There is also a test button (the play button on the right).\nThere is a bug that causes these sides to swap E->W or N->S, or just not correctly align when assembling/disassembling. This is being worked on, but it will be annoying until its fixed"
+        },
+        {
+          "px0": 208,
+          "py0": 112,
+          "px1": 272,
+          "py1": 576,
+          "title": "Enable / Disable",
+          "body": "A side must be enabled for it to send or receive signals"
+        },
+        {
+          "px0": 288,
+          "py0": 364,
+          "px1": 528,
+          "py1": 404,
+          "title": "Custom Frequency String",
+          "body": "This same string is in the image above. The menu you are seeing is a Wireless Copycat Panel on the front left (FL) of a wheel mount, on a car named Car 1. Naming can be nice if you aren't concerned about security. This is a password!"
+        },
+        {
+          "px0": 288,
+          "py0": 124,
+          "px1": 528,
+          "py1": 164,
+          "title": "Random Frequency String",
+          "body": "58 billion possibilities! As opposed to ~2 million (assuming just Create installed, its more, with more items, of course)"
+        },
+        {
+          "px0": 288,
+          "py0": 444,
+          "px1": 528,
+          "py1": 564,
+          "title": "Blank at first",
+          "body": "These boxes are left blank until you first enable a side. I was finding it very visually distracting otherwise."
+        },
+        {
+          "px0": 288,
+          "py0": 204,
+          "px1": 528,
+          "py1": 324,
+          "title": "Blank at first",
+          "body": "These boxes are left blank until you first enable a side. I was finding it very visually distracting otherwise."
+        },
+        {
+          "px0": 560,
+          "py0": 112,
+          "px1": 624,
+          "py1": 576,
+          "title": "Randomize",
+          "body": "Click here to randomize the frequency with an alphanumeric string"
+        },
+        {
+          "px0": 632,
+          "py0": 112,
+          "px1": 696,
+          "py1": 576,
+          "title": "Copy",
+          "body": "The frequency string needs to be copy/pasted between the keyboard menu and the copycat menu. It doesn't really matter which side you start on!"
+        },
+        {
+          "px0": 704,
+          "py0": 112,
+          "px1": 768,
+          "py1": 576,
+          "title": "Paste",
+          "body": "The frequency string needs to be copy/pasted between the keyboard menu and the copycat menu. It doesn't really matter which side you start on!"
+        },
+        {
+        "px0": 776,
+        "py0": 112,
+        "px1": 840,
+        "py1": 576,
+        "title": "Test this Side",
+        "body": "Clicking this button will change the texture of the side to a gold texture for a configurable amount of seconds. This can help figure out which side you are needing to enable."
+        }
+      ]
     }
 
   ]

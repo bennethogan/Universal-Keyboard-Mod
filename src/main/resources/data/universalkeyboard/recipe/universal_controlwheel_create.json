@@ -1,0 +1,19 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "create" }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "B B",
+    "ACA"
+  ],
+  "key": {
+    "A": { "item": "create:andesite_alloy" },
+    "B": { "tag": "minecraft:wooden_buttons" },
+    "C": { "item": "create:precision_mechanism" }
+  },
+  "result": {
+    "id": "universalkeyboard:universal_controlwheel",
+    "count": 1
+  }
+}

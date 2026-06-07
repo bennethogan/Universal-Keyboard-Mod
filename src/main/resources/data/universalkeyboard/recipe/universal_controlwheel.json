@@ -1,12 +1,19 @@
 {
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:not",
+      "value": { "type": "neoforge:mod_loaded", "modid": "create" }
+    }
+  ],
   "type": "minecraft:crafting_shaped",
   "pattern": [
-    "A",
-    "B"
+    "A A",
+    "BCB"
   ],
   "key": {
-    "A": { "tag": "universalkeyboard:keyboards" },
-    "B": { "item": "minecraft:iron_block" }
+    "A": { "tag": "minecraft:wooden_buttons" },
+    "B": { "item": "minecraft:iron_ingot" },
+    "C": { "item": "minecraft:diamond" }
   },
   "result": {
     "id": "universalkeyboard:universal_controlwheel",
