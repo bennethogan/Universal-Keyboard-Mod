@@ -375,8 +375,7 @@ public class LiveControlScreen extends Screen {
     }
 
     // ── Flagged-button visual helpers ─────────────────────────────────────────
-   // For now its just for invert hold mode (red = inverted, green = normal)
-
+    // For now its just for invert hold mode (red = inverted, green = normal)
     private static int modeBg(boolean hovered, boolean flagged) {
         return flagged ? (hovered ? 0xFF352525 : 0xFF261A1A)
                        : (hovered ? 0xFF253525 : 0xFF1A261A);

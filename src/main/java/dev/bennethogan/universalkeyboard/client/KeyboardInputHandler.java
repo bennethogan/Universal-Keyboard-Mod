@@ -2,10 +2,13 @@ package dev.bennethogan.universalkeyboard.client;
 
 import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.universalkeyboard.client.gamepad.GamepadLiveDriver;
+import dev.bennethogan.universalkeyboard.compat.CreateValueHelper;
+import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import dev.bennethogan.universalkeyboard.item.LinkedKeyboardItem;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlManager;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
@@ -45,7 +48,17 @@ public class KeyboardInputHandler {
         int countOnChannel = allTargets.getOrDefault(ch, java.util.List.of()).size();
         int totalChannels = (int) allTargets.values().stream().filter(l -> !l.isEmpty()).count();
 
-        String msg = "§bLinking §f| §eChannel " + ch + " §f(" + countOnChannel + " linked)";
+        String linkedLabel = countOnChannel + " Linked";
+        if (countOnChannel >= 1) {
+            BlockPos repPos = allTargets.get(ch).get(0);
+            net.minecraft.world.level.Level level = mc.level;
+            boolean hasCc = PeripheralHelper.hasPeripheral(level, repPos);
+            boolean hasVp = CreateValueHelper.hasScrollValue(level != null ? level.getBlockEntity(repPos) : null);
+            if (hasCc && hasVp) linkedLabel += "; CC Peripheral + Value Panel";
+            else if (hasCc)    linkedLabel += "; CC Peripheral";
+            else if (hasVp)    linkedLabel += "; Value Panel";
+        }
+        String msg = "§bLinking §f| §eChannel " + ch + " §f(" + linkedLabel + ")";
         if (totalChannels > 1) msg += " §7[" + totalChannels + " channels used]";
         mc.player.displayClientMessage(
                 net.minecraft.network.chat.Component.literal(msg), true);

@@ -3,7 +3,9 @@ package dev.bennethogan.universalkeyboard.item;
 import dev.bennethogan.universalkeyboard.UniversalKeyboardMod;
 import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.universalkeyboard.blockentity.WirelessCopycatBlockEntity;
+import dev.bennethogan.universalkeyboard.compat.CreateValueHelper;
 import dev.bennethogan.universalkeyboard.compat.KeyboardMode;
+import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
@@ -154,12 +156,21 @@ public class LinkedKeyboardItem extends BlockItem {
             return;
         }
 
-        // Enforce same BlockEntityType for all entries on the same channel
+        // Enforce same BlockEntityType and same connection type for all entries on the same channel
         if (!channelList.isEmpty() && be != null) {
             BlockEntity firstBe = level.getBlockEntity(channelList.get(0));
             if (firstBe == null || !firstBe.getType().equals(be.getType())) {
                 player.displayClientMessage(Component.literal(
                         "§c[Universal Keyboard] §fChannel " + ch + " can only hold blocks of the same type."), true);
+                return;
+            }
+            boolean newCc = PeripheralHelper.hasPeripheral(level, pos);
+            boolean newVp = CreateValueHelper.hasScrollValue(be);
+            boolean oldCc = PeripheralHelper.hasPeripheral(level, channelList.get(0));
+            boolean oldVp = CreateValueHelper.hasScrollValue(firstBe);
+            if (newCc != oldCc || newVp != oldVp) {
+                player.displayClientMessage(Component.literal(
+                        "§c[Universal Keyboard] §fChannel " + ch + " already has a different connection type (CC/Value Panel mismatch)."), true);
                 return;
             }
         }

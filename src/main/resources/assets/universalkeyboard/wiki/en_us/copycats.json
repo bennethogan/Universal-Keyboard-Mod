@@ -41,6 +41,22 @@
           "py1": 612,
           "title": "Randomize",
           "body": "Click here to randomize the frequency with an alphanumeric string"
+        },
+        {
+          "px0": 632,
+          "py0": 116,
+          "px1": 696,
+          "py1": 612,
+          "title": "Copy",
+          "body": "The frequency string needs to be copy/pasted between the keyboard menu and the copycat menu. It doesn't really matter which side you start on!"
+        },
+        {
+          "px0": 704,
+          "py0": 116,
+          "px1": 768,
+          "py1": 612,
+          "title": "Paste",
+          "body": "The frequency string needs to be copy/pasted between the keyboard menu and the copycat menu. It doesn't really matter which side you start on!"
         }
         ]
     },

@@ -1,5 +1,7 @@
 package dev.bennethogan.universalkeyboard.client.screen;
 
+import dev.bennethogan.universalkeyboard.compat.CreateConnectedCompat;
+import dev.bennethogan.universalkeyboard.config.ModConfig;
 import dev.bennethogan.universalkeyboard.menu.WirelessConfigMenu;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
 import net.minecraft.client.gui.GuiGraphics;
@@ -17,6 +19,8 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
     private static final int FREQ1_TINT = 0x55FF3333; // transparent red  (freq 1 / left slot)
     private static final int FREQ2_TINT = 0x553333FF; // transparent blue (freq 2 / right slot)
 
+    private NoticeDialog wildcardNotice;
+
     public WirelessConfigScreen(WirelessConfigMenu menu, Inventory inv, Component title) {
         super(menu, inv, title);
         this.imageWidth      = 222;
@@ -31,6 +35,39 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
                 Component.translatable("gui.universalkeyboard.tooltip.wiki"),
                 b -> net.minecraft.client.Minecraft.getInstance().setScreen(new WikiScreen(this)),
                 leftPos + imageWidth - 8 - 16, topPos + 2, 16, 16));
+
+        wildcardNotice = new NoticeDialog(font);
+        wildcardNotice.setParentBounds(leftPos, topPos, imageWidth, imageHeight);
+        if (CreateConnectedCompat.isRedstoneWildcardActive()
+                && !ModConfig.CLIENT.redstoneWildcardWarningDismissed.get()) {
+            wildcardNotice.open(
+                    I18n.get("gui.universalkeyboard.notice.cc_wildcard.title"),
+                    I18n.get("gui.universalkeyboard.notice.cc_wildcard.body"),
+                    I18n.get("gui.universalkeyboard.notice.got_it"),
+                    I18n.get("gui.universalkeyboard.notice.dont_show_again"),
+                    dontShowAgain -> {
+                        if (dontShowAgain) {
+                            ModConfig.CLIENT.redstoneWildcardWarningDismissed.set(true);
+                            ModConfig.CLIENT.redstoneWildcardWarningDismissed.save();
+                        }
+                    });
+        }
+    }
+
+    @Override
+    public void render(GuiGraphics g, int mx, int my, float pt) {
+        super.render(g, mx, my, pt);
+        if (wildcardNotice != null && wildcardNotice.isOpen()) {
+            wildcardNotice.render(g, mx, my);
+        }
+    }
+
+    @Override
+    public boolean mouseClicked(double mx, double my, int button) {
+        if (wildcardNotice != null && wildcardNotice.isOpen()) {
+            return wildcardNotice.mouseClicked(mx, my, button);
+        }
+        return super.mouseClicked(mx, my, button);
     }
 
     @Override
@@ -119,6 +156,9 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (wildcardNotice != null && wildcardNotice.isOpen()) {
+            return wildcardNotice.keyPressed(keyCode);
+        }
         if (MenuNav.handleTabBack(this, keyCode, menu.getKeyboardPos())) return true;
         return super.keyPressed(keyCode, scanCode, modifiers);
     }

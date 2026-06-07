@@ -24,6 +24,12 @@
   "gui.universalkeyboard.screen.mode_selection.title": "§bUniversal Keyboard",
   "gui.universalkeyboard.screen.live_controller.title": "§bLive Controller",
   "gui.universalkeyboard.screen.wireless_config.title": "Redstone Links",
+
+  "gui.universalkeyboard.notice.got_it": "Got it",
+  "gui.universalkeyboard.notice.dont_show_again": "Don't show this again",
+  "gui.universalkeyboard.notice.cc_wildcard.title": "§eCreate: Connected Detected",
+  "gui.universalkeyboard.notice.cc_wildcard.body": "Wireless Redstone Links will NOT work until you set \"Redstone Link Wildcard\" to false in Create: Connected's config: Common → Features → Redstone Link Wildcard → false.",
+
   "gui.universalkeyboard.screen.wireless_copycat.title": "Wireless Copycat",
   "gui.universalkeyboard.screen.sequencer.title": "§bPeripheral Sequencer",
 

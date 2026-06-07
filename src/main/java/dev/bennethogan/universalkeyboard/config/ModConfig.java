@@ -68,6 +68,7 @@ public class ModConfig {
         public final ModConfigSpec.ConfigValue<List<? extends Double>> stickCalibration;
         public final ModConfigSpec.ConfigValue<String> controlWheelLeftKey;
         public final ModConfigSpec.ConfigValue<String> controlWheelRightKey;
+        public final ModConfigSpec.BooleanValue redstoneWildcardWarningDismissed;
 
         Client(ModConfigSpec.Builder builder) {
             builder.comment("Universal Keyboard — Client Settings").push("gamepad");
@@ -145,6 +146,17 @@ public class ModConfig {
                              "Use a GLFW key name such as: a, d, left, right, comma, period. Default: d.")
                     .translation("config.universalkeyboard.controlwheel.controlWheelRightKey")
                     .define("controlWheelRightKey", "d");
+
+            builder.pop();
+
+            builder.comment("Universal Keyboard — Notices").push("notices");
+
+            redstoneWildcardWarningDismissed = builder
+                    .comment("Set by the 'Don't show this again' checkbox on the Create: Connected redstone-link",
+                             "wildcard warning shown in the Redstone Links screen. When true, that popup is",
+                             "suppressed. Reset to false to see the warning again. Default: false.")
+                    .translation("config.universalkeyboard.notices.redstoneWildcardWarningDismissed")
+                    .define("redstoneWildcardWarningDismissed", false);
 
             builder.pop();
         }
