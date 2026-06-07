@@ -33,15 +33,15 @@ public class ControlWheelRenderer implements BlockEntityRenderer<LinkedKeyboardB
 
     // pivot point from blockbench, floor/regular variant
     private static final float FLOOR_PX = 8.015f   / 16f;
-    private static final float FLOOR_PY = 15.96385f / 16f;
-    private static final float FLOOR_PZ = 11.4985f / 16f;
+    private static final float FLOOR_PY = 12.0285f / 16f;
+    private static final float FLOOR_PZ = 10.3105f / 16f;
     private static final org.joml.Vector3f FLOOR_AXIS =
-            new org.joml.Vector3f(0.0f, 0.3714f, 0.9285f).normalize();
+            new org.joml.Vector3f(0.0f, 0f, 1f).normalize();
 
     // wall variant pivot point
     private static final float WALL_PX = 8.015f   / 16f;
-    private static final float WALL_PY = 15.5925f / 16f;
-    private static final float WALL_PZ = 2.0302f  / 16f;
+    private static final float WALL_PY = 12.0285f / 16f;
+    private static final float WALL_PZ = 1.5105f  / 16f;
     private static final org.joml.Vector3f WALL_AXIS =
             new org.joml.Vector3f(0.0f, 0.0f, 1.0f).normalize();
 
