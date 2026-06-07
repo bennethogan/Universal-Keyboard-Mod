@@ -1,0 +1,8 @@
+{
+  "label": "Linking Mode",
+  "entries": [
+    {"type": "heading", "text": "Linking to External Peripherals"},
+    {"type": "text", "body": "Enter Linking Mode by holding the Universal Controller, and doing shift + right-click\n\n----------\nI am going to start by saying: this mode needs work. \n\nNot because it's buggy, but because its extremely confusing. It's not even easy to write instructions about it. I would recommend looking for my Youtube channel if you are still confused.\n\nLinking Mode is entered with shift + right-click, while any Universal Controller is in your hand. From there, you can right-click available peripherals, and you will see a bounding box. "},
+    {"type": "text", "body": "\nThe bounding box color tells you if the linked block has CC:Tweaked compat (yellow), or if the reason for the connection is purely because of Create's \"Value Panels\".\n\nIn the case of a connection to a block such as the Aeronautics Portable Engine, you will see a purple bounding box. This is because you are able to toggle that panel at the top between clock-wise and counter-clock wise. I know, its lame. I wish more people would add CC:Tweaked compat to their mods. I am not going to do any mixins to control their blocks so we have to deal with what we have.\n\nI will work on this section later. I tried to add photos, but compressed screenshots basically doubled the size of the jar file. I might do it, but I'm working on another way."}
+  ]
+}
