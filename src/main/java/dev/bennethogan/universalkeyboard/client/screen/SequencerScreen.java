@@ -755,27 +755,27 @@ public class SequencerScreen extends Screen {
         opts.add(I18n.get("gui.universalkeyboard.label.manual_input"));
         for (int v = 1; v <= SequencerStep.VAR_COUNT; v++) opts.add("V" + v);
         opts.add("RS:N"); opts.add("RS:S"); opts.add("RS:E"); opts.add("RS:W"); opts.add("RS:U"); opts.add("RS:D");
-        int wc = getWirelessCount();
+        int wc = getRsLinkCount();
         for (int w = 1; w <= wc; w++) opts.add("L" + w);
         opts.addAll(gettersFor(channel));
         return opts;
     }
 
-    int getWirelessCount() {
+    int getRsLinkCount() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return 0;
         var be = mc.level.getBlockEntity(keyboardPos);
         if (be instanceof dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity kb)
-            return kb.getWirelessCount();
+            return kb.getRsLinkCount();
         return 0;
     }
 
-    int getLinkFreqCount() {
+    int getWirelessFreqCount() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return 0;
         var be = mc.level.getBlockEntity(keyboardPos);
         if (be instanceof dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity kb)
-            return kb.getLinkFreqCount();
+            return kb.getWirelessFreqCount();
         return 0;
     }
 
@@ -1094,9 +1094,9 @@ public class SequencerScreen extends Screen {
         List<String> opts = new ArrayList<>();
         for (int v = 1; v <= SequencerStep.VAR_COUNT; v++) opts.add("V" + v);
         opts.add("RS:N"); opts.add("RS:S"); opts.add("RS:E"); opts.add("RS:W"); opts.add("RS:U"); opts.add("RS:D");
-        int wc = getWirelessCount();
+        int wc = getRsLinkCount();
         for (int w = 1; w <= wc; w++) opts.add("L" + w);
-        int lc = getLinkFreqCount();
+        int lc = getWirelessFreqCount();
         for (int w = 1; w <= lc; w++) opts.add("W" + w);
         opts.addAll(gettersFor(channel));
         return opts;
@@ -1123,13 +1123,13 @@ public class SequencerScreen extends Screen {
             ? Arrays.asList(SequencerStep.RS_INPUT_GETTER_NAMES)
             : List.of("RS:N", "RS:S", "RS:E", "RS:W", "RS:U", "RS:D");
         cats.add(new SrcCat("RS", new ArrayList<>(rsItems)));
-        int wc = getWirelessCount();
+        int wc = getRsLinkCount();
         if (wc > 0) {
             List<String> wl = new ArrayList<>();
             for (int w = 1; w <= wc; w++) wl.add("L" + w);
             cats.add(new SrcCat("Wireless", wl));
         }
-        int lc = getLinkFreqCount();
+        int lc = getWirelessFreqCount();
         if (lc > 0) {
             List<String> wl = new ArrayList<>();
             for (int w = 1; w <= lc; w++) wl.add("W" + w);
@@ -1154,13 +1154,13 @@ public class SequencerScreen extends Screen {
         for (ConditionSource src : ConditionSource.values())
             if (src.direction != null) rsItems.add(src.label);
         cats.add(new SrcCat("RS", rsItems));
-        int wc = getWirelessCount();
+        int wc = getRsLinkCount();
         if (wc > 0) {
             List<String> wl = new ArrayList<>();
             for (int w = 1; w <= wc; w++) wl.add("L" + w);
             cats.add(new SrcCat("Wireless", wl));
         }
-        int lc = getLinkFreqCount();
+        int lc = getWirelessFreqCount();
         if (lc > 0) {
             List<String> wl = new ArrayList<>();
             for (int w = 1; w <= lc; w++) wl.add("W" + w);
@@ -1705,15 +1705,15 @@ public class SequencerScreen extends Screen {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
 
-            int wirelessCount = getWirelessCount();
-            int linkCount = getLinkFreqCount();
-            int totalSlots = RS_DIRS.length + wirelessCount + linkCount;
+            int rsLinkCount = getRsLinkCount();
+            int linkCount = getWirelessFreqCount();
+            int totalSlots = RS_DIRS.length + rsLinkCount + linkCount;
 
             int currentPos;
-            if (step.linkOutIdx > 0 && step.linkOutIdx <= linkCount) {
-                currentPos = RS_DIRS.length + wirelessCount + step.linkOutIdx - 1;
-            } else if (step.wirelessOutIdx > 0 && step.wirelessOutIdx <= wirelessCount) {
-                currentPos = RS_DIRS.length + step.wirelessOutIdx - 1;
+            if (step.wirelessFreqOutIdx > 0 && step.wirelessFreqOutIdx <= linkCount) {
+                currentPos = RS_DIRS.length + rsLinkCount + step.wirelessFreqOutIdx - 1;
+            } else if (step.rsLinkOutIdx > 0 && step.rsLinkOutIdx <= rsLinkCount) {
+                currentPos = RS_DIRS.length + step.rsLinkOutIdx - 1;
             } else {
                 currentPos = 0;
                 for (int i = 0; i < RS_DIRS.length; i++) if (RS_DIRS[i] == step.redstoneOutDir) { currentPos = i; break; }
@@ -1721,22 +1721,22 @@ public class SequencerScreen extends Screen {
             int nextPos = wrapIdx(currentPos, totalSlots, dir);
 
             if (nextPos < RS_DIRS.length) {
-                step.wirelessOutIdx = 0;
-                step.linkOutIdx = 0;
+                step.rsLinkOutIdx = 0;
+                step.wirelessFreqOutIdx = 0;
                 step.redstoneOutDir = RS_DIRS[nextPos];
-            } else if (nextPos < RS_DIRS.length + wirelessCount) {
-                step.wirelessOutIdx = nextPos - RS_DIRS.length + 1;
-                step.linkOutIdx = 0;
+            } else if (nextPos < RS_DIRS.length + rsLinkCount) {
+                step.rsLinkOutIdx = nextPos - RS_DIRS.length + 1;
+                step.wirelessFreqOutIdx = 0;
             } else {
-                step.linkOutIdx = nextPos - RS_DIRS.length - wirelessCount + 1;
-                step.wirelessOutIdx = 0;
+                step.wirelessFreqOutIdx = nextPos - RS_DIRS.length - rsLinkCount + 1;
+                step.rsLinkOutIdx = 0;
             }
             rsDirBtn.setMessage(Component.literal("→ " + redstoneTargetLabel(step)));
         }
 
         private String redstoneTargetLabel(SequencerStep step) {
-            if (step.linkOutIdx > 0) return "W" + step.linkOutIdx;
-            if (step.wirelessOutIdx > 0) return "L" + step.wirelessOutIdx;
+            if (step.wirelessFreqOutIdx > 0) return "W" + step.wirelessFreqOutIdx;
+            if (step.rsLinkOutIdx > 0) return "L" + step.rsLinkOutIdx;
             return step.redstoneOutDir.getName().toUpperCase();
         }
 
@@ -1822,7 +1822,7 @@ public class SequencerScreen extends Screen {
         private List<String> buildIfGetterList(int channel) {
             List<String> list = new ArrayList<>(Arrays.asList(SequencerStep.RS_INPUT_GETTER_NAMES));
             for (int i = 1; i <= SequencerStep.VAR_COUNT; i++) list.add("V" + i);
-            int wc = getWirelessCount();
+            int wc = getRsLinkCount();
             for (int w = 1; w <= wc; w++) list.add("L" + w);
             list.addAll(gettersFor(channel));
             return list;

@@ -13,9 +13,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
-public class WirelessConfigMenu extends AbstractContainerMenu {
+public class RedstoneLinksMenu extends AbstractContainerMenu {
 
-    public static final int ROWS       = LinkedKeyboardBlockEntity.MAX_WIRELESS; // 20
+    public static final int ROWS       = LinkedKeyboardBlockEntity.MAX_RSLINKS; // 20
     public static final int COL_ROWS   = (ROWS + 2) / 3;                        // 7 rows per column
     public static final int GHOST_COLS = 2;
     public static final int GHOST_COUNT = ROWS * GHOST_COLS;                    // 40
@@ -33,8 +33,8 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
     private final SimpleContainer ghosts;
     private boolean suppressWriteThrough = false;
 
-    public WirelessConfigMenu(int id, Inventory inv, BlockPos pos) {
-        super(ModMenus.WIRELESS_CONFIG_MENU.get(), id);
+    public RedstoneLinksMenu(int id, Inventory inv, BlockPos pos) {
+        super(ModMenus.REDSTONE_LINKS_MENU.get(), id);
         this.keyboardPos = pos;
         this.level       = inv.player.level();
 
@@ -48,7 +48,7 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
                     if (be == null) return;
                     for (int i = 0; i < GHOST_COUNT; i++) {
                         int entryIdx = i / GHOST_COLS;
-                        if (entryIdx >= be.getWirelessCount()) continue;
+                        if (entryIdx >= be.getRsLinkCount()) continue;
                         boolean first = (i % GHOST_COLS) == 0;
                         be.setWirelessFrequencyItem(entryIdx, first, getItem(i));
                     }
@@ -61,7 +61,7 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
         if (be != null && !level.isClientSide) {
             suppressWriteThrough = true;
             try {
-                for (int i = 0; i < be.getWirelessCount() && i < ROWS; i++) {
+                for (int i = 0; i < be.getRsLinkCount() && i < ROWS; i++) {
                     var e = be.getWirelessEntries().get(i);
                     ghosts.setItem(i * GHOST_COLS,     e.getFirstStack());
                     ghosts.setItem(i * GHOST_COLS + 1, e.getSecondStack());
@@ -107,9 +107,9 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
         return b instanceof LinkedKeyboardBlockEntity kb ? kb : null;
     }
 
-    public int getWirelessCount() {
+    public int getRsLinkCount() {
         LinkedKeyboardBlockEntity kb = currentBe();
-        return kb == null ? 0 : kb.getWirelessCount();
+        return kb == null ? 0 : kb.getRsLinkCount();
     }
 
     @Override
@@ -119,7 +119,7 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
             if (be != null) {
                 suppressWriteThrough = true;
                 try {
-                    int count = be.getWirelessCount();
+                    int count = be.getRsLinkCount();
                     for (int i = 0; i < GHOST_COUNT; i++) {
                         int entryIdx = i / GHOST_COLS;
                         ItemStack target;
@@ -142,7 +142,7 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
     public void clicked(int slotId, int button, ClickType type, Player player) {
         if (slotId >= 0 && slotId < GHOST_COUNT) {
             int entryIdx = slotId / GHOST_COLS;
-            if (entryIdx >= getWirelessCount()) return;
+            if (entryIdx >= getRsLinkCount()) return;
 
             Slot s = slots.get(slotId);
             ItemStack carried = getCarried();
@@ -153,9 +153,9 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
                 } else {
                     s.set(ItemStack.EMPTY);
                 }
-                // Do NOT call broadcastChanges() here — the server's post-click broadcast
+                // DONT CALL broadcastChanges() here-- the server's post-click broadcast
                 // handles sync. Calling it twice causes state-ID mismatches in NeoForge 1.21
-                // that cause the client to reject the click.
+                // that cause the client to reject the click
             }
             return;
         }
@@ -176,7 +176,7 @@ public class WirelessConfigMenu extends AbstractContainerMenu {
                 keyboardPos.getX() + 0.5, keyboardPos.getY() + 0.5, keyboardPos.getZ() + 0.5) < 64 * 64;
     }
 
-    public static WirelessConfigMenu fromNetwork(int id, Inventory inv, RegistryFriendlyByteBuf buf) {
-        return new WirelessConfigMenu(id, inv, buf.readBlockPos());
+    public static RedstoneLinksMenu fromNetwork(int id, Inventory inv, RegistryFriendlyByteBuf buf) {
+        return new RedstoneLinksMenu(id, inv, buf.readBlockPos());
     }
 }

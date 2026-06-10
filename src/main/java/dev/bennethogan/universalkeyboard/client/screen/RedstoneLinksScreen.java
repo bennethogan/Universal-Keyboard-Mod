@@ -2,7 +2,7 @@ package dev.bennethogan.universalkeyboard.client.screen;
 
 import dev.bennethogan.universalkeyboard.compat.CreateConnectedCompat;
 import dev.bennethogan.universalkeyboard.config.ModConfig;
-import dev.bennethogan.universalkeyboard.menu.WirelessConfigMenu;
+import dev.bennethogan.universalkeyboard.menu.RedstoneLinksMenu;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -13,7 +13,7 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.world.item.ItemStack;
 
-public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfigMenu> {
+public class RedstoneLinksScreen extends AbstractContainerScreen<RedstoneLinksMenu> {
 
 
     private static final int FREQ1_TINT = 0x55FF3333; // transparent red  (freq 1 / left slot)
@@ -21,11 +21,11 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
 
     private NoticeDialog wildcardNotice;
 
-    public WirelessConfigScreen(WirelessConfigMenu menu, Inventory inv, Component title) {
+    public RedstoneLinksScreen(RedstoneLinksMenu menu, Inventory inv, Component title) {
         super(menu, inv, title);
         this.imageWidth      = 222;
-        this.imageHeight     = 18 + WirelessConfigMenu.COL_ROWS * 18 + 28 + 76;
-        this.inventoryLabelY = 18 + WirelessConfigMenu.COL_ROWS * 18 + 18;
+        this.imageHeight     = 18 + RedstoneLinksMenu.COL_ROWS * 18 + 28 + 76;
+        this.inventoryLabelY = 18 + RedstoneLinksMenu.COL_ROWS * 18 + 18;
     }
 
     @Override
@@ -79,31 +79,31 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
         g.fill(leftPos,                  topPos,                   leftPos + 1,          topPos + imageHeight,    0xFF555555);
         g.fill(leftPos + imageWidth - 1, topPos,                   leftPos + imageWidth, topPos + imageHeight,    0xFF555555);
 
-        int count = menu.getWirelessCount();
-        int colRows = WirelessConfigMenu.COL_ROWS;
+        int count = menu.getRsLinkCount();
+        int colRows = RedstoneLinksMenu.COL_ROWS;
 
         // Column 1: entries 0–6
         for (int r = 0; r < colRows; r++) {
             int entry = r;
-            if (entry >= WirelessConfigMenu.ROWS) break;
+            if (entry >= RedstoneLinksMenu.ROWS) break;
             renderRow(g, r, entry, count, leftPos + 8, leftPos + 73,
-                    WirelessConfigMenu.COL1_SLOT1, WirelessConfigMenu.COL1_SLOT2);
+                    RedstoneLinksMenu.COL1_SLOT1, RedstoneLinksMenu.COL1_SLOT2);
         }
 
         // Column 2: entries 7–13
         for (int r = 0; r < colRows; r++) {
             int entry = colRows + r;
-            if (entry >= WirelessConfigMenu.ROWS) break;
+            if (entry >= RedstoneLinksMenu.ROWS) break;
             renderRow(g, r, entry, count, leftPos + 78, leftPos + 143,
-                    WirelessConfigMenu.COL2_SLOT1, WirelessConfigMenu.COL2_SLOT2);
+                    RedstoneLinksMenu.COL2_SLOT1, RedstoneLinksMenu.COL2_SLOT2);
         }
 
         // Column 3: entries 14–19
         for (int r = 0; r < colRows; r++) {
             int entry = colRows * 2 + r;
-            if (entry >= WirelessConfigMenu.ROWS) break;
+            if (entry >= RedstoneLinksMenu.ROWS) break;
             renderRow(g, r, entry, count, leftPos + 148, leftPos + 213,
-                    WirelessConfigMenu.COL3_SLOT1, WirelessConfigMenu.COL3_SLOT2);
+                    RedstoneLinksMenu.COL3_SLOT1, RedstoneLinksMenu.COL3_SLOT2);
         }
 
         // Vertical dividers between columns
@@ -137,7 +137,7 @@ public class WirelessConfigScreen extends AbstractContainerScreen<WirelessConfig
 
     @Override
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType type) {
-        if (slot != null && slotId >= 0 && slotId < WirelessConfigMenu.GHOST_COUNT
+        if (slot != null && slotId >= 0 && slotId < RedstoneLinksMenu.GHOST_COUNT
                 && (type == ClickType.PICKUP || type == ClickType.QUICK_MOVE)) {
             ItemStack carried = menu.getCarried();
             ItemStack toSet   = carried.isEmpty() ? ItemStack.EMPTY : carried.copyWithCount(1);

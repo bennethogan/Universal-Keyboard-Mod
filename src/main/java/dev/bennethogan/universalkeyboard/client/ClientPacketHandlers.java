@@ -1,10 +1,11 @@
 package dev.bennethogan.universalkeyboard.client;
 
+import dev.bennethogan.universalkeyboard.api.PeripheralMenuConfig;
 import dev.bennethogan.universalkeyboard.client.screen.LinkFrequencyScreen;
 import dev.bennethogan.universalkeyboard.client.screen.LiveControlScreen;
 import dev.bennethogan.universalkeyboard.client.screen.MenuNav;
 import dev.bennethogan.universalkeyboard.client.screen.ModeSelectionScreen;
-import dev.bennethogan.universalkeyboard.client.screen.PeripheralMethodScreen;
+import dev.bennethogan.universalkeyboard.client.screen.PeripheralControlScreen;
 import dev.bennethogan.universalkeyboard.client.screen.SequencerScreen;
 import dev.bennethogan.universalkeyboard.client.screen.ThrusterControlScreen;
 import dev.bennethogan.universalkeyboard.client.screen.WikiScreen;
@@ -52,11 +53,12 @@ public class ClientPacketHandlers {
     }
 
     private static void handleOpenPeripheralMenu(OpenPeripheralMenuPacket packet, IPayloadContext ctx) {
-        ctx.enqueueWork(() ->
-                Minecraft.getInstance().setScreen(
-                        new PeripheralMethodScreen(
-                                packet.keyboardPos(), packet.peripheralType(),
-                                packet.getters(), packet.setters(), packet.channel())));
+        ctx.enqueueWork(() -> {
+            PeripheralMenuConfig cfg = PeripheralMenuConfig.defaultFrom(
+                    packet.peripheralType(), packet.getters(), packet.setters());
+            Minecraft.getInstance().setScreen(
+                    new PeripheralControlScreen(packet.keyboardPos(), cfg, packet.channel()));
+        });
     }
 
     private static void handleOpenModeSelection(OpenModeSelectionPacket packet, IPayloadContext ctx) {
@@ -142,14 +144,14 @@ public class ClientPacketHandlers {
                 // Favorite shortcut with autoStart=true: activate live controls without opening UI.
                 LiveControlManager.activate(
                         packet.keyboardPos(), packet.bindings(),
-                        packet.localRsOutputs(), packet.wirelessPowers(), packet.thrusterPowers(),
+                        packet.localRsOutputs(), packet.rsLinkPowers(), packet.thrusterPowers(),
                         packet.varValues(), packet.rpmValues());
             } else {
                 Minecraft.getInstance().setScreen(
                         new LiveControlScreen(
-                                packet.keyboardPos(), packet.wirelessCount(),
+                                packet.keyboardPos(), packet.rsLinkCount(),
                                 packet.hasThrusters(), packet.hasVectorThrusters(), packet.hasRpm(),
-                                packet.localRsOutputs(), packet.wirelessPowers(), packet.thrusterPowers(),
+                                packet.localRsOutputs(), packet.rsLinkPowers(), packet.thrusterPowers(),
                                 packet.varValues(), packet.rpmValues(),
                                 packet.activeProfile(), packet.allProfiles()));
             }

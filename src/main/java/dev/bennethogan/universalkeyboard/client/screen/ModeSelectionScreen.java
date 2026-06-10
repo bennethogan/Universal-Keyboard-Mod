@@ -3,7 +3,7 @@ package dev.bennethogan.universalkeyboard.client.screen;
 import dev.bennethogan.universalkeyboard.compat.KeyboardMode;
 import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import dev.bennethogan.universalkeyboard.compat.SableCompat;
-import dev.bennethogan.universalkeyboard.compat.wireless.WirelessPresence;
+import dev.bennethogan.universalkeyboard.compat.rslink.RsLinkPresence;
 import dev.bennethogan.universalkeyboard.config.ModConfig;
 import dev.bennethogan.universalkeyboard.item.ModItems;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
@@ -198,7 +198,7 @@ public class ModeSelectionScreen extends Screen {
     }
 
     private void buildSetup() {
-        boolean create = WirelessPresence.isPresent();
+        boolean create = RsLinkPresence.isPresent();
 
         // Redstone Links (Create wireless link entries, L-channels)
         Box link = add();

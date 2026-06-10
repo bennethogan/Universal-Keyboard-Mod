@@ -22,7 +22,7 @@ public class LinkFrequencyScreen extends PanelScreen {
     private static final int PAD     = 8;
     private static final int BTN     = 16;
     private static final int HEADER_H = 28;
-    private static final int MAX     = LinkedKeyboardBlockEntity.MAX_LINK_FREQS;
+    private static final int MAX     = LinkedKeyboardBlockEntity.MAX_WIRELESS_FREQS;
 
     private static final int COL_DEL = PAD;
     private static final int COL_LBL = PAD + 18;

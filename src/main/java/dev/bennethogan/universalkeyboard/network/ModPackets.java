@@ -610,6 +610,16 @@ public class ModPackets {
             BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
             if (!(be instanceof LinkedKeyboardBlockEntity keyboard)) return;
 
+            int idx = packet.modeOrdinal() & 0xFF;
+            KeyboardMode[] modes = KeyboardMode.values();
+            if (idx < 0 || idx >= modes.length) return;
+            KeyboardMode mode = modes[idx];
+
+            if (mode == KeyboardMode.CC_PERIPHERAL) {
+                cycleCCPeripheralChannel(sp, packet.keyboardPos(), keyboard);
+                return;
+            }
+
             keyboard.cycleActiveChannelSmart();
 
             BlockPos targetPos = keyboard.getLinkedTargetPos();
@@ -622,11 +632,6 @@ public class ModPackets {
                 return;
             }
 
-            int idx = packet.modeOrdinal() & 0xFF;
-            KeyboardMode[] modes = KeyboardMode.values();
-            if (idx < 0 || idx >= modes.length) return;
-            KeyboardMode mode = modes[idx];
-
             if (!mode.isAvailableAt(sp.serverLevel(), targetPos)) {
                 // Channel has a device but it's not compatible with this mode — show mode selection
                 int bits = KeyboardMode.availableBitfield(sp.serverLevel(), targetPos);
@@ -637,6 +642,30 @@ public class ModPackets {
 
             openModeForPlayer(sp, packet.keyboardPos(), keyboard, targetPos, mode);
         });
+    }
+
+    private static void cycleCCPeripheralChannel(ServerPlayer sp, BlockPos keyboardPos,
+                                                  LinkedKeyboardBlockEntity keyboard) {
+        int start = keyboard.getActiveChannel();
+        int maxCh = LinkedKeyboardBlockEntity.MAX_CHANNELS;
+
+        for (int i = 1; i < maxCh; i++) {
+            int next = (start - 1 + i) % maxCh + 1;
+            List<BlockPos> targets = keyboard.getLinkedTargetPositions(next);
+            if (targets.isEmpty()) continue;
+            BlockPos targetPos = targets.get(0);
+            if (KeyboardMode.CC_PERIPHERAL.isAvailableAt(sp.serverLevel(), targetPos)) {
+                keyboard.setActiveChannel(next);
+                openModeForPlayer(sp, keyboardPos, keyboard, targetPos, KeyboardMode.CC_PERIPHERAL);
+                return;
+            }
+        }
+
+        // No other CC-peripheral channel, reopen the current channel's menu
+        List<BlockPos> currentTargets = keyboard.getLinkedTargetPositions(start);
+        if (!currentTargets.isEmpty()) {
+            openModeForPlayer(sp, keyboardPos, keyboard, currentTargets.get(0), KeyboardMode.CC_PERIPHERAL);
+        }
     }
 
     // ── Senders ──────────────────────────────────────────────────────────────
@@ -1087,11 +1116,11 @@ public class ModPackets {
                 if (!dup) freqs.add(new net.minecraft.world.item.ItemStack[]{b.firstItem(), b.secondItem()});
             }
 
-            if (freqs.size() > LinkedKeyboardBlockEntity.MAX_WIRELESS) {
+            if (freqs.size() > LinkedKeyboardBlockEntity.MAX_RSLINKS) {
                 PacketDistributor.sendToPlayer(sp, new TypewriterImportOfferPacket(
                         packet.keyboardPos(), twPos, bindings.size(), freqs.size(),
                         "Too many unique wireless frequencies (" + freqs.size() + "). Max is " +
-                        LinkedKeyboardBlockEntity.MAX_WIRELESS + ". Reduce bindings in the typewriter first."));
+                        LinkedKeyboardBlockEntity.MAX_RSLINKS + ". Reduce bindings in the typewriter first."));
                 return;
             }
 
@@ -1235,7 +1264,7 @@ public class ModPackets {
     private static void handleOpenWirelessConfig(OpenWirelessConfigPacket packet, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
             if (!(ctx.player() instanceof ServerPlayer sp)) return;
-            if (!dev.bennethogan.universalkeyboard.compat.wireless.WirelessPresence.isPresent()) return;
+            if (!dev.bennethogan.universalkeyboard.compat.rslink.RsLinkPresence.isPresent()) return;
             BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
             if (!(be instanceof LinkedKeyboardBlockEntity)) return;
             sp.openMenu(new net.minecraft.world.MenuProvider() {
@@ -1245,7 +1274,7 @@ public class ModPackets {
                 @Override public net.minecraft.world.inventory.AbstractContainerMenu createMenu(
                         int id, net.minecraft.world.entity.player.Inventory inv,
                         net.minecraft.world.entity.player.Player player) {
-                    return new dev.bennethogan.universalkeyboard.menu.WirelessConfigMenu(id, inv, packet.keyboardPos());
+                    return new dev.bennethogan.universalkeyboard.menu.RedstoneLinksMenu(id, inv, packet.keyboardPos());
                 }
             }, buf -> buf.writeBlockPos(packet.keyboardPos()));
         });
@@ -1259,7 +1288,7 @@ public class ModPackets {
             if (packet.add()) {
                 kb.addWirelessEntry();
             } else {
-                int n = kb.getWirelessCount();
+                int n = kb.getRsLinkCount();
                 if (n > 0) kb.removeWirelessEntry(n - 1);
             }
         });
@@ -1275,16 +1304,16 @@ public class ModPackets {
             BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
             if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
             int slotIdx  = packet.slotIdx();
-            int cols     = dev.bennethogan.universalkeyboard.menu.WirelessConfigMenu.GHOST_COLS;
+            int cols     = dev.bennethogan.universalkeyboard.menu.RedstoneLinksMenu.GHOST_COLS;
             int entryIdx = slotIdx / cols;
-            if (entryIdx < 0 || entryIdx >= dev.bennethogan.universalkeyboard.menu.WirelessConfigMenu.ROWS) return;
+            if (entryIdx < 0 || entryIdx >= dev.bennethogan.universalkeyboard.menu.RedstoneLinksMenu.ROWS) return;
             // Auto-activate: create entries up to entryIdx when an item is placed
             if (!packet.item().isEmpty()) {
-                while (kb.getWirelessCount() <= entryIdx) {
-                    if (kb.addWirelessEntry() < 0) break; // MAX_WIRELESS reached
+                while (kb.getRsLinkCount() <= entryIdx) {
+                    if (kb.addWirelessEntry() < 0) break; // MAX_RSLINKS reached
                 }
             }
-            if (entryIdx >= kb.getWirelessCount()) return; // couldn't create (already at max)
+            if (entryIdx >= kb.getRsLinkCount()) return; // couldn't create (already at max)
             boolean isFirst = (slotIdx % cols) == 0;
             kb.setWirelessFrequencyItem(entryIdx, isFirst, packet.item());
             // Blank+blank: if both frequency slots are now empty, deactivate the entry
@@ -1292,7 +1321,7 @@ public class ModPackets {
                 kb.removeWirelessEntry(entryIdx);
             }
             // Broadcast so the client stays in sync
-            if (sp.containerMenu instanceof dev.bennethogan.universalkeyboard.menu.WirelessConfigMenu wcm
+            if (sp.containerMenu instanceof dev.bennethogan.universalkeyboard.menu.RedstoneLinksMenu wcm
                     && wcm.getKeyboardPos().equals(packet.keyboardPos())) {
                 wcm.broadcastChanges();
             }
@@ -1318,12 +1347,12 @@ public class ModPackets {
     public record OpenLiveControlScreenPacket(
             BlockPos keyboardPos,
             List<dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding> bindings,
-            int wirelessCount,
+            int rsLinkCount,
             boolean hasThrusters,
             boolean hasVectorThrusters,
             boolean hasRpm,
             int[] localRsOutputs,
-            int[] wirelessPowers,
+            int[] rsLinkPowers,
             int[] thrusterPowers,
             double[] varValues,
             int[] rpmValues,
@@ -1338,12 +1367,12 @@ public class ModPackets {
                     BlockPos.STREAM_CODEC.encode(buf, p.keyboardPos());
                     buf.writeInt(p.bindings().size());
                     for (var b : p.bindings()) b.encode(buf);
-                    buf.writeInt(p.wirelessCount());
+                    buf.writeInt(p.rsLinkCount());
                     buf.writeBoolean(p.hasThrusters());
                     buf.writeBoolean(p.hasVectorThrusters());
                     buf.writeBoolean(p.hasRpm());
                     buf.writeByteArray(toByteArray(p.localRsOutputs()));
-                    buf.writeByteArray(toByteArray(p.wirelessPowers()));
+                    buf.writeByteArray(toByteArray(p.rsLinkPowers()));
                     buf.writeByteArray(toByteArray(p.thrusterPowers()));
                     buf.writeInt(p.varValues().length);
                     for (double v : p.varValues()) buf.writeDouble(v);
@@ -1612,13 +1641,13 @@ public class ModPackets {
         int[] localRs = new int[dirs.length];
         for (Direction d : dirs) localRs[d.ordinal()] = kb.getRedstoneOutput(d);
 
-        int wc = kb.getWirelessCount();
-        int[] wirelessPowers = new int[wc];
-        for (int i = 0; i < wc; i++) wirelessPowers[i] = kb.getWirelessOutput(i);
+        int wc = kb.getRsLinkCount();
+        int[] rsLinkPowers = new int[wc];
+        for (int i = 0; i < wc; i++) rsLinkPowers[i] = kb.getRsLinkOutput(i);
 
         PacketDistributor.sendToPlayer(sp, new OpenLiveControlScreenPacket(
                 keyboardPos, kb.getLiveControlBindings(),
-                wc, hasThrusters, hasVector, hasRpm, localRs, wirelessPowers, thrusterPowers,
+                wc, hasThrusters, hasVector, hasRpm, localRs, rsLinkPowers, thrusterPowers,
                 kb.getSequencerVars(), rpmValues,
                 kb.getActiveProfile(), kb.getAllProfileBindings(), autoStart));
         PacketDistributor.sendToPlayer(sp, new SyncFavoritePacket(keyboardPos, (byte) kb.getFavoriteScreen().ordinal()));
@@ -1657,7 +1686,7 @@ public class ModPackets {
                             kb.setRedstoneOutput(dirs[a.target()], (int) Math.round(a.v1()));
                     }
                     case 1 -> // wireless RS
-                        kb.setWirelessOutput(a.target(), (int) Math.round(a.v1()));
+                        kb.setRsLinkOutput(a.target(), (int) Math.round(a.v1()));
                     case 2 -> { // thruster power (channel = target) — apply to all targets on channel
                         for (BlockPos tp : kb.getLinkedTargetPositions(a.target())) {
                             Object p = PeripheralHelper.getPeripheral(level, tp);
@@ -1673,8 +1702,8 @@ public class ModPackets {
                     }
                     case 4 -> // sequencer variable (target = varIndex 0-15)
                         kb.setSequencerVariable(a.target(), a.v1());
-                    case 5 -> // link channel broadcast (target = linkIdx 0-based)
-                        kb.broadcastLinkChannel(a.target(), (int) Math.round(a.v1()));
+                    case 5 -> // link channel broadcast (target = wirelessFreqIdx 0-based)
+                        kb.broadcastWirelessFreq(a.target(), (int) Math.round(a.v1()));
                 }
             }
         });
@@ -1773,7 +1802,7 @@ public class ModPackets {
                         buf -> {
                             BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
                             int count = buf.readInt();
-                            String[] freqs = new String[LinkedKeyboardBlockEntity.MAX_LINK_FREQS];
+                            String[] freqs = new String[LinkedKeyboardBlockEntity.MAX_WIRELESS_FREQS];
                             for (int i = 0; i < count && i < freqs.length; i++) freqs[i] = buf.readUtf(8);
                             return new OpenLinkFreqScreenPacket(pos, freqs);
                         });
@@ -1787,8 +1816,8 @@ public class ModPackets {
                 StreamCodec.of(
                         (buf, pkt) -> {
                             BlockPos.STREAM_CODEC.encode(buf, pkt.pos());
-                            buf.writeInt(LinkedKeyboardBlockEntity.MAX_LINK_FREQS);
-                            for (int i = 0; i < LinkedKeyboardBlockEntity.MAX_LINK_FREQS; i++) {
+                            buf.writeInt(LinkedKeyboardBlockEntity.MAX_WIRELESS_FREQS);
+                            for (int i = 0; i < LinkedKeyboardBlockEntity.MAX_WIRELESS_FREQS; i++) {
                                 String f = (pkt.freqs() != null && i < pkt.freqs().length && pkt.freqs()[i] != null) ? pkt.freqs()[i] : "";
                                 buf.writeUtf(f, 8);
                             }
@@ -1796,7 +1825,7 @@ public class ModPackets {
                         buf -> {
                             BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
                             int count = buf.readInt();
-                            String[] freqs = new String[LinkedKeyboardBlockEntity.MAX_LINK_FREQS];
+                            String[] freqs = new String[LinkedKeyboardBlockEntity.MAX_WIRELESS_FREQS];
                             for (int i = 0; i < count; i++) {
                                 String v = buf.readUtf(8);
                                 if (i < freqs.length) freqs[i] = v.isEmpty() ? null : v;

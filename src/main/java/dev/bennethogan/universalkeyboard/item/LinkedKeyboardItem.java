@@ -214,7 +214,7 @@ public class LinkedKeyboardItem extends BlockItem {
                         String f = wfl.getString(i);
                         if (!f.isEmpty()) merged.add(f);
                     }
-                    String[] out = new String[LinkedKeyboardBlockEntity.MAX_LINK_FREQS];
+                    String[] out = new String[LinkedKeyboardBlockEntity.MAX_WIRELESS_FREQS];
                     int slot = 0;
                     for (String f : merged) { if (slot >= out.length) break; out[slot++] = f; }
                     keyboard.setLinkFreqs(out);
@@ -272,7 +272,7 @@ public class LinkedKeyboardItem extends BlockItem {
         for (int i = 0; i < list.size(); i++) existing.add(list.getString(i));
         int added = 0;
         for (String f : enabledFreqs) {
-            if (!existing.contains(f) && list.size() < LinkedKeyboardBlockEntity.MAX_LINK_FREQS) {
+            if (!existing.contains(f) && list.size() < LinkedKeyboardBlockEntity.MAX_WIRELESS_FREQS) {
                 list.add(StringTag.valueOf(f));
                 existing.add(f);
                 added++;

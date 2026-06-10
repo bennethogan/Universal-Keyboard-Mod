@@ -71,6 +71,14 @@ public class PeripheralHelper {
         return false;
     }
 
+    /**
+     * Special consideration for Propulsions' stirling engine. Returns the quantized value for
+     * RPM increments, much nicer for the user
+     */
+    public static int getRpmIncStep(Object peripheral) {
+        return "stirling_engine".equals(getPeripheralType(peripheral)) ? 64 : 1;
+    }
+
     private static @Nullable String rpmSetterName(Object peripheral) {
         for (java.lang.reflect.Method m : peripheral.getClass().getMethods()) {
             if (!isRpmSetterName(m.getName())) continue;

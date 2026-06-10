@@ -1,4 +1,4 @@
-package dev.bennethogan.universalkeyboard.compat.wireless;
+package dev.bennethogan.universalkeyboard.compat.rslink;
 
 import com.simibubi.create.content.redstone.link.IRedstoneLinkable;
 import com.simibubi.create.content.redstone.link.RedstoneLinkNetworkHandler.Frequency;
@@ -6,18 +6,7 @@ import net.createmod.catnip.data.Couple;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
 
-/**
- * One wireless redstone output slot owned by a LinkedKeyboardBlockEntity.
- *
- * Implements Create's IRedstoneLinkable so a sequencer step (or anything else
- * calling {@link #setPower(int)}) can transmit on the configured two-item
- * frequency via {@code Create.REDSTONE_LINK_NETWORK_HANDLER}.
- *
- * Compile-time references to Create types only — the class is gated by a
- * Class.forName check in {@link CreateWirelessHelper} so it never loads when
- * Create is absent.
- */
-public class WirelessEntry implements IRedstoneLinkable {
+public class RsLinkEntry implements IRedstoneLinkable {
 
     private ItemStack firstStack  = ItemStack.EMPTY;
     private ItemStack secondStack = ItemStack.EMPTY;
@@ -29,7 +18,7 @@ public class WirelessEntry implements IRedstoneLinkable {
     private boolean  inNetwork        = false;
     private BlockPos location;
 
-    public WirelessEntry(BlockPos location) {
+    public RsLinkEntry(BlockPos location) {
         this.location = location;
     }
 
@@ -38,7 +27,6 @@ public class WirelessEntry implements IRedstoneLinkable {
     public ItemStack getFirstStack()  { return firstStack;  }
     public ItemStack getSecondStack() { return secondStack; }
 
-    /** Returns true if the frequency item actually changed (network needs re-registration). */
     public boolean setFirstStack(ItemStack stack) {
         ItemStack copy = stack.copy(); copy.setCount(1);
         boolean changed = !ItemStack.isSameItemSameComponents(copy, firstStack);
@@ -62,12 +50,12 @@ public class WirelessEntry implements IRedstoneLinkable {
     public boolean isInNetwork()            { return inNetwork; }
     public void setInNetwork(boolean v)     { inNetwork = v; }
 
-    /** True if at least one of the two frequency slots has been configured. */
+
     public boolean hasFrequency() {
         return !firstStack.isEmpty() || !secondStack.isEmpty();
     }
 
-    // ── IRedstoneLinkable ─────────────────────────────────────────────────────
+    // IRedstoneLinkable
 
     @Override public int  getTransmittedStrength()       { return transmittedPower; }
     @Override public void setReceivedStrength(int power) { receivedPower = Math.max(0, Math.min(15, power)); }

@@ -125,6 +125,8 @@
   "gui.universalkeyboard.hint.save_name": "§7save name...",
   "gui.universalkeyboard.hint.insert_step": "§8Hover anywhere to insert a step",
   "gui.universalkeyboard.hint.select_control": "§7select a control above",
+  "gui.universalkeyboard.peripheral_control.untitled": "Peripheral",
+  "gui.universalkeyboard.peripheral_control.no_peripheral": "No CC peripheral on this channel",
   "gui.universalkeyboard.hint.value_or_variable": "value or V1-V8",
   "gui.universalkeyboard.hint.signal_or_variable": "0-15 or V1-V8",
   "gui.universalkeyboard.hint.text_to_type": "text to type...",
@@ -227,8 +229,8 @@
   "config.universalkeyboard.gamepad.joystickScaling.tooltip": "Scale a binding's output by how far the stick or trigger is pushed. When on, an analog input bound to 50% power outputs proportionally — pushing the stick halfway sends 25%, fully sends 50%. Applies to RS, Thruster Power, Vector, and Variable bindings in Hld/Tog modes. Buttons and Inc/Overdrive bindings are never scaled. Default: true.",
   "config.universalkeyboard.gamepad.stickCalibration": "Stick Calibration",
   "config.universalkeyboard.gamepad.stickCalibration.tooltip": "Per-axis maximum stick deflection recorded by calibration. Order: [Left X, Left Y, Right X, Right Y]. Values below 1.0 mean the stick physically falls short of the theoretical edge; analog output is rescaled so the stick's real maximum maps to 100%. Set with the Calibrate button in the Live Controller. Default: 1.0 each.",
-  "config.universalkeyboard.controlwheel.controlWheelLeftKey": "Control Wheel — Turn Left Key",
-  "config.universalkeyboard.controlwheel.controlWheelLeftKey.tooltip": "Key that animates the Control Wheel turning left while in Live Control mode. Purely cosmetic — never triggers or interferes with your live control bindings. Use a GLFW key name such as a, d, left, right. Default: a.",
-  "config.universalkeyboard.controlwheel.controlWheelRightKey": "Control Wheel — Turn Right Key",
-  "config.universalkeyboard.controlwheel.controlWheelRightKey.tooltip": "Key that animates the Control Wheel turning right while in Live Control mode. Purely cosmetic — never triggers or interferes with your live control bindings. Use a GLFW key name such as a, d, left, right. Default: d."
+  "config.universalkeyboard.controlwheel.controlWheelLeftRows": "Control Wheel — Left Turn Rows",
+  "config.universalkeyboard.controlwheel.controlWheelLeftRows.tooltip": "Comma-separated Live Controller row numbers (1–40) whose active state animates the Control Wheel turning left. Works with any input device — keyboard, gamepad sticks, triggers, etc. Example: \"1,3\". Leave blank to disable.",
+  "config.universalkeyboard.controlwheel.controlWheelRightRows": "Control Wheel — Right Turn Rows",
+  "config.universalkeyboard.controlwheel.controlWheelRightRows.tooltip": "Comma-separated Live Controller row numbers (1–40) whose active state animates the Control Wheel turning right. Works with any input device. Example: \"2,4\". Leave blank to disable."
 }

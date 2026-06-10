@@ -1,4 +1,4 @@
-package dev.bennethogan.universalkeyboard.compat.wireless;
+package dev.bennethogan.universalkeyboard.compat.rslink;
 
 import com.simibubi.create.Create;
 import dev.bennethogan.universalkeyboard.UniversalKeyboardMod;
@@ -6,26 +6,22 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 
 /**
- * Wireless redstone link operations. Only safe to load AFTER WirelessPresence.isPresent()
- * has returned true — this class has WirelessEntry in its method signatures, so loading
- * it will trigger WirelessEntry class loading (which imports Create types).
+ * Wireless redstone link operations. Only safe to load after RsLinkPresence.isPresent()
+ * has returned true. this class has RsLinkEntry in its method signatures, so loading
+ * it will trigger RsLinkEntry class loading (which imports Create types)
  */
-public final class CreateWirelessHelper {
+public final class CreateRsLinkHelper {
 
-    private CreateWirelessHelper() {}
+    private CreateRsLinkHelper() {}
 
-    /** Create a new (unconfigured) entry. Safe to call only when WirelessPresence.isPresent(). */
-    public static WirelessEntry newEntry(BlockPos pos) {
-        return new WirelessEntry(pos);
+    // Create a new entry. Safe to call only when RsLinkPresence.isPresent()
+    public static RsLinkEntry newEntry(BlockPos pos) {
+        return new RsLinkEntry(pos);
     }
 
-    /**
-     * Apply a new power level to the entry.
-     * If the entry has a frequency configured it stays in the network (for receive);
-     * the transmitted strength is simply updated via updateNetworkOf.
-     */
-    public static void setEntryPower(Level level, WirelessEntry entry, int power) {
-        if (!WirelessPresence.isPresent() || level == null || level.isClientSide || entry == null) return;
+
+    public static void setEntryPower(Level level, RsLinkEntry entry, int power) {
+        if (!RsLinkPresence.isPresent() || level == null || level.isClientSide || entry == null) return;
         int clamped = Math.max(0, Math.min(15, power));
         if (clamped == entry.getPower()) return;
         entry.setPower(clamped);
@@ -41,15 +37,11 @@ public final class CreateWirelessHelper {
         }
     }
 
-    /**
-     * Update one of the two frequency items on an entry. Removes the entry
-     * from its current network (under the OLD key) before mutating, then
-     * re-adds under the NEW key if the entry has any frequency configured.
-     */
-    public static void updateFrequency(Level level, WirelessEntry entry, boolean first, net.minecraft.world.item.ItemStack stack) {
+
+    public static void updateFrequency(Level level, RsLinkEntry entry, boolean first, net.minecraft.world.item.ItemStack stack) {
         if (entry == null) return;
         boolean wasInNetwork = entry.isInNetwork();
-        if (wasInNetwork && WirelessPresence.isPresent() && level != null && !level.isClientSide) {
+        if (wasInNetwork && RsLinkPresence.isPresent() && level != null && !level.isClientSide) {
             try {
                 Create.REDSTONE_LINK_NETWORK_HANDLER.removeFromNetwork(level, entry);
                 entry.setInNetwork(false);
@@ -58,7 +50,7 @@ public final class CreateWirelessHelper {
 
         if (first) entry.setFirstStack(stack); else entry.setSecondStack(stack);
 
-        if (WirelessPresence.isPresent() && level != null && !level.isClientSide && entry.hasFrequency()) {
+        if (RsLinkPresence.isPresent() && level != null && !level.isClientSide && entry.hasFrequency()) {
             try {
                 Create.REDSTONE_LINK_NETWORK_HANDLER.addToNetwork(level, entry);
                 entry.setInNetwork(true);
@@ -66,12 +58,9 @@ public final class CreateWirelessHelper {
         }
     }
 
-    /**
-     * Ensure the entry is registered with the network so it can receive signals.
-     * Called after chunk load for entries that have a frequency but haven't been registered yet.
-     */
-    public static void ensureRegistered(Level level, WirelessEntry entry) {
-        if (!WirelessPresence.isPresent() || level == null || level.isClientSide || entry == null) return;
+
+    public static void ensureRegistered(Level level, RsLinkEntry entry) {
+        if (!RsLinkPresence.isPresent() || level == null || level.isClientSide || entry == null) return;
         if (entry.isInNetwork() || !entry.hasFrequency()) return;
         try {
             Create.REDSTONE_LINK_NETWORK_HANDLER.addToNetwork(level, entry);
@@ -81,9 +70,8 @@ public final class CreateWirelessHelper {
         }
     }
 
-    /** Force-remove an entry from the network. Called on block invalidate/destroy. */
-    public static void removeFromNetwork(Level level, WirelessEntry entry) {
-        if (!WirelessPresence.isPresent() || level == null || level.isClientSide || entry == null) return;
+    public static void removeFromNetwork(Level level, RsLinkEntry entry) {
+        if (!RsLinkPresence.isPresent() || level == null || level.isClientSide || entry == null) return;
         if (!entry.isInNetwork()) return;
         try {
             Create.REDSTONE_LINK_NETWORK_HANDLER.removeFromNetwork(level, entry);

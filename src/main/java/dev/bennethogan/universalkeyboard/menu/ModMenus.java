@@ -12,7 +12,7 @@ public class ModMenus {
     public static final DeferredRegister<MenuType<?>> MENUS =
             DeferredRegister.create(Registries.MENU, UniversalKeyboardMod.MOD_ID);
 
-    public static final DeferredHolder<MenuType<?>, MenuType<WirelessConfigMenu>> WIRELESS_CONFIG_MENU =
+    public static final DeferredHolder<MenuType<?>, MenuType<RedstoneLinksMenu>> REDSTONE_LINKS_MENU =
             MENUS.register("wireless_config",
-                    () -> IMenuTypeExtension.create(WirelessConfigMenu::fromNetwork));
+                    () -> IMenuTypeExtension.create(RedstoneLinksMenu::fromNetwork));
 }

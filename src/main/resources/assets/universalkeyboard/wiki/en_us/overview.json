@@ -2,6 +2,6 @@
   "label": "Overview",
   "entries": [
     {"type": "heading", "text": "Overview"},
-    {"type": "text", "body": "§6§lThank for downloading the Universal Keyboard Controller!§r\n§7\nThis mod allows you to control redstone signals or CC:Tweaked peripherals remotely. There is a lot you can do from there\n\nThis wiki is a work-in-progress, so I appreciate your patience while I finish it. I wanted to publish whatever I could, as soon as it was ready.\n\n You can join my Discord Server (link can be found on the mod's Modrinth page) to ask any questions you have. I'm very friendly and helpful!"}
+    {"type": "text", "body": "§6§lThank for downloading the Universal Keyboard Controller!§r\n§7\nThis mod allows you to control redstone signals or CC:Tweaked peripherals remotely. There is a lot you can do from there\n\nThis wiki is a work-in-progress, so I appreciate your patience while I finish it. I wanted to publish whatever I could, as soon as it was ready.\n\nUpdate notes: The animation might seem broken now, because I changed it from recognizing keys (A & D by default), to wanting row numbers from the live control menu. This makes it work with controllers, but the keyboard users might be confused that it suddenly doesnt work by default.\nYou just need to go in the config file, and choose which row numbers cause a left and right animation. \n\nYou can join my Discord Server (link can be found on the mod's Modrinth page) to ask any questions you have. I'm very friendly and helpful!"}
   ]
 }

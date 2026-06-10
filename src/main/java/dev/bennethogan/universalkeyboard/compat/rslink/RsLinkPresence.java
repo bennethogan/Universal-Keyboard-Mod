@@ -1,22 +1,14 @@
-package dev.bennethogan.universalkeyboard.compat.wireless;
+package dev.bennethogan.universalkeyboard.compat.rslink;
 
 import dev.bennethogan.universalkeyboard.UniversalKeyboardMod;
 
-/**
- * Safe presence check for Create's wireless redstone API.
- * This class has NO references to WirelessEntry or any Create type in its
- * signatures, so it is safe to load (and call isPresent()) from any context —
- * including client screens — even when Create is absent.
- *
- * All other Create-dependent code lives in CreateWirelessHelper, which is only
- * loaded once isPresent() has already returned true.
- */
-public final class WirelessPresence {
+// safe to call presence check for Create redstone API
+public final class RsLinkPresence {
 
     private static volatile boolean initialized = false;
     private static volatile boolean present     = false;
 
-    private WirelessPresence() {}
+    private RsLinkPresence() {}
 
     public static boolean isPresent() {
         if (!initialized) init();

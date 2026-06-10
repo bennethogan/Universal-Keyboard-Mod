@@ -1,5 +1,6 @@
 package dev.bennethogan.universalkeyboard.sequencer;
 
+import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
@@ -97,9 +98,9 @@ public class SequencerStep {
     public Direction redstoneOutDir       = Direction.NORTH;
     public String    redstoneOutSignalStr = "0";
     // 0 = use redstoneOutDir (a side); 1..12 = wireless slot W1..W12
-    public int       wirelessOutIdx       = 0;
+    public int       rsLinkOutIdx       = 0;
     // 0 = not a link channel; 1..100 = link freq slot L1..L100
-    public int       linkOutIdx           = 0;
+    public int       wirelessFreqOutIdx           = 0;
 
     // TYPE_TEXT
     public String  typeTextStr   = "";
@@ -152,8 +153,8 @@ public class SequencerStep {
         tag.putString("setValueStr",           setValueStr);
         tag.putString("redstoneOutDir",        redstoneOutDir.name());
         tag.putString("redstoneOutSignalStr",  redstoneOutSignalStr);
-        tag.putInt("wirelessOutIdx",           wirelessOutIdx);
-        tag.putInt("link_out_idx",             linkOutIdx);
+        tag.putInt("wirelessOutIdx",         rsLinkOutIdx); // legacy NBT key
+        tag.putInt("link_out_idx",             wirelessFreqOutIdx);
         tag.putString("typeTextStr",           typeTextStr);
         tag.putBoolean("typeTextEnter",        typeTextEnter);
         tag.putString("conditionSource",       conditionSource.name());
@@ -192,8 +193,10 @@ public class SequencerStep {
         try { s.redstoneOutDir  = Direction.valueOf(tag.getString("redstoneOutDir")); }
         catch (Exception e)     { s.redstoneOutDir = Direction.NORTH; }
         s.redstoneOutSignalStr  = def(tag.getString("redstoneOutSignalStr"),  "0");
-        s.wirelessOutIdx        = tag.contains("wirelessOutIdx") ? Math.max(0, Math.min(12, tag.getInt("wirelessOutIdx"))) : 0;
-        s.linkOutIdx            = tag.contains("link_out_idx") ? Math.max(0, Math.min(100, tag.getInt("link_out_idx"))) : 0;
+        s.rsLinkOutIdx       = tag.contains("wirelessOutIdx")
+                ? Math.max(0, Math.min(LinkedKeyboardBlockEntity.MAX_RSLINKS, tag.getInt("wirelessOutIdx"))) : 0;
+        s.wirelessFreqOutIdx = tag.contains("link_out_idx")
+                ? Math.max(0, Math.min(LinkedKeyboardBlockEntity.MAX_WIRELESS_FREQS, tag.getInt("link_out_idx"))) : 0;
         s.typeTextStr           = tag.getString("typeTextStr");
         s.typeTextEnter         = !tag.contains("typeTextEnter") || tag.getBoolean("typeTextEnter");
         try { s.conditionSource = ConditionSource.valueOf(tag.getString("conditionSource")); }
@@ -230,8 +233,8 @@ public class SequencerStep {
         buf.writeUtf(setValueStr);
         buf.writeByte(redstoneOutDir.ordinal());
         buf.writeUtf(redstoneOutSignalStr);
-        buf.writeByte(Math.max(0, Math.min(12, wirelessOutIdx)));
-        buf.writeByte(Math.min(100, linkOutIdx));
+        buf.writeByte(Math.max(0, Math.min(LinkedKeyboardBlockEntity.MAX_RSLINKS, rsLinkOutIdx)));
+        buf.writeByte(Math.min(100, wirelessFreqOutIdx));
         buf.writeUtf(typeTextStr);
         buf.writeBoolean(typeTextEnter);
         buf.writeByte(conditionSource.ordinal());
@@ -268,8 +271,8 @@ public class SequencerStep {
         int di = buf.readByte() & 0xFF;
         s.redstoneOutDir        = di < dirs.length ? dirs[di] : Direction.NORTH;
         s.redstoneOutSignalStr  = buf.readUtf();
-        s.wirelessOutIdx        = Math.max(0, Math.min(12, buf.readByte() & 0xFF));
-        s.linkOutIdx            = buf.readByte() & 0xFF;
+        s.rsLinkOutIdx       = Math.max(0, Math.min(LinkedKeyboardBlockEntity.MAX_RSLINKS, buf.readByte() & 0xFF));
+        s.wirelessFreqOutIdx = buf.readByte() & 0xFF;
         s.typeTextStr           = buf.readUtf();
         s.typeTextEnter         = buf.readBoolean();
         ConditionSource[] cs = ConditionSource.values();

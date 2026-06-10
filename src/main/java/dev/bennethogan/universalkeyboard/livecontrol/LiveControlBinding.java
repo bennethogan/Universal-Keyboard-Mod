@@ -1,5 +1,6 @@
 package dev.bennethogan.universalkeyboard.livecontrol;
 
+import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
@@ -34,11 +35,11 @@ public class LiveControlBinding {
     public Mode       mode       = Mode.HLD;
 
     // REDSTONE fields
-    /** 0 = local RS side; 1-12 = wireless slot W1..W12 */
-    public int       wirelessIdx    = 0;
-    /** 0 = not a link channel; 1-100 = link freq slot L1..L100 */
-    public int       linkIdx        = 0;
-    /** Used when wirelessIdx == 0 */
+    /** 0 = local RS side; 1-20 = Create redstone link slot L1..L20 */
+    public int       rsLinkIdx       = 0;
+    /** 0 = not a wireless freq; 1-100 = wireless frequency slot W1..W100 */
+    public int       wirelessFreqIdx = 0;
+    /** Used when rsLinkIdx == 0 */
     public Direction rsSide         = Direction.NORTH;
     /** 0-15 */
     public int       signalStrength = 15;
@@ -82,8 +83,10 @@ public class LiveControlBinding {
         tag.putInt("keyCode",        keyCode);
         tag.putInt("actionType",     actionType.ordinal());
         tag.putInt("mode",           mode.ordinal());
-        tag.putInt("wirelessIdx",    wirelessIdx);
-        tag.putInt("linkIdx",        linkIdx);
+        // NBT keys keep the legacy names ("wirelessIdx" = RS link, "linkIdx" = wireless
+        // frequency) so existing worlds and schematics load unchanged.
+        tag.putInt("wirelessIdx",    rsLinkIdx);
+        tag.putInt("linkIdx",        wirelessFreqIdx);
         tag.putInt("rsSide",         rsSide.ordinal());
         tag.putInt("signalStrength", signalStrength);
         tag.putInt("channel",        channel);
@@ -118,8 +121,9 @@ public class LiveControlBinding {
             b.mode = tag.getBoolean("toggle") ? Mode.TGL : Mode.HLD;
         }
 
-        b.wirelessIdx = Math.max(0, Math.min(12, tag.getInt("wirelessIdx")));
-        b.linkIdx     = Math.max(0, Math.min(100, tag.contains("linkIdx") ? tag.getInt("linkIdx") : 0));
+        b.rsLinkIdx = Math.max(0, Math.min(LinkedKeyboardBlockEntity.MAX_RSLINKS, tag.getInt("wirelessIdx")));
+        b.wirelessFreqIdx = Math.max(0, Math.min(LinkedKeyboardBlockEntity.MAX_WIRELESS_FREQS,
+                tag.contains("linkIdx") ? tag.getInt("linkIdx") : 0));
 
         int sideOrd = tag.getInt("rsSide");
         Direction[] dirs = Direction.values();
@@ -152,8 +156,8 @@ public class LiveControlBinding {
         buf.writeInt(keyCode);
         buf.writeByte(actionType.ordinal());
         buf.writeByte(mode.ordinal());
-        buf.writeInt(wirelessIdx);
-        buf.writeShort(Math.max(0, Math.min(100, linkIdx)));
+        buf.writeInt(rsLinkIdx);
+        buf.writeShort(Math.max(0, Math.min(100, wirelessFreqIdx)));
         buf.writeByte(rsSide.ordinal());
         buf.writeByte(Math.max(0, Math.min(15, signalStrength)));
         buf.writeByte(Math.max(1, Math.min(16, channel)));
@@ -183,8 +187,8 @@ public class LiveControlBinding {
         Mode[] mValues = Mode.values();
         b.mode = (mOrd < mValues.length) ? mValues[mOrd] : Mode.HLD;
 
-        b.wirelessIdx = buf.readInt();
-        b.linkIdx     = buf.readShort() & 0xFFFF;
+        b.rsLinkIdx = buf.readInt();
+        b.wirelessFreqIdx     = buf.readShort() & 0xFFFF;
 
         int sideOrd = buf.readByte() & 0xFF;
         Direction[] dirs = Direction.values();

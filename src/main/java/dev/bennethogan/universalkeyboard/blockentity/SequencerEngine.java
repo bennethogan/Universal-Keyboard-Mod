@@ -3,7 +3,7 @@ package dev.bennethogan.universalkeyboard.blockentity;
 import dev.bennethogan.universalkeyboard.compat.CreateValueHelper;
 import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import dev.bennethogan.universalkeyboard.compat.SableCompat;
-import dev.bennethogan.universalkeyboard.compat.wireless.WirelessPresence;
+import dev.bennethogan.universalkeyboard.compat.rslink.RsLinkPresence;
 import dev.bennethogan.universalkeyboard.config.ModConfig;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
 import dev.bennethogan.universalkeyboard.sequencer.SequencerStep;
@@ -183,12 +183,12 @@ class SequencerEngine {
         }
         if (src.matches("L([1-9]|1[0-9]|20)")) {
             int idx = Integer.parseInt(src.substring(1)) - 1;
-            if (WirelessPresence.isPresent() && idx < be.getWirelessCount())
+            if (RsLinkPresence.isPresent() && idx < be.getRsLinkCount())
                 return be.getWirelessEntries().get(idx).getReceivedPower();
             return 0;
         }
         if (src.matches("W([1-9]|[1-9][0-9]|100)")) {
-            return be.getLinkPower(Integer.parseInt(src.substring(1)) - 1);
+            return be.getWirelessFreqPower(Integer.parseInt(src.substring(1)) - 1);
         }
         try { return Double.parseDouble(src); } catch (NumberFormatException ignored) {}
         if (be.getLevel() == null) return 0;
@@ -248,7 +248,7 @@ class SequencerEngine {
             actual = vars[SequencerStep.varIndex(step.ifGetter)];
         } else if (step.ifGetter.matches("L([1-9]|1[0-9]|20)")) {
             int idx = Integer.parseInt(step.ifGetter.substring(1)) - 1;
-            actual = (WirelessPresence.isPresent() && idx < be.getWirelessCount())
+            actual = (RsLinkPresence.isPresent() && idx < be.getRsLinkCount())
                     ? be.getWirelessEntries().get(idx).getReceivedPower() : 0;
         } else if (SableCompat.isPresent() && SableCompat.isSableGetter(step.ifGetter)
                 && SableCompat.isOnSublevel(be.getLevel(), be.getBlockPos())) {
@@ -280,10 +280,10 @@ class SequencerEngine {
             actual = be.getLevel().getSignal(be.getBlockPos().relative(dir), dir);
         } else if (step.conditionGetter.matches("L([1-9]|1[0-9]|20)")) {
             int idx = Integer.parseInt(step.conditionGetter.substring(1)) - 1;
-            actual = (WirelessPresence.isPresent() && idx < be.getWirelessCount())
+            actual = (RsLinkPresence.isPresent() && idx < be.getRsLinkCount())
                     ? be.getWirelessEntries().get(idx).getReceivedPower() : 0;
         } else if (step.conditionGetter.matches("W([1-9]|[1-9][0-9]|100)")) {
-            actual = be.getLinkPower(Integer.parseInt(step.conditionGetter.substring(1)) - 1);
+            actual = be.getWirelessFreqPower(Integer.parseInt(step.conditionGetter.substring(1)) - 1);
         } else if (SableCompat.isPresent() && SableCompat.isSableGetter(step.conditionGetter)
                 && SableCompat.isOnSublevel(be.getLevel(), be.getBlockPos())) {
             actual = SableCompat.getValue(be.getLevel(), be.getBlockPos(), step.conditionGetter);
@@ -371,10 +371,10 @@ class SequencerEngine {
 
     private void applySetRedstone(SequencerStep step) {
         int signal = (int) Math.round(resolveSource(step.redstoneOutSignalStr, 1));
-        if (step.linkOutIdx > 0)
-            be.broadcastLinkChannel(step.linkOutIdx - 1, signal);
-        else if (step.wirelessOutIdx > 0)
-            be.setWirelessOutput(step.wirelessOutIdx - 1, signal);
+        if (step.wirelessFreqOutIdx > 0)
+            be.broadcastWirelessFreq(step.wirelessFreqOutIdx - 1, signal);
+        else if (step.rsLinkOutIdx > 0)
+            be.setRsLinkOutput(step.rsLinkOutIdx - 1, signal);
         else
             be.setRedstoneOutput(step.redstoneOutDir, signal);
     }

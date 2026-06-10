@@ -66,8 +66,8 @@ public class ModConfig {
         public final ModConfigSpec.DoubleValue  triggerThreshold;
         public final ModConfigSpec.BooleanValue joystickScaling;
         public final ModConfigSpec.ConfigValue<List<? extends Double>> stickCalibration;
-        public final ModConfigSpec.ConfigValue<String> controlWheelLeftKey;
-        public final ModConfigSpec.ConfigValue<String> controlWheelRightKey;
+        public final ModConfigSpec.ConfigValue<String> controlWheelLeftRows;
+        public final ModConfigSpec.ConfigValue<String> controlWheelRightRows;
         public final ModConfigSpec.BooleanValue redstoneWildcardWarningDismissed;
 
         Client(ModConfigSpec.Builder builder) {
@@ -133,19 +133,21 @@ public class ModConfig {
 
             builder.comment("Universal Control Wheel").push("controlwheel");
 
-            controlWheelLeftKey = builder
-                    .comment("Key that animates the Control Wheel turning LEFT while in Live Control mode.",
-                             "Purely cosmetic - this never triggers or interferes with your live control bindings.",
-                             "Use a GLFW key name such as: a, d, left, right, comma, period. Default: a.")
-                    .translation("config.universalkeyboard.controlwheel.controlWheelLeftKey")
-                    .define("controlWheelLeftKey", "a");
+            controlWheelLeftRows = builder
+                    .comment("Comma-separated Live Controller row numbers (1–40) whose active state",
+                             "animates the Control Wheel turning LEFT.",
+                             "Example: \"1,3\" means rows 1 and 3 contribute to a left turn.",
+                             "Leave blank to disable. Default: \"\".")
+                    .translation("config.universalkeyboard.controlwheel.controlWheelLeftRows")
+                    .define("controlWheelLeftRows", "");
 
-            controlWheelRightKey = builder
-                    .comment("Key that animates the Control Wheel turning RIGHT while in Live Control mode.",
-                             "Purely cosmetic - this never triggers or interferes with your live control bindings.",
-                             "Use a GLFW key name such as: a, d, left, right, comma, period. Default: d.")
-                    .translation("config.universalkeyboard.controlwheel.controlWheelRightKey")
-                    .define("controlWheelRightKey", "d");
+            controlWheelRightRows = builder
+                    .comment("Comma-separated Live Controller row numbers (1–40) whose active state",
+                            "animates the Control Wheel turning RIGHT.",
+                            "Example: \"2,4\" means rows 2 and 4 contribute to a right turn.",
+                            "Leave blank to disable. Default: \"\".")
+                    .translation("config.universalkeyboard.controlwheel.controlWheelRightRows")
+                    .define("controlWheelRightRows", "");
 
             builder.pop();
 

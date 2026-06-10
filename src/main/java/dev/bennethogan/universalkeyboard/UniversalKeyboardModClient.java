@@ -79,8 +79,8 @@ public class UniversalKeyboardModClient {
     }
 
     private void onRegisterMenuScreens(net.neoforged.neoforge.client.event.RegisterMenuScreensEvent event) {
-        event.register(dev.bennethogan.universalkeyboard.menu.ModMenus.WIRELESS_CONFIG_MENU.get(),
-                dev.bennethogan.universalkeyboard.client.screen.WirelessConfigScreen::new);
+        event.register(dev.bennethogan.universalkeyboard.menu.ModMenus.REDSTONE_LINKS_MENU.get(),
+                dev.bennethogan.universalkeyboard.client.screen.RedstoneLinksScreen::new);
     }
 
     private void onRegisterCapabilities(RegisterCapabilitiesEvent event) {

@@ -6,9 +6,9 @@ import dev.bennethogan.universalkeyboard.compat.KeyboardMode;
 import dev.bennethogan.universalkeyboard.compat.MonitorHelper;
 import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import dev.bennethogan.universalkeyboard.compat.SableCompat;
-import dev.bennethogan.universalkeyboard.compat.wireless.CreateWirelessHelper;
-import dev.bennethogan.universalkeyboard.compat.wireless.WirelessEntry;
-import dev.bennethogan.universalkeyboard.compat.wireless.WirelessPresence;
+import dev.bennethogan.universalkeyboard.compat.rslink.CreateRsLinkHelper;
+import dev.bennethogan.universalkeyboard.compat.rslink.RsLinkEntry;
+import dev.bennethogan.universalkeyboard.compat.rslink.RsLinkPresence;
 import dev.bennethogan.universalkeyboard.config.ModConfig;
 import dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding;
@@ -182,24 +182,24 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                     b.firstItem().copy(), b.secondItem().copy()});
         }
 
-        if (freqs.size() > MAX_WIRELESS)
+        if (freqs.size() > MAX_RSLINKS)
             return "Too many unique wireless frequencies (" + freqs.size() + "). " +
-                   "Maximum is " + MAX_WIRELESS + ". Reduce bindings in the typewriter first.";
+                   "Maximum is " + MAX_RSLINKS + ". Reduce bindings in the typewriter first.";
 
         // Remove existing wireless entries from the network
-        if (WirelessPresence.isPresent() && level != null)
-            for (WirelessEntry e : wirelessEntries) CreateWirelessHelper.removeFromNetwork(level, e);
-        wirelessEntries.clear();
+        if (RsLinkPresence.isPresent() && level != null)
+            for (RsLinkEntry e : rsLinkEntries) CreateRsLinkHelper.removeFromNetwork(level, e);
+        rsLinkEntries.clear();
         activeProfileBindings().clear();
 
         // Recreate wireless entries
         for (var freq : freqs) {
-            WirelessEntry e = new WirelessEntry(worldPosition);
+            RsLinkEntry e = new RsLinkEntry(worldPosition);
             e.setFirstStack(freq[0]);
             e.setSecondStack(freq[1]);
-            wirelessEntries.add(e);
-            if (WirelessPresence.isPresent() && level != null)
-                CreateWirelessHelper.ensureRegistered(level, e);
+            rsLinkEntries.add(e);
+            if (RsLinkPresence.isPresent() && level != null)
+                CreateRsLinkHelper.ensureRegistered(level, e);
         }
 
         // Create live-control bindings (HLD, wireless RS, signal 15 — exactly what a typewriter emits)
@@ -217,9 +217,9 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             lcb.keyCode        = b.keyCode();
             lcb.actionType     = LiveControlBinding.ActionType.REDSTONE;
             lcb.mode           = LiveControlBinding.Mode.HLD;
-            lcb.wirelessIdx    = wIdx + 1; // 1-based (W1..W12)
+            lcb.rsLinkIdx      = wIdx + 1; // 1-based (L1..L20)
             lcb.signalStrength = 15;
-            lcb.rsSide         = Direction.NORTH; // unused for wireless
+            lcb.rsSide         = Direction.NORTH; // unused for RS links
             activeProfileBindings().add(lcb);
         }
 
@@ -236,13 +236,13 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     // Redstone outputs — indexed by Direction.ordinal()
     private final int[] redstoneOutputs = new int[Direction.values().length];
 
-    // Wireless redstone outputs (Create RedstoneLink integration). Indexed 0-based;
-    // user-facing labels are W1..W{N}. Up to MAX_WIRELESS entries.
-    public static final int MAX_WIRELESS = 20;
-    private final List<WirelessEntry> wirelessEntries = new ArrayList<>();
+    // Renamed for clarity - These are the Create Redstone Links, interally called L1-L20
+    public static final int MAX_RSLINKS = 20;
+    private final List<RsLinkEntry> rsLinkEntries = new ArrayList<>();
 
-    public static final int MAX_LINK_FREQS = 100;
-    private final String[] linkFreqs = new String[MAX_LINK_FREQS];
+    // renamed for clarity - this is the wireless Copycats, interally called W1-W100
+    public static final int MAX_WIRELESS_FREQS = 100;
+    private final String[] wirelessFreqs = new String[MAX_WIRELESS_FREQS];
 
     // Cached peripheral getter values for Create display source
     private final Map<String, String> cachedGetterValues = new LinkedHashMap<>();
@@ -361,9 +361,9 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             for (List<BlockPos> list : channelTargets.values())
                 for (BlockPos pos : list)
                     PeripheralHelper.releaseThrusterControl(level, pos);
-            if (WirelessPresence.isPresent())
-                for (var e : wirelessEntries)
-                    CreateWirelessHelper.removeFromNetwork(level, e);
+            if (RsLinkPresence.isPresent())
+                for (var e : rsLinkEntries)
+                    CreateRsLinkHelper.removeFromNetwork(level, e);
         }
         channelTargets.clear();
         sequencerViewers.clear();
@@ -371,19 +371,19 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         sequencerSteps.clear();
         for (List<LiveControlBinding> p : profileBindings) p.clear();
         activeProfile = 0;
-        wirelessEntries.clear();
+        rsLinkEntries.clear();
         autoTypeScript  = "";
         scriptLineIndex = 0;
         java.util.Arrays.fill(redstoneOutputs, 0);
-        java.util.Arrays.fill(linkFreqs, null);
+        java.util.Arrays.fill(wirelessFreqs, null);
         setChanged();
     }
 
     public boolean hasData() {
         boolean hasBindings = profileBindings.stream().anyMatch(p -> !p.isEmpty());
         return !channelTargets.isEmpty() || !sequencerSteps.isEmpty()
-                || hasBindings || !wirelessEntries.isEmpty()
-                || getLinkFreqCount() > 0;
+                || hasBindings || !rsLinkEntries.isEmpty()
+                || getWirelessFreqCount() > 0;
     }
 
     public boolean isTargetInRange() {
@@ -581,85 +581,85 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     // ── Wireless redstone outputs (Create RedstoneLink) ─────────────────────
 
-    public int getWirelessCount() { return wirelessEntries.size(); }
+    public int getRsLinkCount() { return rsLinkEntries.size(); }
 
-    public List<WirelessEntry> getWirelessEntries() {
-        return Collections.unmodifiableList(wirelessEntries);
+    public List<RsLinkEntry> getWirelessEntries() {
+        return Collections.unmodifiableList(rsLinkEntries);
     }
 
     /** Adds an empty entry if room remains. Returns the new entry's index (0-based) or -1 on failure. */
     public int addWirelessEntry() {
-        if (!WirelessPresence.isPresent()) return -1;
-        if (wirelessEntries.size() >= MAX_WIRELESS) return -1;
-        wirelessEntries.add(CreateWirelessHelper.newEntry(worldPosition));
+        if (!RsLinkPresence.isPresent()) return -1;
+        if (rsLinkEntries.size() >= MAX_RSLINKS) return -1;
+        rsLinkEntries.add(CreateRsLinkHelper.newEntry(worldPosition));
         setChanged();
         syncToClients();
-        return wirelessEntries.size() - 1;
+        return rsLinkEntries.size() - 1;
     }
 
     public void removeWirelessEntry(int idx) {
-        if (idx < 0 || idx >= wirelessEntries.size()) return;
-        WirelessEntry e = wirelessEntries.remove(idx);
-        CreateWirelessHelper.removeFromNetwork(level, e);
+        if (idx < 0 || idx >= rsLinkEntries.size()) return;
+        RsLinkEntry e = rsLinkEntries.remove(idx);
+        CreateRsLinkHelper.removeFromNetwork(level, e);
         setChanged();
         syncToClients();
     }
 
     public void setWirelessFrequencyItem(int idx, boolean first, ItemStack stack) {
-        if (idx < 0 || idx >= wirelessEntries.size()) return;
-        CreateWirelessHelper.updateFrequency(level, wirelessEntries.get(idx), first, stack);
+        if (idx < 0 || idx >= rsLinkEntries.size()) return;
+        CreateRsLinkHelper.updateFrequency(level, rsLinkEntries.get(idx), first, stack);
         setChanged();
         syncToClients();
     }
 
     /** Sequencer / external callers: drive the W{idx+1} output to the given power. */
-    public void setWirelessOutput(int idx, int power) {
-        if (idx < 0 || idx >= wirelessEntries.size()) return;
-        CreateWirelessHelper.setEntryPower(level, wirelessEntries.get(idx), power);
+    public void setRsLinkOutput(int idx, int power) {
+        if (idx < 0 || idx >= rsLinkEntries.size()) return;
+        CreateRsLinkHelper.setEntryPower(level, rsLinkEntries.get(idx), power);
     }
 
-    public int getWirelessOutput(int idx) {
-        if (idx < 0 || idx >= wirelessEntries.size()) return 0;
-        return wirelessEntries.get(idx).getPower();
+    public int getRsLinkOutput(int idx) {
+        if (idx < 0 || idx >= rsLinkEntries.size()) return 0;
+        return rsLinkEntries.get(idx).getPower();
     }
 
     private void clearWirelessOutputs() {
-        if (!WirelessPresence.isPresent()) return;
-        for (WirelessEntry e : wirelessEntries)
-            CreateWirelessHelper.setEntryPower(level, e, 0);
+        if (!RsLinkPresence.isPresent()) return;
+        for (RsLinkEntry e : rsLinkEntries)
+            CreateRsLinkHelper.setEntryPower(level, e, 0);
     }
 
-    public String[] getLinkFreqs() { return linkFreqs.clone(); }
+    public String[] getLinkFreqs() { return wirelessFreqs.clone(); }
 
     public void setLinkFreqs(String[] newFreqs) {
-        for (int i = 0; i < MAX_LINK_FREQS; i++) {
-            linkFreqs[i] = (i < newFreqs.length && newFreqs[i] != null) ? newFreqs[i] : null;
+        for (int i = 0; i < MAX_WIRELESS_FREQS; i++) {
+            wirelessFreqs[i] = (i < newFreqs.length && newFreqs[i] != null) ? newFreqs[i] : null;
         }
         setChanged();
         syncToClients();
     }
 
-    public void broadcastLinkChannel(int idx, int power) {
-        if (idx < 0 || idx >= MAX_LINK_FREQS || level == null || level.isClientSide) return;
-        String freq = linkFreqs[idx];
+    public void broadcastWirelessFreq(int idx, int power) {
+        if (idx < 0 || idx >= MAX_WIRELESS_FREQS || level == null || level.isClientSide) return;
+        String freq = wirelessFreqs[idx];
         if (freq == null || freq.isEmpty()) return;
         dev.bennethogan.universalkeyboard.wireless.rs.WirelessRSNetwork.broadcast((Level) level, freq, power);
     }
 
-    public String getLinkFreq(int idx) {
-        return (idx >= 0 && idx < MAX_LINK_FREQS) ? linkFreqs[idx] : null;
+    public String getWirelessFreq(int idx) {
+        return (idx >= 0 && idx < MAX_WIRELESS_FREQS) ? wirelessFreqs[idx] : null;
     }
 
-    public int getLinkPower(int idx) {
-        if (idx < 0 || idx >= MAX_LINK_FREQS || level == null) return 0;
-        String freq = linkFreqs[idx];
+    public int getWirelessFreqPower(int idx) {
+        if (idx < 0 || idx >= MAX_WIRELESS_FREQS || level == null) return 0;
+        String freq = wirelessFreqs[idx];
         if (freq == null || freq.isEmpty()) return 0;
         return dev.bennethogan.universalkeyboard.wireless.rs.WirelessRSNetwork.getInputPower((Level) level, freq);
     }
 
-    public int getLinkFreqCount() {
+    public int getWirelessFreqCount() {
         int count = 0;
-        for (String f : linkFreqs) if (f != null && !f.isEmpty()) count++;
+        for (String f : wirelessFreqs) if (f != null && !f.isEmpty()) count++;
         return count;
     }
 
@@ -874,9 +874,9 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         engine.saveToTag(tag);
         tag.putIntArray("redstone_outputs",      redstoneOutputs);
 
-        if (!wirelessEntries.isEmpty()) {
+        if (!rsLinkEntries.isEmpty()) {
             ListTag wl = new ListTag();
-            for (WirelessEntry e : wirelessEntries) {
+            for (RsLinkEntry e : rsLinkEntries) {
                 CompoundTag c = new CompoundTag();
                 c.put("first",  e.getFirstStack().saveOptional(registries));
                 c.put("second", e.getSecondStack().saveOptional(registries));
@@ -897,11 +897,11 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                 tag.put("profile_" + p + "_bindings", lcl);
             }
         }
-        int lfCount = getLinkFreqCount();
+        int lfCount = getWirelessFreqCount();
         if (lfCount > 0) {
             net.minecraft.nbt.ListTag lfl = new net.minecraft.nbt.ListTag();
-            for (int i = 0; i < MAX_LINK_FREQS; i++) {
-                lfl.add(net.minecraft.nbt.StringTag.valueOf(linkFreqs[i] != null ? linkFreqs[i] : ""));
+            for (int i = 0; i < MAX_WIRELESS_FREQS; i++) {
+                lfl.add(net.minecraft.nbt.StringTag.valueOf(wirelessFreqs[i] != null ? wirelessFreqs[i] : ""));
             }
             tag.put("link_freqs", lfl);
         }
@@ -987,15 +987,15 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             System.arraycopy(saved, 0, redstoneOutputs, 0, Math.min(saved.length, redstoneOutputs.length));
         }
 
-        wirelessEntries.clear();
-        if (tag.contains("wireless_entries", Tag.TAG_LIST) && WirelessPresence.isPresent()) {
+        rsLinkEntries.clear();
+        if (tag.contains("wireless_entries", Tag.TAG_LIST) && RsLinkPresence.isPresent()) {
             ListTag wl = tag.getList("wireless_entries", Tag.TAG_COMPOUND);
-            for (int i = 0; i < wl.size() && wirelessEntries.size() < MAX_WIRELESS; i++) {
+            for (int i = 0; i < wl.size() && rsLinkEntries.size() < MAX_RSLINKS; i++) {
                 CompoundTag c = wl.getCompound(i);
-                WirelessEntry e = CreateWirelessHelper.newEntry(worldPosition);
+                RsLinkEntry e = CreateRsLinkHelper.newEntry(worldPosition);
                 e.setFirstStack(ItemStack.parseOptional(registries, c.getCompound("first")));
                 e.setSecondStack(ItemStack.parseOptional(registries, c.getCompound("second")));
-                wirelessEntries.add(e);
+                rsLinkEntries.add(e);
             }
         }
 
@@ -1018,12 +1018,12 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             for (int i = 0; i < lcl.size() && slot.size() < MAX_LIVE_BINDINGS; i++)
                 slot.add(LiveControlBinding.fromTag(lcl.getCompound(i)));
         }
-        java.util.Arrays.fill(linkFreqs, null);
+        java.util.Arrays.fill(wirelessFreqs, null);
         if (tag.contains("link_freqs", Tag.TAG_LIST)) {
             net.minecraft.nbt.ListTag lfl = tag.getList("link_freqs", Tag.TAG_STRING);
-            for (int i = 0; i < lfl.size() && i < MAX_LINK_FREQS; i++) {
+            for (int i = 0; i < lfl.size() && i < MAX_WIRELESS_FREQS; i++) {
                 String v = lfl.getString(i);
-                linkFreqs[i] = v.isEmpty() ? null : v;
+                wirelessFreqs[i] = v.isEmpty() ? null : v;
             }
         }
         favoriteScreen = tag.contains("favorite_screen")
@@ -1041,26 +1041,26 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     @Override
     public void onLoad() {
         super.onLoad();
-        if (level != null && !level.isClientSide && WirelessPresence.isPresent()) {
-            for (WirelessEntry e : wirelessEntries)
-                CreateWirelessHelper.ensureRegistered(level, e);
+        if (level != null && !level.isClientSide && RsLinkPresence.isPresent()) {
+            for (RsLinkEntry e : rsLinkEntries)
+                CreateRsLinkHelper.ensureRegistered(level, e);
         }
     }
 
     @Override
     public void setRemoved() {
-        if (WirelessPresence.isPresent()) {
-            for (WirelessEntry e : wirelessEntries)
-                CreateWirelessHelper.removeFromNetwork(level, e);
+        if (RsLinkPresence.isPresent()) {
+            for (RsLinkEntry e : rsLinkEntries)
+                CreateRsLinkHelper.removeFromNetwork(level, e);
         }
         super.setRemoved();
     }
 
     @Override
     public void onChunkUnloaded() {
-        if (WirelessPresence.isPresent()) {
-            for (WirelessEntry e : wirelessEntries)
-                CreateWirelessHelper.removeFromNetwork(level, e);
+        if (RsLinkPresence.isPresent()) {
+            for (RsLinkEntry e : rsLinkEntries)
+                CreateRsLinkHelper.removeFromNetwork(level, e);
         }
         super.onChunkUnloaded();
     }
@@ -1078,9 +1078,9 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         // Note: engine.saveToTag (sequencer run-state) is intentionally omitted here —
         // a schematic should paste in idle, not resume a program mid-run.
         tag.putIntArray("redstone_outputs", redstoneOutputs);
-        if (!wirelessEntries.isEmpty()) {
+        if (!rsLinkEntries.isEmpty()) {
             ListTag wl = new ListTag();
-            for (WirelessEntry e : wirelessEntries) {
+            for (RsLinkEntry e : rsLinkEntries) {
                 CompoundTag c = new CompoundTag();
                 c.put("first",  e.getFirstStack().saveOptional(registries));
                 c.put("second", e.getSecondStack().saveOptional(registries));
@@ -1100,6 +1100,14 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                 }
                 tag.put("profile_" + p + "_bindings", lcl);
             }
+        }
+        int lfCount = getWirelessFreqCount();
+        if (lfCount > 0) {
+            net.minecraft.nbt.ListTag lfl = new net.minecraft.nbt.ListTag();
+            for (int i = 0; i < MAX_WIRELESS_FREQS; i++) {
+                lfl.add(net.minecraft.nbt.StringTag.valueOf(wirelessFreqs[i] != null ? wirelessFreqs[i] : ""));
+            }
+            tag.put("link_freqs", lfl);
         }
         for (Map.Entry<Integer, List<BlockPos>> entry : channelTargets.entrySet()) {
             List<BlockPos> list = entry.getValue();

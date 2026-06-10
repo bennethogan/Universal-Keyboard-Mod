@@ -1,6 +1,8 @@
 package dev.bennethogan.universalkeyboard.livecontrol;
 
+import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.universalkeyboard.client.gamepad.GamepadLiveDriver;
+import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import dev.bennethogan.universalkeyboard.config.ModConfig;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.ActionType;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.Mode;
@@ -43,6 +45,8 @@ public class LiveControlManager {
     private static final Map<ActionType, Map<Integer, Double>>  chIncFrac     = new EnumMap<>(ActionType.class);
     // Current peripheral values to seed channel modes from on activate (e.g. RPM ← rpmValues).
     private static final Map<ActionType, int[]>                 channelSeeds  = new EnumMap<>(ActionType.class);
+    // Per-channel RPM increment quantum for stirling_engine which uses discrete steps
+    private static final Map<Integer, Integer> rpmIncStep = new HashMap<>();
     private static final Map<Integer, Integer> incHoldTicks   = new HashMap<>();
     private static final Set<Integer>          hldVarOn       = new HashSet<>();
     private static final Map<Integer, Double>  tglPendingPeak = new HashMap<>();
@@ -56,7 +60,7 @@ public class LiveControlManager {
     // ── Activation ───────────────────────────────────────────────────────────
 
     public static void activate(BlockPos pos, List<LiveControlBinding> binds,
-                                int[] localRsOutputs, int[] wirelessPowers, int[] thrusterPowers,
+                                int[] localRsOutputs, int[] rsLinkPowers, int[] thrusterPowers,
                                 double[] varValues, int[] rpmValues) {
         active      = true;
         keyboardPos = pos;
@@ -72,6 +76,7 @@ public class LiveControlManager {
         chIncCounters.clear();
         chIncFrac.clear();
         channelSeeds.clear();
+        rpmIncStep.clear();
         incHoldTicks.clear();
         hldVarOn.clear();
         tglPendingPeak.clear();
@@ -80,19 +85,37 @@ public class LiveControlManager {
         // Wire the current-value arrays each channel mode seeds from on resume.
         channelSeeds.put(ActionType.RPM_CONTROL, rpmValues);
 
+        // Detect per-channel RPM quanta for Propulsion Stirling Engine
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level != null) {
+            net.minecraft.world.level.block.entity.BlockEntity kbe = mc.level.getBlockEntity(pos);
+            if (kbe instanceof LinkedKeyboardBlockEntity kb) {
+                for (Map.Entry<Integer, List<BlockPos>> e : kb.getAllChannelTargets().entrySet()) {
+                    List<BlockPos> tps = e.getValue();
+                    if (tps == null || tps.isEmpty()) continue;
+                    BlockPos tp = tps.get(0);
+                    if (!mc.level.isLoaded(tp)) continue;
+                    Object p = PeripheralHelper.getPeripheral(mc.level, tp);
+                    if (p == null) continue;
+                    int step = PeripheralHelper.getRpmIncStep(p);
+                    if (step > 1) rpmIncStep.put(e.getKey(), step);
+                }
+            }
+        }
+
         for (int i = 0; i < bindings.size(); i++) {
             LiveControlBinding b = bindings.get(i);
             if (b.actionType == LiveControlBinding.ActionType.REDSTONE) {
                 int cur;
-                if (b.wirelessIdx == 0) {
+                if (b.rsLinkIdx == 0) {
                     int ord = b.rsSide.ordinal();
                     cur = (ord < localRsOutputs.length) ? localRsOutputs[ord] : 0;
                 } else {
-                    int wi = b.wirelessIdx - 1;
-                    cur = (wi < wirelessPowers.length) ? wirelessPowers[wi] : 0;
+                    int wi = b.rsLinkIdx - 1;
+                    cur = (wi < rsLinkPowers.length) ? rsLinkPowers[wi] : 0;
                 }
                 if (b.mode == Mode.INC)
-                    rsIncCounters.putIfAbsent(rsKey(b.wirelessIdx, b.rsSide), cur);
+                    rsIncCounters.putIfAbsent(rsKey(b.rsLinkIdx, b.rsSide), cur);
                 else if (b.mode == Mode.TGL && cur == b.signalStrength)
                     toggledOn.add(i);
             } else if (b.actionType == LiveControlBinding.ActionType.THRUSTER_POWER) {
@@ -111,9 +134,12 @@ public class LiveControlManager {
                 ChannelMode m = ChannelMode.byType(b.actionType);
                 int[] seed = channelSeeds.get(b.actionType);
                 int cur = (seed != null && b.channel < seed.length) ? seed[b.channel] : 0;
-                if (b.mode == Mode.INC)
-                    chInc(b.actionType).putIfAbsent(b.channel, m.clamp(cur));
-                else if (b.mode == Mode.TGL && cur == m.targetValue(b))
+                if (b.mode == Mode.INC) {
+                    // Snap seed to this channel's quantum so the counter starts on a valid step
+                    int step = (b.actionType == ActionType.RPM_CONTROL) ? rpmIncStep.getOrDefault(b.channel, 1) : 1;
+                    int snapped = step > 1 ? (int) Math.round(cur / (double) step) * step : cur;
+                    chInc(b.actionType).putIfAbsent(b.channel, m.clamp(snapped));
+                } else if (b.mode == Mode.TGL && cur == m.targetValue(b))
                     toggledOn.add(i);
             }
         }
@@ -154,54 +180,64 @@ public class LiveControlManager {
     // ── Control Wheel animation query ─────────────────────────────────────────
 
 
-    // Computes the combined signed wheel angle target based on configred keys
-    // Inc bindings are treated like a fluid valve for animation purposes, I dont
-    // know when else you would increment a turn, really. Someone tell me if I should do this differently
-    public static float computeWheelTarget(int leftKey, int rightKey, boolean leftHeld, boolean rightHeld) {
-        if (!active) return 0f;
-
-        Float valve = incValveFraction(leftKey, rightKey);
-        if (valve != null) return -clamp01(valve); // tighten to the right
-
-        float combined = keyContribution(leftKey, leftHeld) - keyContribution(rightKey, rightHeld);
-        return Math.max(-1f, Math.min(1f, combined));
+    // Parses the comma seperated list from config file
+    public static Set<Integer> parseRowSet(String cfg) {
+        Set<Integer> result = new HashSet<>();
+        if (cfg == null || cfg.isBlank()) return result;
+        for (String part : cfg.split(",")) {
+            part = part.trim();
+            if (part.isEmpty()) continue;
+            try {
+                int n = Integer.parseInt(part);
+                if (n >= 1 && n <= 40) result.add(n - 1);
+            } catch (NumberFormatException ignored) {}
+        }
+        return result;
     }
 
-
-    //wheel target counts only persistant inputs from toggle and inc valve and ignores hld inputs
-    public static float computeRestingWheelTarget(int leftKey, int rightKey) {
+    public static float computeWheelTarget(Set<Integer> leftRows, Set<Integer> rightRows) {
         if (!active) return 0f;
-        Float valve = incValveFraction(leftKey, rightKey);
+        Float valve = incValveFraction(leftRows, rightRows);
         if (valve != null) return -clamp01(valve);
-        float combined = keyContribution(leftKey, false) - keyContribution(rightKey, false);
+        float combined = rowContribution(leftRows, true) - rowContribution(rightRows, true);
         return Math.max(-1f, Math.min(1f, combined));
     }
 
-    // Magnitude 0–1 for a key's HLD/TGL bindings (default to HLD)
-    private static float keyContribution(int keyCode, boolean physicalHeld) {
-        boolean found = false;
-        float   mag   = 0f;
-        for (int i = 0; i < bindings.size(); i++) {
+    // Resting target: ignores HLD (held) inputs; counts only TGL and INC valve state
+    public static float computeRestingWheelTarget(Set<Integer> leftRows, Set<Integer> rightRows) {
+        if (!active) return 0f;
+        Float valve = incValveFraction(leftRows, rightRows);
+        if (valve != null) return -clamp01(valve);
+        float combined = rowContribution(leftRows, false) - rowContribution(rightRows, false);
+        return Math.max(-1f, Math.min(1f, combined));
+    }
+
+    // Magnitude 0–1 for a set of row indices. includeHld=false used for resting state computation
+    private static float rowContribution(Set<Integer> rows, boolean includeHld) {
+        float mag = 0f;
+        for (int i : rows) {
+            if (i < 0 || i >= bindings.size()) continue;
             LiveControlBinding b = bindings.get(i);
-            if (b.keyCode != keyCode) continue;
-            found = true;
             switch (b.mode) {
-                case HLD -> mag = Math.max(mag, physicalHeld ? 1f : 0f);
+                case HLD -> { if (includeHld) mag = Math.max(mag, heldKeys.contains(b.keyCode) ? 1f : 0f); }
                 case TGL -> mag = Math.max(mag, toggledOn.contains(i) ? 1f : 0f);
                 case INC -> { /* handled by incValveFraction */ }
             }
         }
-        return found ? mag : (physicalHeld ? 1f : 0f);
+        return mag;
     }
 
-    // Largest INC power fraction among the two animation keys, or null if neither is INC
-    private static Float incValveFraction(int leftKey, int rightKey) {
+    // Largest INC power fraction across all INC-mode bindings in either row set, or null if none.
+    private static Float incValveFraction(Set<Integer> leftRows, Set<Integer> rightRows) {
         Float frac = null;
-        for (LiveControlBinding b : bindings) {
-            if (b.mode != Mode.INC) continue;
-            if (b.keyCode != leftKey && b.keyCode != rightKey) continue;
-            float f = incFractionForBinding(b);
-            frac = (frac == null) ? f : Math.max(frac, f);
+        for (Set<Integer> rows : List.of(leftRows, rightRows)) {
+            for (int i : rows) {
+                if (i < 0 || i >= bindings.size()) continue;
+                LiveControlBinding b = bindings.get(i);
+                if (b.mode != Mode.INC) continue;
+                float f = incFractionForBinding(b);
+                frac = (frac == null) ? f : Math.max(frac, f);
+            }
         }
         return frac;
     }
@@ -212,7 +248,7 @@ public class LiveControlManager {
     private static float incFractionForBinding(LiveControlBinding b) {
         return switch (b.actionType) {
             case REDSTONE -> {
-                int v = rsIncCounters.getOrDefault(rsKey(b.wirelessIdx, b.rsSide), 0);
+                int v = rsIncCounters.getOrDefault(rsKey(b.rsLinkIdx, b.rsSide), 0);
                 yield Math.max(0f, Math.min(1f, v / 15.0f));
             }
             case THRUSTER_POWER -> {
@@ -287,7 +323,7 @@ public class LiveControlManager {
             if (!pastDelay) continue;
             switch (b.actionType) {
                 case REDSTONE -> {
-                    long key = rsKey(b.wirelessIdx, b.rsSide);
+                    long key = rsKey(b.rsLinkIdx, b.rsSide);
                     int scaled = rsScaledStep(key, baseDelta, odFactor);
                     if (scaled != 0)
                         rsIncCounters.merge(key, scaled, (cur, d) -> Math.max(0, Math.min(15, cur + d)));
@@ -327,7 +363,7 @@ public class LiveControlManager {
                 double odFactor = overdriveFactor(i);
                 switch (b.actionType) {
                     case REDSTONE -> {
-                        long key = rsKey(b.wirelessIdx, b.rsSide);
+                        long key = rsKey(b.rsLinkIdx, b.rsSide);
                         int scaled = rsScaledStep(key, baseDelta, odFactor);
                         if (scaled != 0)
                             rsIncCounters.merge(key, scaled,
@@ -520,16 +556,18 @@ public class LiveControlManager {
         return chIncFrac.computeIfAbsent(t, k -> new HashMap<>());
     }
 
-    /** One INC step for a channel-mode binding: OD-scaled, fractional carry, clamped. */
+    /** One INC step for a channel-mode binding: quantum-scaled, OD-scaled, fractional carry, clamped. */
     private static void stepChannelInc(LiveControlBinding b, int baseDelta, double odFactor) {
         ChannelMode m = ChannelMode.byType(b.actionType);
         if (m == null) return;
+        int step = (b.actionType == ActionType.RPM_CONTROL) ? rpmIncStep.getOrDefault(b.channel, 1) : 1;
+        int effectiveDelta = baseDelta * step;
         int scaled;
         if (odFactor == 1.0) {
-            scaled = baseDelta;
+            scaled = effectiveDelta;
         } else {
             Map<Integer, Double> frac = chFrac(b.actionType);
-            double want = baseDelta * odFactor + frac.getOrDefault(b.channel, 0.0);
+            double want = effectiveDelta * odFactor + frac.getOrDefault(b.channel, 0.0);
             scaled = (int) Math.round(want);
             frac.put(b.channel, want - scaled);
         }
@@ -556,11 +594,11 @@ public class LiveControlManager {
 
             switch (b.actionType) {
                 case REDSTONE -> {
-                    if (b.linkIdx > 0) {
+                    if (b.wirelessFreqIdx > 0) {
                         int contribution = bindingActive ? Math.min(15, (int) Math.round(b.signalStrength * odFactor * mag)) : 0;
-                        linkSignals.merge(b.linkIdx, contribution, Math::max);
+                        linkSignals.merge(b.wirelessFreqIdx, contribution, Math::max);
                     } else {
-                        long key = rsKey(b.wirelessIdx, b.rsSide);
+                        long key = rsKey(b.rsLinkIdx, b.rsSide);
                         if (b.mode == Mode.INC) {
                             rsTargetToSignal.putIfAbsent(key, 0);
                         } else {
@@ -712,9 +750,9 @@ public class LiveControlManager {
         return false;
     }
 
-    private static long rsKey(int wirelessIdx, Direction rsSide) {
-        int sideOrd = (wirelessIdx == 0) ? rsSide.ordinal() : 0;
-        return ((long) wirelessIdx << 16) | (sideOrd & 0xFFFF);
+    private static long rsKey(int rsLinkIdx, Direction rsSide) {
+        int sideOrd = (rsLinkIdx == 0) ? rsSide.ordinal() : 0;
+        return ((long) rsLinkIdx << 16) | (sideOrd & 0xFFFF);
     }
 
     private static String buildKeyDisplay() {
@@ -802,7 +840,7 @@ public class LiveControlManager {
         for (LiveControlBinding b : bindings) {
             if (b.keyCode != keyCode || b.mode != Mode.INC) continue;
             switch (b.actionType) {
-                case REDSTONE       -> { return rsIncCounters.getOrDefault(rsKey(b.wirelessIdx, b.rsSide), 0); }
+                case REDSTONE       -> { return rsIncCounters.getOrDefault(rsKey(b.rsLinkIdx, b.rsSide), 0); }
                 case THRUSTER_POWER -> { return thrIncCounters.getOrDefault(b.channel, 0); }
                 default -> {}
             }

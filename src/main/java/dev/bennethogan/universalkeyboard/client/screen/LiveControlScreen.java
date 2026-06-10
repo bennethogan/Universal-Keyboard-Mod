@@ -48,7 +48,7 @@ public class LiveControlScreen extends Screen {
 
     // ── State ─────────────────────────────────────────────────────────────────
     private final BlockPos                keyboardPos;
-    private final int                     wirelessCount;
+    private final int                     rsLinkCount;
     private final boolean                 hasThrusters;
     private final boolean                 hasVectorThrusters;
     private final boolean                 hasRpm;
@@ -98,7 +98,7 @@ public class LiveControlScreen extends Screen {
 
     // ── Constructor ───────────────────────────────────────────────────────────
     public LiveControlScreen(BlockPos keyboardPos,
-                             int wirelessCount,
+                             int rsLinkCount,
                              boolean hasThrusters,
                              boolean hasVectorThrusters,
                              boolean hasRpm,
@@ -111,7 +111,7 @@ public class LiveControlScreen extends Screen {
                              List<List<LiveControlBinding>> allProfilesIn) {
         super(Component.empty());
         this.keyboardPos           = keyboardPos;
-        this.wirelessCount         = wirelessCount;
+        this.rsLinkCount         = rsLinkCount;
         this.hasThrusters          = hasThrusters;
         this.hasVectorThrusters    = hasVectorThrusters;
         this.hasRpm                = hasRpm;
@@ -154,8 +154,8 @@ public class LiveControlScreen extends Screen {
         return a.keyCode == b.keyCode
                 && a.actionType == b.actionType
                 && a.mode == b.mode
-                && a.wirelessIdx == b.wirelessIdx
-                && a.linkIdx == b.linkIdx
+                && a.rsLinkIdx == b.rsLinkIdx
+                && a.wirelessFreqIdx == b.wirelessFreqIdx
                 && a.rsSide == b.rsSide
                 && a.signalStrength == b.signalStrength
                 && a.channel == b.channel
@@ -183,8 +183,8 @@ public class LiveControlScreen extends Screen {
         b.keyCode        = src.keyCode;
         b.actionType     = src.actionType;
         b.mode           = src.mode;
-        b.wirelessIdx    = src.wirelessIdx;
-        b.linkIdx        = src.linkIdx;
+        b.rsLinkIdx    = src.rsLinkIdx;
+        b.wirelessFreqIdx        = src.wirelessFreqIdx;
         b.rsSide         = src.rsSide;
         b.signalStrength = src.signalStrength;
         b.channel        = src.channel;
@@ -329,7 +329,10 @@ public class LiveControlScreen extends Screen {
     }
 
     private void doStart() {
-        autosave();
+        // Unconditionally push the started profile to the server, even if its bindings are
+        // unchanged from the empty default. Hoping this helps schematic print behavior with profiles
+        ModPackets.sendSaveLiveBindings(keyboardPos, activeProfile, bindings);
+        savedSnapshot = deepCopy(bindings);
         LiveControlManager.activate(keyboardPos, bindings, currentLocalRs, currentWirelessPowers, currentThrusterPowers, currentVarValues, currentRpmValues);
         onClose();
     }
@@ -465,8 +468,8 @@ public class LiveControlScreen extends Screen {
 
     // REDSTONE config — [side:50][mode:20][signal:20] = 90px
     private void renderRsConfig(GuiGraphics g, int mx, int my, LiveControlBinding b, int x, int y) {
-        String sideLabel = b.linkIdx > 0 ? "W" + b.linkIdx
-                : b.wirelessIdx > 0 ? "L" + b.wirelessIdx
+        String sideLabel = b.wirelessFreqIdx > 0 ? "W" + b.wirelessFreqIdx
+                : b.rsLinkIdx > 0 ? "L" + b.rsLinkIdx
                 : b.rsSide.getSerializedName().toUpperCase();
         boolean sHov = isIn(mx, my, x, y, 50, ROW_H);
         g.fill(x, y, x + 50, y + ROW_H, sHov ? 0xFF252535 : 0xFF1A1A2A);
@@ -474,8 +477,8 @@ public class LiveControlScreen extends Screen {
         g.drawString(font, "§7◄", x + 1, y + 4, 0x999999, false);
         g.drawCenteredString(font, "§f" + sideLabel, x + 25, y + 4, 0xFFFFFF);
         g.drawString(font, "§7►", x + 41, y + 4, 0x999999, false);
-        if (sHov && b.linkIdx > 0) {
-            String freq = getLinkFreq(b.linkIdx - 1);
+        if (sHov && b.wirelessFreqIdx > 0) {
+            String freq = getWirelessFreq(b.wirelessFreqIdx - 1);
             if (freq != null) { wFreqTooltip = freq; wFreqTooltipX = mx; wFreqTooltipY = my; }
         }
         x += 52;
@@ -1049,39 +1052,39 @@ public class LiveControlScreen extends Screen {
     }
 
     // ── Side cycling (RS target) ───────────────────────────────────────────────
-    private int getLinkFreqCount() {
+    private int getWirelessFreqCount() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return 0;
         var be = mc.level.getBlockEntity(keyboardPos);
         if (be instanceof dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity kb)
-            return kb.getLinkFreqCount();
+            return kb.getWirelessFreqCount();
         return 0;
     }
 
-    private String getLinkFreq(int zeroBasedIdx) {
+    private String getWirelessFreq(int zeroBasedIdx) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return null;
         var be = mc.level.getBlockEntity(keyboardPos);
         if (be instanceof dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity kb)
-            return kb.getLinkFreq(zeroBasedIdx);
+            return kb.getWirelessFreq(zeroBasedIdx);
         return null;
     }
 
     private void cycleSide(LiveControlBinding b, int dir) {
         Direction[] dirs = Direction.values();
-        int linkCount = getLinkFreqCount();
-        int total = dirs.length + wirelessCount + linkCount;
+        int linkCount = getWirelessFreqCount();
+        int total = dirs.length + rsLinkCount + linkCount;
         int current;
-        if (b.linkIdx > 0) current = dirs.length + wirelessCount + (b.linkIdx - 1);
-        else if (b.wirelessIdx > 0) current = dirs.length + (b.wirelessIdx - 1);
+        if (b.wirelessFreqIdx > 0) current = dirs.length + rsLinkCount + (b.wirelessFreqIdx - 1);
+        else if (b.rsLinkIdx > 0) current = dirs.length + (b.rsLinkIdx - 1);
         else current = b.rsSide.ordinal();
         current = ((current + dir) % total + total) % total;
         if (current < dirs.length) {
-            b.wirelessIdx = 0; b.linkIdx = 0; b.rsSide = dirs[current];
-        } else if (current < dirs.length + wirelessCount) {
-            b.wirelessIdx = current - dirs.length + 1; b.linkIdx = 0;
+            b.rsLinkIdx = 0; b.wirelessFreqIdx = 0; b.rsSide = dirs[current];
+        } else if (current < dirs.length + rsLinkCount) {
+            b.rsLinkIdx = current - dirs.length + 1; b.wirelessFreqIdx = 0;
         } else {
-            b.linkIdx = current - dirs.length - wirelessCount + 1; b.wirelessIdx = 0;
+            b.wirelessFreqIdx = current - dirs.length - rsLinkCount + 1; b.rsLinkIdx = 0;
         }
     }
 

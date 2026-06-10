@@ -67,7 +67,17 @@ public final class GamepadLiveDriver {
 
     public static void pollOnce() { if (enabled()) POLLER.poll(advanced()); }
 
-    public static float rawAxis(int i) { return POLLER.axis(0, i); }
+    //attempting to make the gampad calibration screen work for all devices
+    //this is a lazy fix while I design a much better screen
+    public static float rawAxis(int i) {
+        float best = 0f;
+        for (int d = 0; d < JoystickPoller.MAX_DEVICES; d++) {
+            if (!POLLER.present(d)) continue;
+            float v = POLLER.axis(d, i);
+            if (Math.abs(v) > Math.abs(best)) best = v;
+        }
+        return best;
+    }
 
     public static double stickMax(int axis) {
         try {
@@ -83,7 +93,8 @@ public final class GamepadLiveDriver {
 
     private static float calAxis(int device, int axis) {
         float raw = POLLER.axis(device, axis);
-        if (device != 0 || axis < 0 || axis > 3) return raw;
+        if (axis < 0) return raw;
+        // The single calibration set applies to every device for now, I will improve this later
         float v = (float) (raw / stickMax(axis));
         return Math.max(-1f, Math.min(1f, v));
     }
@@ -105,10 +116,10 @@ public final class GamepadLiveDriver {
             raw = Math.max(0, GamepadCodes.stickPositive(code) ? v : -v);
             thr = stickThr;
         } else if (GamepadCodes.isRawAxisPos(code)) {
-            raw = Math.max(0, POLLER.axis(device, GamepadCodes.rawAxisIndex(code)));
+            raw = Math.max(0, calAxis(device, GamepadCodes.rawAxisIndex(code)));
             thr = stickThr;
         } else if (GamepadCodes.isRawAxisNeg(code)) {
-            raw = Math.max(0, -POLLER.axis(device, GamepadCodes.rawAxisIndex(code)));
+            raw = Math.max(0, -calAxis(device, GamepadCodes.rawAxisIndex(code)));
             thr = stickThr;
         } else {
             return 1.0f; // buttons, hats
