@@ -2,6 +2,9 @@ package dev.bennethogan.universalkeyboard.client;
 
 import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.universalkeyboard.client.gamepad.GamepadLiveDriver;
+import dev.bennethogan.universalkeyboard.client.gamepad.MouseLiveDriver;
+import dev.bennethogan.universalkeyboard.client.render.KeyRipples;
+import dev.bennethogan.universalkeyboard.client.render.PressedKeys;
 import dev.bennethogan.universalkeyboard.compat.CreateValueHelper;
 import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import dev.bennethogan.universalkeyboard.item.LinkedKeyboardItem;
@@ -26,10 +29,18 @@ public class KeyboardInputHandler {
         }
         if (LiveControlManager.isActive()) {
             GamepadLiveDriver.pollLive();
+            MouseLiveDriver.pollLive();
             LiveControlManager.tick();
+        } else if (KeyboardCaptureManager.isCCCapturing()) {
+            GamepadLiveDriver.resetLive();
+            MouseLiveDriver.pollLive(); // cosmetic only — no binding dispatch
         } else {
             GamepadLiveDriver.resetLive();
+            MouseLiveDriver.reset();
         }
+        // drop any visuals when mode is inactive
+        if (!LiveControlManager.isActive() && !KeyboardCaptureManager.isCapturing())
+            PressedKeys.clear();
         // poll the animator every tick
         ControlWheelAnimator.tick();
 
@@ -68,6 +79,19 @@ public class KeyboardInputHandler {
     public static void onKeyInput(InputEvent.Key event) {
         // Live control mode intercepts all keys (including before CC capture)
         if (LiveControlManager.isActive()) {
+            // Left alt is now for 'mouse focus' during live controls
+            if (MouseLiveDriver.isAvailable()
+                    && ModKeyMappings.isMouseFocusKey(event.getKey(), event.getScanCode())) {
+                if (event.getAction() == GLFW.GLFW_PRESS) MouseLiveDriver.toggleFocus();
+                suppressMovementKey(event.getKey(), event.getScanCode());
+                return;
+            }
+            if (event.getAction() == GLFW.GLFW_PRESS) {
+                KeyRipples.spawn(event.getKey());
+                PressedKeys.press(event.getKey());
+            } else if (event.getAction() == GLFW.GLFW_RELEASE) {
+                PressedKeys.release(event.getKey());
+            }
             LiveControlManager.handleKey(event.getKey(), event.getAction());
             if (event.getAction() != GLFW.GLFW_RELEASE && !isSafePassthroughKey(event.getKey())) {
                 suppressMovementKey(event.getKey(), event.getScanCode());
@@ -80,12 +104,18 @@ public class KeyboardInputHandler {
         int action = event.getAction();
 
         if (action == GLFW.GLFW_RELEASE) {
+            PressedKeys.release(key);
             if (KeyboardCaptureManager.isCCCapturing())
                 KeyboardCaptureManager.forwardKeyUp(key);
             return;
         }
 
         suppressMovementKey(key, event.getScanCode());
+
+        if (action == GLFW.GLFW_PRESS) {
+            KeyRipples.spawn(key);
+            PressedKeys.press(key);
+        }
 
         if (KeyboardCaptureManager.isCreateCapturing()) {
             if (key == GLFW.GLFW_KEY_ESCAPE) { KeyboardCaptureManager.exitCreateCapture(); return; }
@@ -96,6 +126,14 @@ public class KeyboardInputHandler {
             if (key == GLFW.GLFW_KEY_BACKSPACE) { KeyboardCaptureManager.handleCreateChar((char) 8); return; }
             char ch = getCharForKey(key, event.getScanCode(), event.getModifiers());
             if (ch != '\0') KeyboardCaptureManager.handleCreateChar(ch);
+            return;
+        }
+
+        // Dont forward left-alt to computer, used for locking camera
+        if (MouseLiveDriver.isAvailable()
+                && ModKeyMappings.isMouseFocusKey(key, event.getScanCode())) {
+            if (action == GLFW.GLFW_PRESS) MouseLiveDriver.toggleFocus();
+            suppressMovementKey(key, event.getScanCode());
             return;
         }
 
@@ -110,16 +148,37 @@ public class KeyboardInputHandler {
 
     @SubscribeEvent
     public static void onInteractionKey(InputEvent.InteractionKeyMappingTriggered event) {
-        if (KeyboardCaptureManager.isCapturing()) event.setCanceled(true);
+        // Block attack/use/pick while capturing keys, or while the mouse is driving Live Control.
+        if (KeyboardCaptureManager.isCapturing() || MouseLiveDriver.isFocused()) event.setCanceled(true);
     }
 
+    // Freeze the camera while the mouse is focused with left-alt
+    @SubscribeEvent
+    public static void onCalculatePlayerTurn(
+            net.neoforged.neoforge.client.event.CalculatePlayerTurnEvent event) {
+        // with 0.0, the camera was allowed to move a little, -1/3 is needed to stop camera entirely
+        if (MouseLiveDriver.isFocused()) event.setMouseSensitivity(-1.0 / 3.0);
+    }
 
     @SubscribeEvent
     public static void onMouseScroll(InputEvent.MouseScrollingEvent event) {
         Minecraft mc = Minecraft.getInstance();
 
+        // Case 0: scroll drives a mouse binding while focused on Live Control
+        if (LiveControlManager.isActive() && MouseLiveDriver.isFocused()) {
+            MouseLiveDriver.addScroll(event.getScrollDeltaY());
+            event.setCanceled(true);
+            return;
+        }
+
         // Case 1: scroll while in keyboard capture mode (CC or Create)
         if (KeyboardCaptureManager.isCapturing()) {
+            // While mouse focus is active, scroll feeds the mouse driver instead.
+            if (MouseLiveDriver.isFocused()) {
+                MouseLiveDriver.addScroll(event.getScrollDeltaY());
+                event.setCanceled(true);
+                return;
+            }
             double scrollY = event.getScrollDeltaY();
             if (scrollY != 0) {
                 int delta = scrollY > 0 ? -1 : 1; // scroll up = previous channel, scroll down = next

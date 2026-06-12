@@ -1,5 +1,6 @@
 package dev.bennethogan.universalkeyboard.compat;
 
+import dev.bennethogan.universalkeyboard.compat.MonitorHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -28,7 +29,7 @@ public enum KeyboardMode {
         BlockEntity be = level.getBlockEntity(pos);
         if (be == null) return false;
         return switch (this) {
-            case CC_COMPUTER      -> isCCComputer(be);
+            case CC_COMPUTER      -> isCCComputer(be) || MonitorHelper.isMonitor(be);
             case CC_PERIPHERAL    -> PeripheralHelper.hasPeripheral(level, pos);
             case VALUE_PANEL      -> CreateValueHelper.hasScrollValue(be);
             case THRUSTER_CONTROL -> {

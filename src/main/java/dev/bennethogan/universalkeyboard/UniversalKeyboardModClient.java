@@ -33,6 +33,7 @@ public class UniversalKeyboardModClient {
         modEventBus.addListener(this::onRegisterMenuScreens);
         modEventBus.addListener(this::onRegisterRenderers);
         modEventBus.addListener(this::onRegisterAdditionalModels);
+        modEventBus.addListener(dev.bennethogan.universalkeyboard.client.ModKeyMappings::register);
         if (ModList.get().isLoaded("create")) {
             modEventBus.addListener(this::onModelBake);
         }
@@ -40,6 +41,7 @@ public class UniversalKeyboardModClient {
         NeoForge.EVENT_BUS.addListener(KeyboardInputHandler::onClientTick);
         NeoForge.EVENT_BUS.addListener(KeyboardInputHandler::onKeyInput);
         NeoForge.EVENT_BUS.addListener(KeyboardInputHandler::onInteractionKey);
+        NeoForge.EVENT_BUS.addListener(KeyboardInputHandler::onCalculatePlayerTurn);
         NeoForge.EVENT_BUS.addListener(KeyboardInputHandler::onMouseScroll);
         NeoForge.EVENT_BUS.addListener(LinkingModeRenderer::onRenderLevelStage);
         NeoForge.EVENT_BUS.addListener(UniversalKeyboardModClient::onPlayerLogout);
@@ -76,6 +78,8 @@ public class UniversalKeyboardModClient {
     private void onRegisterAdditionalModels(ModelEvent.RegisterAdditional event) {
         event.register(dev.bennethogan.universalkeyboard.client.render.ControlWheelRenderer.WHEEL_MODEL);
         event.register(dev.bennethogan.universalkeyboard.client.render.ControlWheelRenderer.WALL_MODEL);
+        for (var mouseModel : dev.bennethogan.universalkeyboard.client.render.KeyboardAnimations.MOUSE_MODELS)
+            event.register(mouseModel);
     }
 
     private void onRegisterMenuScreens(net.neoforged.neoforge.client.event.RegisterMenuScreensEvent event) {
@@ -89,6 +93,7 @@ public class UniversalKeyboardModClient {
 
     private static void onPlayerLogout(ClientPlayerNetworkEvent.LoggingOut event) {
         if (LiveControlManager.isActive()) LiveControlManager.deactivate();
+        dev.bennethogan.universalkeyboard.client.gamepad.MouseLiveDriver.reset();
         dev.bennethogan.universalkeyboard.client.ControlWheelAnimator.reset();
         if (KeyboardCaptureManager.isCapturing()) {
             KeyboardCaptureManager.setCaptureMode(null, false);

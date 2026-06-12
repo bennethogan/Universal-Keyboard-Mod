@@ -19,6 +19,18 @@ public class KeyboardDisplaySource extends DisplaySource {
         BlockEntity be = context.getSourceBlockEntity();
         if (!(be instanceof LinkedKeyboardBlockEntity kbd)) return EMPTY;
 
+        // sequencer's display line gets priority with the old behavior of CC getters, as fallback
+        String[] seqLines = kbd.getDisplayLines();
+        if (seqLines != null) {
+            int last = 0;
+            for (int i = 0; i < seqLines.length; i++)
+                if (seqLines[i] != null && !seqLines[i].isEmpty()) last = i;
+            List<MutableComponent> lines = new ArrayList<>();
+            for (int i = 0; i <= last && lines.size() < stats.maxRows(); i++)
+                lines.add(truncate(seqLines[i] == null ? "" : seqLines[i], stats.maxColumns()));
+            return lines;
+        }
+
         Map<String, String> values = kbd.getCachedGetterValues();
         String type = kbd.getCachedPeripheralType();
 

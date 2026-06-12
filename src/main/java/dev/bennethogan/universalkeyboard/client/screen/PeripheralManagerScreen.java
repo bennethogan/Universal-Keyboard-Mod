@@ -2,6 +2,7 @@ package dev.bennethogan.universalkeyboard.client.screen;
 
 import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.universalkeyboard.compat.CreateValueHelper;
+import dev.bennethogan.universalkeyboard.compat.MonitorHelper;
 import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -136,6 +137,9 @@ public class PeripheralManagerScreen extends Screen {
 
     private String specialCompat(Level level, BlockPos pos) {
         if (!isLoaded(level, pos)) return null;
+        BlockEntity be = level.getBlockEntity(pos);
+        if (MonitorHelper.isMonitor(be))
+            return I18n.get("gui.universalkeyboard.peripheral_manager.compat_typing");
         if (PeripheralHelper.isCCPresent()) {
             Object p = PeripheralHelper.getPeripheral(level, pos);
             if (p != null) {

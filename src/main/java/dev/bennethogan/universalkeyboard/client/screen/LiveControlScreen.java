@@ -2,6 +2,8 @@ package dev.bennethogan.universalkeyboard.client.screen;
 
 import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.universalkeyboard.client.gamepad.GamepadLiveDriver;
+import dev.bennethogan.universalkeyboard.config.ModConfig;
+import dev.bennethogan.universalkeyboard.livecontrol.MouseCodes;
 import dev.bennethogan.universalkeyboard.livecontrol.ChannelMode;
 import dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding;
@@ -76,7 +78,10 @@ public class LiveControlScreen extends Screen {
     private int vectorOverlaySlot = -1;
     private int exclOverlaySlot   = -1;
     private String exclInput      = "";
+    private boolean mouseCaptureArmed = false;
+    private double  lastMoveX = Double.NaN, lastMoveY;
     private int page = 0; // 0 = slots 0–19, 1 = slots 20–39
+    private int focusedSlot = -1;
 
     private String wFreqTooltip   = null;
     private int    wFreqTooltipX  = 0;
@@ -273,14 +278,14 @@ public class LiveControlScreen extends Screen {
         // Prev Page
         addRenderableWidget(IconButton.make(ModIcons.PREV_PAGE,
                 Component.translatable("gui.universalkeyboard.tooltip.prev_page"),
-                b -> { page = 0; vectorOverlaySlot = -1; listeningSlot = -1; },
+                b -> { page = 0; vectorOverlaySlot = -1; listeningSlot = -1; focusedSlot = -1; },
                 bx, btnY, BTN_W, BTN_H));
         bx += BTN_W + BTN_GAP;
 
         // Next Page
         addRenderableWidget(IconButton.make(ModIcons.NEXT_PAGE,
                 Component.translatable("gui.universalkeyboard.tooltip.next_page"),
-                b -> { page = 1; vectorOverlaySlot = -1; listeningSlot = -1; },
+                b -> { page = 1; vectorOverlaySlot = -1; listeningSlot = -1; focusedSlot = -1; },
                 bx, btnY, BTN_W, BTN_H));
     }
 
@@ -329,8 +334,8 @@ public class LiveControlScreen extends Screen {
     }
 
     private void doStart() {
-        // Unconditionally push the started profile to the server, even if its bindings are
-        // unchanged from the empty default. Hoping this helps schematic print behavior with profiles
+        // Unconditionally push the started profile to the server, maybe that will fix schematic printing issues
+        // autosaves no change guardd was causing it to be skipping for NBT saving I think
         ModPackets.sendSaveLiveBindings(keyboardPos, activeProfile, bindings);
         savedSnapshot = deepCopy(bindings);
         LiveControlManager.activate(keyboardPos, bindings, currentLocalRs, currentWirelessPowers, currentThrusterPowers, currentVarValues, currentRpmValues);
@@ -397,6 +402,10 @@ public class LiveControlScreen extends Screen {
     private void renderSlot(GuiGraphics g, int mx, int my, int idx, int rx, int ry) {
         LiveControlBinding b = bindings.get(idx);
         boolean listening = (listeningSlot == idx);
+
+        // blue mark for a click-focused row
+        if (focusedSlot == idx)
+            g.fill(rx, ry, rx + 2, ry + ROW_H, 0xFF5599FF);
 
         g.drawString(font, "§8" + (idx + 1), rx, ry + 4, 0x888888, false);
 
@@ -733,6 +742,13 @@ public class LiveControlScreen extends Screen {
 
         if (exclOverlaySlot >= 0) { handleExclOverlayClick(imx, imy); return true; }
         if (vectorOverlaySlot >= 0) { handleVectorOverlayClick(imx, imy, vectorOverlaySlot, btn); return true; }
+        // key bind a mouse click when listening
+        if (listeningSlot >= 0 && mouseCaptureArmed && mouseInputEnabled()
+                && listeningSlot < bindings.size() && btn < MouseCodes.MAX_BUTTONS) {
+            bindings.get(listeningSlot).keyCode = MouseCodes.button(btn);
+            listeningSlot = -1;
+            return true;
+        }
         if (listeningSlot >= 0) listeningSlot = -1;
         int pageStart = page * (ROWS * 2);
         for (int pi = 0; pi < ROWS * 2; pi++) {
@@ -741,6 +757,8 @@ public class LiveControlScreen extends Screen {
             int col = pi / ROWS, row = pi % ROWS;
             int rx = panelX + PAD + col * COL_OFFSET;
             int ry = firstRowY + row * (ROW_H + ROW_GAP);
+            // click to focus row
+            if (isIn(imx, imy, rx, ry, COL_W, ROW_H)) focusedSlot = i;
             if (handleSlotClick(i, rx, ry, imx, imy, btn)) return true;
         }
         return super.mouseClicked(mx, my, btn);
@@ -756,10 +774,12 @@ public class LiveControlScreen extends Screen {
         int cx = ovX + VEC_OV_W / 2, cy = ovY + 22 + 34, r = 34;
         double dx = mx - cx, dy = cy - my;
         if (Math.sqrt(dx * dx + dy * dy) <= r + 6) {
-            b.vectorX = dx / r;
-            b.vectorY = dy / r;
-            double mag = Math.sqrt(b.vectorX * b.vectorX + b.vectorY * b.vectorY);
-            if (mag > 1.0) { b.vectorX /= mag; b.vectorY /= mag; }
+            double rawX = snapToGrid(dx / r, 15);
+            double rawY = snapToGrid(dy / r, 15);
+            double mag = Math.sqrt(rawX * rawX + rawY * rawY);
+            if (mag > 1.0) { rawX /= mag; rawY /= mag; }
+            b.vectorX = rawX;
+            b.vectorY = rawY;
         }
     }
 
@@ -771,7 +791,11 @@ public class LiveControlScreen extends Screen {
             if (btn == 1) { b.keyCode = -1; listeningSlot = -1; }
             else {
                 listeningSlot = (listeningSlot == idx) ? -1 : idx;
-                if (listeningSlot >= 0) GamepadLiveDriver.beginCapture();
+                if (listeningSlot >= 0) {
+                    GamepadLiveDriver.beginCapture();
+                    mouseCaptureArmed = false;
+                    lastMoveX = Double.NaN;
+                }
             }
             return true;
         }
@@ -873,6 +897,7 @@ public class LiveControlScreen extends Screen {
                 if (isIn(mx, my, x, y, 26, ROW_H)) {
                     listeningSlot = -1;
                     vectorOverlaySlot = -1;
+                    focusedSlot = -1;
                     exclOverlaySlot = idx;
                     exclInput = b.odExcludes == null ? "" : b.odExcludes;
                     return true;
@@ -911,8 +936,17 @@ public class LiveControlScreen extends Screen {
     // ── Scroll wheel ──────────────────────────────────────────────────────────
     @Override
     public boolean mouseScrolled(double mx, double my, double dx, double dy) {
-        int imx = (int) mx, imy = (int) my;
+        // scroll wheel is also a bindable input now
+        if (listeningSlot >= 0 && mouseInputEnabled() && listeningSlot < bindings.size() && dy != 0) {
+            bindings.get(listeningSlot).keyCode = dy > 0 ? MouseCodes.SCROLL_UP : MouseCodes.SCROLL_DOWN;
+            listeningSlot = -1;
+            return true;
+        }
+        if (dy == 0) return false;
         int dir = dy > 0 ? 1 : -1;
+
+        // scroll behavior only on hovered cell
+        int imx = (int) mx, imy = (int) my;
         int pageStart = page * (ROWS * 2);
         for (int pi = 0; pi < ROWS * 2; pi++) {
             int i = pageStart + pi;
@@ -921,24 +955,132 @@ public class LiveControlScreen extends Screen {
             int rx = panelX + PAD + col * COL_OFFSET;
             int ry = firstRowY + row * (ROW_H + ROW_GAP);
             if (!isIn(imx, imy, rx, ry, COL_W, ROW_H)) continue;
-            LiveControlBinding b = bindings.get(i);
-            int cfgX = rx + CFG_OFF;
-            if (isIn(imx, imy, cfgX, ry, CFG_W, ROW_H) && b.mode != Mode.INC) {
-                switch (b.actionType) {
-                    case REDSTONE       -> b.signalStrength = Math.max(0, Math.min(15, b.signalStrength + dir));
-                    case THRUSTER_POWER -> b.powerLevel = stepPower(b.powerLevel, dir);
-                    case VARIABLE       -> b.varOnValue = Math.max(1, Math.min(100, b.varOnValue + dir));
-                    case OVERDRIVE      -> b.overdriveMultiplier = cycleOverdrive(b.overdriveMultiplier, dir);
-                    default -> { // channel modes (RPM family)
-                        ChannelMode m = ChannelMode.byType(b.actionType);
-                        if (m != null) m.stepTarget(b, dir);
-                    }
-                }
-                return true;
+            // same idea as the sequencer screen with scrolling being less easy
+            if (i == focusedSlot) {
+                scrollHoveredCell(i, rx, ry, imx, imy, dir);
             }
-            return false;
+            return true;
         }
         return super.mouseScrolled(mx, my, dx, dy);
+    }
+
+    private void scrollHoveredCell(int idx, int rx, int ry, int mx, int my, int dir) {
+        LiveControlBinding b = bindings.get(idx);
+
+        // scroll Type box too
+        int tx = rx + NUM_W + KEY_W + 2;
+        if (isIn(mx, my, tx, ry, TYPE_W, ROW_H)) {
+            b.actionType = nextAvailableType(b.actionType, dir);
+            if (b.mode == Mode.INC
+                    && (b.actionType == ActionType.THRUSTER_VECTOR || b.actionType == ActionType.OVERDRIVE))
+                b.mode = Mode.HLD;
+            if (b.inverted && !canInvert(b.actionType)) b.inverted = false;
+            return;
+        }
+
+        int x = rx + CFG_OFF, y = ry;
+        switch (b.actionType) {
+            case REDSTONE -> {
+                if (isIn(mx, my, x, y, 50, ROW_H)) { cycleSide(b, dir); return; }
+                x += 52;
+                if (isIn(mx, my, x, y, 20, ROW_H)) { cycleModeScroll(b, dir); return; }
+                x += 22;
+                if (isIn(mx, my, x, y, 20, ROW_H)) {
+                    if (b.mode == Mode.INC) b.incPlus = !b.incPlus;
+                    else b.signalStrength = Math.max(0, Math.min(15, b.signalStrength + dir));
+                }
+            }
+            case THRUSTER_POWER -> {
+                if (isIn(mx, my, x, y, 40, ROW_H)) { stepChannel(b, dir); return; }
+                x += 42;
+                if (isIn(mx, my, x, y, 20, ROW_H)) { cycleModeScroll(b, dir); return; }
+                x += 22;
+                if (isIn(mx, my, x, y, 28, ROW_H)) {
+                    if (b.mode == Mode.INC) b.incPlus = !b.incPlus;
+                    else b.powerLevel = stepPower(b.powerLevel, dir);
+                }
+            }
+            case THRUSTER_VECTOR -> {
+                if (isIn(mx, my, x, y, 40, ROW_H)) { stepChannel(b, dir); return; }
+                x += 42;
+                if (isIn(mx, my, x, y, 20, ROW_H)) cycleModeScroll(b, dir);
+
+            }
+            case VARIABLE -> {
+                if (isIn(mx, my, x, y, 40, ROW_H)) { b.varIndex = ((b.varIndex + dir) % 16 + 16) % 16; return; }
+                x += 42;
+                if (isIn(mx, my, x, y, 20, ROW_H)) { cycleModeScroll(b, dir); return; }
+                x += 22;
+                if (isIn(mx, my, x, y, 28, ROW_H)) {
+                    if (b.mode == Mode.INC) b.incPlus = !b.incPlus;
+                    else b.varOnValue = Math.max(1, Math.min(100, b.varOnValue + dir));
+                }
+            }
+            case OVERDRIVE -> {
+                if (isIn(mx, my, x, y, 20, ROW_H)) { cycleModeScroll(b, dir); return; }
+                x += 22;
+                if (isIn(mx, my, x, y, 40, ROW_H))
+                    b.overdriveMultiplier = cycleOverdrive(b.overdriveMultiplier, dir);
+            }
+            default -> { // channel modes (RPM family)
+                ChannelMode m = ChannelMode.byType(b.actionType);
+                if (m == null) return;
+                if (isIn(mx, my, x, y, 40, ROW_H)) { stepChannel(b, dir); return; }
+                x += 42;
+                if (isIn(mx, my, x, y, 20, ROW_H)) { cycleModeScroll(b, dir); return; }
+                x += 22;
+                if (isIn(mx, my, x, y, 28, ROW_H)) {
+                    if (b.mode == Mode.INC) b.incPlus = !b.incPlus;
+                    else m.stepTarget(b, dir);
+                }
+            }
+        }
+    }
+
+    private static void stepChannel(LiveControlBinding b, int dir) {
+        b.channel += dir;
+        if (b.channel < 1) b.channel = LinkedKeyboardBlockEntity.MAX_CHANNELS;
+        if (b.channel > LinkedKeyboardBlockEntity.MAX_CHANNELS) b.channel = 1;
+    }
+
+    private static void cycleModeScroll(LiveControlBinding b, int dir) {
+        b.mode = nextMode(b.actionType, b.mode, dir);
+        if (b.mode != Mode.HLD) b.inverted = false;
+    }
+
+    private void stepPrimaryField(int idx, int dir) {
+        if (idx < 0 || idx >= bindings.size()) return;
+        LiveControlBinding b = bindings.get(idx);
+        switch (b.actionType) {
+            case REDSTONE -> cycleSide(b, dir);
+            case VARIABLE -> b.varIndex = ((b.varIndex + dir) % 16 + 16) % 16;
+            case OVERDRIVE -> b.overdriveMultiplier = cycleOverdrive(b.overdriveMultiplier, dir);
+            default -> stepChannel(b, dir);
+        }
+    }
+
+    @Override
+    public void mouseMoved(double mx, double my) {
+        if (listeningSlot >= 0 && mouseCaptureArmed && mouseInputEnabled()
+                && listeningSlot < bindings.size()) {
+            if (Double.isNaN(lastMoveX)) { lastMoveX = mx; lastMoveY = my; }
+            double ddx = mx - lastMoveX, ddy = my - lastMoveY;
+            lastMoveX = mx; lastMoveY = my;
+            final double FLICK = 10.0;
+            if (Math.abs(ddx) >= FLICK || Math.abs(ddy) >= FLICK) {
+                int code = (Math.abs(ddx) >= Math.abs(ddy))
+                        ? (ddx > 0 ? MouseCodes.AXIS_X_POS : MouseCodes.AXIS_X_NEG)
+                        : (ddy > 0 ? MouseCodes.AXIS_Y_POS : MouseCodes.AXIS_Y_NEG);
+                bindings.get(listeningSlot).keyCode = code;
+                listeningSlot = -1;
+            }
+        }
+        super.mouseMoved(mx, my);
+    }
+
+    private static boolean mouseInputEnabled() {
+        try { return ModConfig.CLIENT.enableMouseInput.get(); }
+        catch (Exception e) { return false; }
     }
 
     // ── Key handling ──────────────────────────────────────────────────────────
@@ -975,6 +1117,15 @@ public class LiveControlScreen extends Screen {
             if (vectorOverlaySlot >= 0) { vectorOverlaySlot = -1; return true; }
             onClose(); return true;
         }
+        // arrow keys nudge the quantized vector point
+        if (vectorOverlaySlot >= 0) {
+            final double STEP = 1.0 / 15.0;
+            LiveControlBinding vb = bindings.get(vectorOverlaySlot);
+            if (keyCode == GLFW.GLFW_KEY_LEFT)  { nudgeVector(vb, -STEP, 0);    return true; }
+            if (keyCode == GLFW.GLFW_KEY_RIGHT) { nudgeVector(vb, +STEP, 0);    return true; }
+            if (keyCode == GLFW.GLFW_KEY_UP)    { nudgeVector(vb, 0,    +STEP); return true; }
+            if (keyCode == GLFW.GLFW_KEY_DOWN)  { nudgeVector(vb, 0,    -STEP); return true; }
+        }
         if (MenuNav.handleTabBack(this, keyCode, keyboardPos)) return true;
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
@@ -982,13 +1133,15 @@ public class LiveControlScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
-        // While a slot is "listening", a gamepad button press binds it just like a key press.
         if (listeningSlot >= 0 && exclOverlaySlot < 0) {
+            mouseCaptureArmed = true;
             int code = GamepadLiveDriver.pollCapture();
             if (code >= 0 && listeningSlot < bindings.size()) {
                 bindings.get(listeningSlot).keyCode = code;
                 listeningSlot = -1;
             }
+        } else {
+            mouseCaptureArmed = false;
         }
 
         // Debounced autosave: flush one tick after the last edit, so continuous
@@ -1139,6 +1292,19 @@ public class LiveControlScreen extends Screen {
     private static double stepPower(double current, int dir) {
         int n = (int) Math.round(current * 15);
         return Math.max(0, Math.min(15, n + dir)) / 15.0;
+    }
+
+    private static double snapToGrid(double val, int divisions) {
+        return Math.round(val * divisions) / (double) divisions;
+    }
+
+    private static void nudgeVector(LiveControlBinding b, double dx, double dy) {
+        double nx = Math.max(-1.0, Math.min(1.0, snapToGrid(b.vectorX + dx, 15)));
+        double ny = Math.max(-1.0, Math.min(1.0, snapToGrid(b.vectorY + dy, 15)));
+        double mag = Math.sqrt(nx * nx + ny * ny);
+        if (mag > 1.0) { nx /= mag; ny /= mag; }
+        b.vectorX = nx;
+        b.vectorY = ny;
     }
 
     private static String vecArrow(double vx, double vy) {

@@ -1,16 +1,53 @@
 {
   "variants": {
-    "face=floor,facing=north":   { "model": "universalkeyboard:block/rainbow_keyboard" },
-    "face=floor,facing=east":    { "model": "universalkeyboard:block/rainbow_keyboard", "y": 90 },
-    "face=floor,facing=south":   { "model": "universalkeyboard:block/rainbow_keyboard", "y": 180 },
-    "face=floor,facing=west":    { "model": "universalkeyboard:block/rainbow_keyboard", "y": 270 },
-    "face=ceiling,facing=north": { "model": "universalkeyboard:block/rainbow_keyboard", "x": 180 },
-    "face=ceiling,facing=east":  { "model": "universalkeyboard:block/rainbow_keyboard", "x": 180, "y": 90 },
-    "face=ceiling,facing=south": { "model": "universalkeyboard:block/rainbow_keyboard", "x": 180, "y": 180 },
-    "face=ceiling,facing=west":  { "model": "universalkeyboard:block/rainbow_keyboard", "x": 180, "y": 270 },
-    "face=wall,facing=north":    { "model": "universalkeyboard:block/rainbow_keyboard_wall", "y": 180 },
-    "face=wall,facing=south":    { "model": "universalkeyboard:block/rainbow_keyboard_wall" },
-    "face=wall,facing=east":     { "model": "universalkeyboard:block/rainbow_keyboard_wall", "y": 270 },
-    "face=wall,facing=west":     { "model": "universalkeyboard:block/rainbow_keyboard_wall", "y": 90 }
+    "face=floor,facing=north": {
+      "model": "universalkeyboard:block/rainbow_keyboard_body"
+    },
+    "face=floor,facing=east": {
+      "model": "universalkeyboard:block/rainbow_keyboard_body",
+      "y": 90
+    },
+    "face=floor,facing=south": {
+      "model": "universalkeyboard:block/rainbow_keyboard_body",
+      "y": 180
+    },
+    "face=floor,facing=west": {
+      "model": "universalkeyboard:block/rainbow_keyboard_body",
+      "y": 270
+    },
+    "face=ceiling,facing=north": {
+      "model": "universalkeyboard:block/rainbow_keyboard_body",
+      "x": 180
+    },
+    "face=ceiling,facing=east": {
+      "model": "universalkeyboard:block/rainbow_keyboard_body",
+      "x": 180,
+      "y": 90
+    },
+    "face=ceiling,facing=south": {
+      "model": "universalkeyboard:block/rainbow_keyboard_body",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=west": {
+      "model": "universalkeyboard:block/rainbow_keyboard_body",
+      "x": 180,
+      "y": 270
+    },
+    "face=wall,facing=north": {
+      "model": "universalkeyboard:block/rainbow_keyboard_wall_body",
+      "y": 180
+    },
+    "face=wall,facing=south": {
+      "model": "universalkeyboard:block/rainbow_keyboard_wall_body"
+    },
+    "face=wall,facing=east": {
+      "model": "universalkeyboard:block/rainbow_keyboard_wall_body",
+      "y": 270
+    },
+    "face=wall,facing=west": {
+      "model": "universalkeyboard:block/rainbow_keyboard_wall_body",
+      "y": 90
+    }
   }
 }

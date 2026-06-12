@@ -51,16 +51,25 @@ public class SequencerScreen extends Screen {
     private static final int COL_CTX  = 108;
     private static final int COL_DEL  = 394;
 
-    private static final String[]   OP_CAT_LABELS = {"Binary", "Unary", "Trig"};
+    private static final String[]   OP_CAT_LABELS = {"Binary", "Unary", "Trig", "Other"};
     private static final String[][] OP_CAT_OPS    = {
         {"+", "-", "*", "/", "%", "pow", "min", "max"},
         {"abs", "neg", "round", "floor", "ceil"},
-        {"sin", "cos", "tan", "asin", "acos", "atan", "atan2"}
+        {"sin", "cos", "tan", "asin", "acos", "atan", "atan2"},
+        {"rand", "randL", "randW"}
     };
     private static final boolean[][] OP_CAT_UNARY = {
         {false, false, false, false, false, false, false, false},
         {true,  true,  true,  true,  true},
-        {true,  true,  true,  true,  true,  true,  false}
+        {true,  true,  true,  true,  true,  true,  false},
+        {false, true,  true}
+    };
+    // hide a & b for nullary operation
+    private static final boolean[][] OP_CAT_NULLARY = {
+        {false, false, false, false, false, false, false, false},
+        {false, false, false, false, false},
+        {false, false, false, false, false, false, false},
+        {true,  false, false}
     };
     private static final String[]   IF_OPS    = {">", ">=", "=", "<=", "<", "!="};
     private static final Direction[] RS_DIRS  = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP, Direction.DOWN};
@@ -613,6 +622,7 @@ public class SequencerScreen extends Screen {
             case REGRESS                -> 0xFF22AABB;
             case CYCLE                  -> 0xFF8822BB;
             case END                    -> 0xFF444444;
+            case DISPLAY                -> 0xFF2255BB;
         };
     }
 
@@ -630,6 +640,7 @@ public class SequencerScreen extends Screen {
             case REGRESS                -> 0x66002233;
             case CYCLE                  -> 0x66110033;
             case END                    -> 0x660D0D0D;
+            case DISPLAY                -> 0x66001133;
         };
     }
 
@@ -698,6 +709,7 @@ public class SequencerScreen extends Screen {
         List<Type> list = new ArrayList<>();
         list.add(Type.MATH);
         if (typeable) { list.add(Type.TYPE_VARIABLE); list.add(Type.TYPE_TEXT); }
+        if (net.neoforged.fml.ModList.get().isLoaded("create")) list.add(Type.DISPLAY);
         list.add(Type.SET_REDSTONE);
         if (ccPresent) list.add(Type.SET_VALUE);
         list.add(Type.REGRESS);
@@ -1181,7 +1193,43 @@ public class SequencerScreen extends Screen {
 
     private List<SrcCat> getSrcCatsForField(String field, int ch, boolean includeManual, boolean varsOnly) {
         if (field.equals("CONDITION")) return buildConditionCats(ch);
+        if (field.equals("RS_TARGET")) return buildRsTargetCats();
         return buildSrcCats(ch, includeManual, varsOnly, field.equals("IF_GETTER"));
+    }
+
+    // Set RS line gets a nested menu too
+    private List<SrcCat> buildRsTargetCats() {
+        List<SrcCat> cats = new ArrayList<>();
+        List<String> sides = new ArrayList<>();
+        for (Direction d : RS_DIRS) sides.add(d.getName().toUpperCase());
+        cats.add(new SrcCat("Side", sides));
+
+        int rsLinkCount = getRsLinkCount();
+        if (rsLinkCount > 0) {
+            List<String> ls = new ArrayList<>();
+            for (int i = 1; i <= rsLinkCount; i++) ls.add("L" + i);
+            cats.add(new SrcCat("Link", ls));
+        }
+        int wCount = getWirelessFreqCount();
+        if (wCount > 0) {
+            List<String> ws = new ArrayList<>();
+            for (int i = 1; i <= wCount; i++) ws.add("W" + i);
+            cats.add(new SrcCat("Wireless", ws));
+        }
+        List<String> varW = new ArrayList<>(), varL = new ArrayList<>();
+        for (int i = 1; i <= SequencerStep.VAR_COUNT; i++) { varW.add("W:V" + i); varL.add("L:V" + i); }
+        cats.add(new SrcCat("Var→W", varW));
+        cats.add(new SrcCat("Var→L", varL));
+        return cats;
+    }
+
+    //label
+    static String rsTargetLabel(SequencerStep step) {
+        if (step.rsTargetVar > 0)
+            return (step.rsTargetIsLink ? "L" : "W") + ":V" + step.rsTargetVar;
+        if (step.wirelessFreqOutIdx > 0) return "W" + step.wirelessFreqOutIdx;
+        if (step.rsLinkOutIdx > 0) return "L" + step.rsLinkOutIdx;
+        return step.redstoneOutDir.getName().toUpperCase();
     }
 
     private String getCurrentSrcValue(SequencerStep step, String field) {
@@ -1193,6 +1241,7 @@ public class SequencerScreen extends Screen {
             case "MATH_B"    -> step.mathBManual ? manualLabel : step.mathB;
             case "CONDITION" -> step.conditionSource == ConditionSource.PERIPHERAL
                     ? step.conditionGetter : step.conditionSource.label;
+            case "RS_TARGET" -> rsTargetLabel(step);
             default -> "";
         };
     }
@@ -1322,6 +1371,21 @@ public class SequencerScreen extends Screen {
                 } else {
                     step.conditionSource = ConditionSource.PERIPHERAL;
                     step.conditionGetter = value;
+                }
+            }
+            case "RS_TARGET" -> {
+                step.rsTargetVar = 0;
+                step.rsLinkOutIdx = 0;
+                step.wirelessFreqOutIdx = 0;
+                switch (catLabel) {
+                    case "Side" -> {
+                        for (Direction d : RS_DIRS)
+                            if (d.getName().equalsIgnoreCase(value)) { step.redstoneOutDir = d; break; }
+                    }
+                    case "Link"     -> step.rsLinkOutIdx = Integer.parseInt(value.substring(1));
+                    case "Wireless" -> step.wirelessFreqOutIdx = Integer.parseInt(value.substring(1));
+                    case "Var→W"    -> { step.rsTargetVar = Integer.parseInt(value.substring(3)); step.rsTargetIsLink = false; }
+                    case "Var→L"    -> { step.rsTargetVar = Integer.parseInt(value.substring(3)); step.rsTargetIsLink = true; }
                 }
             }
         }
@@ -1483,6 +1547,8 @@ public class SequencerScreen extends Screen {
         EditBox rsSignalInput;
         EditBox typeTextInput;
         Button  typeEnterBtn;
+        Button  displayLineBtn;
+        EditBox displayTextInput;
         Button  ifGetterBtn, ifOpBtn, ifSkipBtn, ifModeBtn;
         EditBox ifValueInput, ifJumpInput;
         Button  sourceBtn, getterBtn;
@@ -1523,8 +1589,11 @@ public class SequencerScreen extends Screen {
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).setValueStr = str; });
 
             // SET_REDSTONE
-            rsDirBtn = DarkButton.make(Component.literal(""), b -> cycleRedstoneDir(1),
-                    ctx, rowY + 1, 90, BTN_H);
+            rsDirBtn = DarkButton.make(Component.literal(""), b -> {
+                int si2 = scrollOffset + rowIdx;
+                if (si2 < steps.size())
+                    openSrcPick("RS_TARGET", steps.get(si2).channel, false, false, ctx + 92);
+            }, ctx, rowY + 1, 90, BTN_H);
             addRenderableWidget(rsDirBtn);
             rsSignalInput = makeBox(ctx + 94, rowY, 80, I18n.get("gui.universalkeyboard.hint.signal_or_variable"),
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).redstoneOutSignalStr = str; });
@@ -1536,6 +1605,14 @@ public class SequencerScreen extends Screen {
             typeEnterBtn = DarkButton.make(Component.literal("↵"), b -> toggleTypeEnter(),
                     ctx + 214, rowY + 1, 66, BTN_H);
             addRenderableWidget(typeEnterBtn);
+
+            // DISPLAY
+            displayLineBtn = DarkButton.make(Component.literal("L1"), b -> cycleDisplayLine(1),
+                    ctx, rowY + 1, 40, BTN_H);
+            addRenderableWidget(displayLineBtn);
+            displayTextInput = makeBox(ctx + 44, rowY, 236, I18n.get("gui.universalkeyboard.hint.display_text"),
+                    str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).typeTextStr = str; });
+            displayTextInput.setMaxLength(200);
 
             // IF
             ifGetterBtn = DarkButton.make(Component.literal(""), b -> {
@@ -1694,6 +1771,14 @@ public class SequencerScreen extends Screen {
             methodBtn.setMessage(Component.literal(step.setMethod));
         }
 
+        private void cycleDisplayLine(int dir) {
+            int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
+            SequencerStep step = steps.get(si);
+            step.displayLine = wrapIdx(step.displayLine - 1,
+                    dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity.MAX_DISPLAY_LINES, dir) + 1;
+            displayLineBtn.setMessage(Component.literal("L" + step.displayLine));
+        }
+
         private void toggleTypeEnter() {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
@@ -1705,12 +1790,15 @@ public class SequencerScreen extends Screen {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
 
-            int rsLinkCount = getRsLinkCount();
-            int linkCount = getWirelessFreqCount();
-            int totalSlots = RS_DIRS.length + rsLinkCount + linkCount;
+            int rsLinkCount   = getRsLinkCount();
+            int linkCount     = getWirelessFreqCount();
+            int varBase       = RS_DIRS.length + rsLinkCount + linkCount;
+            int totalSlots    = varBase + SequencerStep.VAR_COUNT * 2; // + W:V1..V16 + L:V1..V16
 
             int currentPos;
-            if (step.wirelessFreqOutIdx > 0 && step.wirelessFreqOutIdx <= linkCount) {
+            if (step.rsTargetVar > 0) {
+                currentPos = varBase + (step.rsTargetIsLink ? SequencerStep.VAR_COUNT : 0) + step.rsTargetVar - 1;
+            } else if (step.wirelessFreqOutIdx > 0 && step.wirelessFreqOutIdx <= linkCount) {
                 currentPos = RS_DIRS.length + rsLinkCount + step.wirelessFreqOutIdx - 1;
             } else if (step.rsLinkOutIdx > 0 && step.rsLinkOutIdx <= rsLinkCount) {
                 currentPos = RS_DIRS.length + step.rsLinkOutIdx - 1;
@@ -1721,23 +1809,36 @@ public class SequencerScreen extends Screen {
             int nextPos = wrapIdx(currentPos, totalSlots, dir);
 
             if (nextPos < RS_DIRS.length) {
+                step.rsTargetVar = 0;
                 step.rsLinkOutIdx = 0;
                 step.wirelessFreqOutIdx = 0;
                 step.redstoneOutDir = RS_DIRS[nextPos];
             } else if (nextPos < RS_DIRS.length + rsLinkCount) {
+                step.rsTargetVar = 0;
                 step.rsLinkOutIdx = nextPos - RS_DIRS.length + 1;
                 step.wirelessFreqOutIdx = 0;
-            } else {
+            } else if (nextPos < varBase) {
+                step.rsTargetVar = 0;
                 step.wirelessFreqOutIdx = nextPos - RS_DIRS.length - rsLinkCount + 1;
                 step.rsLinkOutIdx = 0;
+            } else if (nextPos < varBase + SequencerStep.VAR_COUNT) {
+                // W:V1-16
+                step.rsTargetVar    = nextPos - varBase + 1;
+                step.rsTargetIsLink = false;
+                step.rsLinkOutIdx = 0;
+                step.wirelessFreqOutIdx = 0;
+            } else {
+                // L:V1-16
+                step.rsTargetVar    = nextPos - varBase - SequencerStep.VAR_COUNT + 1;
+                step.rsTargetIsLink = true;
+                step.rsLinkOutIdx = 0;
+                step.wirelessFreqOutIdx = 0;
             }
             rsDirBtn.setMessage(Component.literal("→ " + redstoneTargetLabel(step)));
         }
 
         private String redstoneTargetLabel(SequencerStep step) {
-            if (step.wirelessFreqOutIdx > 0) return "W" + step.wirelessFreqOutIdx;
-            if (step.rsLinkOutIdx > 0) return "L" + step.rsLinkOutIdx;
-            return step.redstoneOutDir.getName().toUpperCase();
+            return rsTargetLabel(step);
         }
 
         private void cycleIfGetter(int dir) {
@@ -1901,10 +2002,14 @@ public class SequencerScreen extends Screen {
             if (idx < 0) idx = 0;
             step.mathOp = all.get(wrapIdx(idx, all.size(), dir));
             mathOpBtn.setMessage(Component.literal(step.mathOp));
-            boolean unary = isUnaryOp(step.mathOp);
-            mathBInput.visible     = !unary && step.mathBManual;
-            mathBSourceBtn.visible = !unary && !step.mathBManual;
-            mathBChBtn.visible     = !unary && !step.mathBManual && srcNeedsChannel(step.mathB, false);
+            boolean unary   = isUnaryOp(step.mathOp);
+            boolean nullary = isNullaryOp(step.mathOp);
+            mathAInput.visible     = !nullary && step.mathAManual;
+            mathASourceBtn.visible = !nullary && !step.mathAManual;
+            mathAChBtn.visible     = !nullary && !step.mathAManual && srcNeedsChannel(step.mathA, false);
+            mathBInput.visible     = !unary && !nullary && step.mathBManual;
+            mathBSourceBtn.visible = !unary && !nullary && !step.mathBManual;
+            mathBChBtn.visible     = !unary && !nullary && !step.mathBManual && srcNeedsChannel(step.mathB, false);
         }
 
         /** Scroll over a math source button to cycle its selected source directly. */
@@ -1940,6 +2045,7 @@ public class SequencerScreen extends Screen {
             if (hit(typeBtn, mx, my))        { cycleType(dir);              return true; }
             if (hit(methodBtn, mx, my))      { cycleMethod(dir);            return true; }
             if (hit(rsDirBtn, mx, my))       { cycleRedstoneDir(dir);       return true; }
+            if (hit(displayLineBtn, mx, my)) { cycleDisplayLine(dir);       return true; }
             if (hit(ifGetterBtn, mx, my))    { cycleIfGetter(dir);          return true; }
             if (hit(ifOpBtn, mx, my))        { cycleIfOp(dir);              return true; }
             if (hit(ifSkipBtn, mx, my))      { cycleIfSkip(dir);            return true; }
@@ -1970,6 +2076,7 @@ public class SequencerScreen extends Screen {
             methodBtn.visible = valueInput.visible = false;
             rsDirBtn.visible = rsSignalInput.visible = false;
             typeTextInput.visible = typeEnterBtn.visible = false;
+            displayLineBtn.visible = displayTextInput.visible = false;
             ifGetterBtn.visible = ifOpBtn.visible = ifValueInput.visible = false;
             ifSkipBtn.visible = ifModeBtn.visible = ifJumpInput.visible = false;
             sourceBtn.visible = getterBtn.visible = opInput.visible = false;
@@ -2008,6 +2115,11 @@ public class SequencerScreen extends Screen {
                     typeTextInput.setValue(step.typeTextStr);
                     typeEnterBtn.setMessage(Component.literal(step.typeTextEnter ? "↵ on" : "↵ off"));
                 }
+                case DISPLAY -> {
+                    displayLineBtn.visible = displayTextInput.visible = true;
+                    displayLineBtn.setMessage(Component.literal("L" + step.displayLine));
+                    displayTextInput.setValue(step.typeTextStr);
+                }
                 case IF -> {
                     ifGetterBtn.visible = ifOpBtn.visible = ifValueInput.visible = ifModeBtn.visible = true;
                     boolean goTo = step.ifGoTo;
@@ -2041,19 +2153,24 @@ public class SequencerScreen extends Screen {
                     mathDestBtn.setX(panelX + PAD + COL_CTX);
                     mathDestBtn.visible = mathOpBtn.visible = true;
                     boolean unary   = isUnaryOp(step.mathOp);
+                    boolean nullary = isNullaryOp(step.mathOp);
                     boolean aManual = step.mathAManual;
                     boolean bManual = step.mathBManual;
-                    mathAInput.visible     = aManual;
-                    mathASourceBtn.visible = !aManual;
-                    mathAChBtn.visible     = !aManual && srcNeedsChannel(step.mathA, false);
-                    mathBInput.visible     = !unary && bManual;
-                    mathBSourceBtn.visible = !unary && !bManual;
-                    mathBChBtn.visible     = !unary && !bManual && srcNeedsChannel(step.mathB, false);
+                    mathAInput.visible     = !nullary && aManual;
+                    mathASourceBtn.visible = !nullary && !aManual;
+                    mathAChBtn.visible     = !nullary && !aManual && srcNeedsChannel(step.mathA, false);
+                    mathBInput.visible     = !unary && !nullary && bManual;
+                    mathBSourceBtn.visible = !unary && !nullary && !bManual;
+                    mathBChBtn.visible     = !unary && !nullary && !bManual && srcNeedsChannel(step.mathB, false);
                     String dest = (step.mathDest == null || step.mathDest.isEmpty()) ? "V1" : step.mathDest;
                     step.mathDest = dest;
                     mathDestBtn.setMessage(Component.literal(dest));
                     if (aManual) mathAInput.setValue(step.mathA);
-                    else mathASourceBtn.setMessage(Component.literal(step.mathA.isEmpty() ? "src A..." : fitLabel(step.mathA, 56)));
+                    else {
+                        boolean randRange = step.mathOp.equals("randL") || step.mathOp.equals("randW");
+                        String aEmpty = randRange ? "max..." : "src A...";
+                        mathASourceBtn.setMessage(Component.literal(step.mathA.isEmpty() ? aEmpty : fitLabel(step.mathA, 56)));
+                    }
                     mathAChBtn.setMessage(Component.literal(String.valueOf(step.mathACh)));
                     mathOpBtn.setMessage(Component.literal(step.mathOp));
                     if (!unary) {
@@ -2105,6 +2222,13 @@ public class SequencerScreen extends Screen {
         for (int c = 0; c < OP_CAT_OPS.length; c++)
             for (int i = 0; i < OP_CAT_OPS[c].length; i++)
                 if (OP_CAT_OPS[c][i].equals(op)) return OP_CAT_UNARY[c][i];
+        return false;
+    }
+
+    private static boolean isNullaryOp(String op) {
+        for (int c = 0; c < OP_CAT_OPS.length; c++)
+            for (int i = 0; i < OP_CAT_OPS[c].length; i++)
+                if (OP_CAT_OPS[c][i].equals(op)) return OP_CAT_NULLARY[c][i];
         return false;
     }
 

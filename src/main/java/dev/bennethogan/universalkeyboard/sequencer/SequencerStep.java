@@ -21,7 +21,8 @@ public class SequencerStep {
         REGRESS("Regression"),
         CYCLE("Loop"),
         END("End"),
-        TYPE_VARIABLE("Type Var");
+        TYPE_VARIABLE("Type Var"),
+        DISPLAY("Display");
 
         public final String label;
         Type(String label) { this.label = label; }
@@ -41,6 +42,7 @@ public class SequencerStep {
                 case REGRESS        -> "§3"; // teal      — regression
                 case CYCLE          -> "§5"; // purple    — loop
                 case END            -> "§8"; // dark gray — end
+                case DISPLAY        -> "§9"; // blue      — display link output
             };
         }
 
@@ -101,10 +103,16 @@ public class SequencerStep {
     public int       rsLinkOutIdx       = 0;
     // 0 = not a link channel; 1..100 = link freq slot L1..L100
     public int       wirelessFreqOutIdx           = 0;
+    // 0 = use fixed target above; 1..16 = variable index for W & L
+    public int     rsTargetVar    = 0;
+    public boolean rsTargetIsLink = false;
 
     // TYPE_TEXT
     public String  typeTextStr   = "";
     public boolean typeTextEnter = true; // press Enter after typing
+
+    // DISPLAY mode
+    public int displayLine = 1; // 1..MAX_DISPLAY_LINES
 
     // IF
     public String ifGetter    = "";
@@ -179,6 +187,11 @@ public class SequencerStep {
         tag.putString("regressMode",           regressMode);
         tag.putString("regressDest2",          regressDest2);
         tag.putInt("channel",                  channel);
+        tag.putInt("displayLine",              displayLine);
+        if (rsTargetVar > 0) {
+            tag.putInt("rsTargetVar",   rsTargetVar);
+            tag.putBoolean("rsTargetIsLink", rsTargetIsLink);
+        }
         return tag;
     }
 
@@ -222,6 +235,10 @@ public class SequencerStep {
         s.regressMode           = def(tag.getString("regressMode"),  "SAMPLE");
         s.regressDest2          = def(tag.getString("regressDest2"), "V2");
         s.channel               = tag.contains("channel") ? Math.max(1, Math.min(16, tag.getInt("channel"))) : 1;
+        s.displayLine           = tag.contains("displayLine")
+                ? Math.max(1, Math.min(LinkedKeyboardBlockEntity.MAX_DISPLAY_LINES, tag.getInt("displayLine"))) : 1;
+        s.rsTargetVar           = tag.contains("rsTargetVar") ? Math.max(0, Math.min(VAR_COUNT, tag.getInt("rsTargetVar"))) : 0;
+        s.rsTargetIsLink        = tag.contains("rsTargetIsLink") && tag.getBoolean("rsTargetIsLink");
         return s;
     }
 
@@ -259,6 +276,9 @@ public class SequencerStep {
         buf.writeByte(mathBManual ? 1 : 0);
         buf.writeUtf(regressMode);
         buf.writeUtf(regressDest2);
+        buf.writeByte(Math.max(1, Math.min(LinkedKeyboardBlockEntity.MAX_DISPLAY_LINES, displayLine)));
+        buf.writeByte(Math.max(0, Math.min(VAR_COUNT, rsTargetVar)));
+        buf.writeBoolean(rsTargetIsLink);
     }
 
     public static SequencerStep decode(FriendlyByteBuf buf) {
@@ -299,6 +319,9 @@ public class SequencerStep {
         s.mathBManual = buf.readByte() != 0;
         s.regressMode  = buf.readUtf();
         s.regressDest2 = buf.readUtf();
+        s.displayLine  = Math.max(1, Math.min(LinkedKeyboardBlockEntity.MAX_DISPLAY_LINES, buf.readByte() & 0xFF));
+        s.rsTargetVar  = Math.max(0, Math.min(VAR_COUNT, buf.readByte() & 0xFF));
+        s.rsTargetIsLink = buf.readBoolean();
         return s;
     }
 

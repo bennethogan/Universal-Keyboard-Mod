@@ -1,0 +1,14 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "create" }
+  ],
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    { "item": "create:transmitter" },
+    { "item": "create:copycat_block" }
+  ],
+  "result": {
+    "id": "universalkeyboard:wireless_copycat",
+    "count": 1
+  }
+}

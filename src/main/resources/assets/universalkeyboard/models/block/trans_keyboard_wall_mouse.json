@@ -1,0 +1,8 @@
+{
+  "parent": "universalkeyboard:custom/mouse_wall",
+  "textures": {
+    "particle": "universalkeyboard:block/mousetexture_trans",
+    "0": "universalkeyboard:block/mousetexture_trans"
+  },
+  "render_type": "solid"
+}

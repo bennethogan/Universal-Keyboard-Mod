@@ -101,6 +101,8 @@ public final class GamepadLiveDriver {
 
 
     public static float analogMagnitude(int code) {
+        if (dev.bennethogan.universalkeyboard.livecontrol.MouseCodes.isMouseCode(code))
+            return MouseLiveDriver.analogMagnitude(code);
         if (!enabled() || !GamepadCodes.isGamepadCode(code)) return 1.0f;
         double stickThr = ModConfig.CLIENT.stickThreshold.get();
         double trigThr  = ModConfig.CLIENT.triggerThreshold.get();

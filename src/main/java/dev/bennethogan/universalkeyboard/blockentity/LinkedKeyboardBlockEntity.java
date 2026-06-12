@@ -397,7 +397,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         BlockPos primary = getLinkedTargetPos();
         if (primary == null || level == null) return false;
         BlockEntity be = level.getBlockEntity(primary);
-        return be != null && KeyboardMode.isCCComputer(be);
+        return be != null && (KeyboardMode.isCCComputer(be) || MonitorHelper.isMonitor(be));
     }
 
     public boolean isLinkedAsCreate() {
@@ -411,9 +411,15 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     // ----- CC keyboard event forwarding — active channel targets in range -----
 
-    public void sendKeyEvent(int keyCode, boolean held)  { queueEventOnLinkedComputer("key", keyCode, held); }
-    public void sendCharEvent(char ch)                    { queueEventOnLinkedComputer("char", String.valueOf(ch)); }
-    public void sendKeyUpEvent(int keyCode)              { queueEventOnLinkedComputer("key_up", keyCode); }
+    public void sendKeyEvent(int keyCode, boolean held) {
+        queueEventOnLinkedComputer("key", keyCode, held);
+        if (keyCode == 257) writeCharToLinkedMonitors('\n'); // Enter = newline on monitor
+    }
+    public void sendCharEvent(char ch) {
+        queueEventOnLinkedComputer("char", String.valueOf(ch));
+        writeCharToLinkedMonitors(ch);
+    }
+    public void sendKeyUpEvent(int keyCode) { queueEventOnLinkedComputer("key_up", keyCode); }
 
     // ----- Create inline capture -----
 
@@ -674,6 +680,23 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     // ----- Display source data (Create integration) -----
 
+    public static final int MAX_DISPLAY_LINES = 32;
+    // Written by sequencer's DISPLAY line; null if never set, "" if set blank
+    private final String[] displayLines = new String[MAX_DISPLAY_LINES];
+
+    public void setDisplayLine(int idx, String text) {
+        if (idx < 0 || idx >= MAX_DISPLAY_LINES) return;
+        displayLines[idx] = text == null ? "" : text;
+        setChanged();
+    }
+
+    // get display lines from the sequencer, null if not set yet
+    public String[] getDisplayLines() {
+        for (String l : displayLines)
+            if (l != null) return displayLines;
+        return null;
+    }
+
     public Map<String, String> getCachedGetterValues() { return cachedGetterValues; }
     public String getCachedPeripheralType()            { return cachedPeripheralType; }
 
@@ -909,6 +932,15 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             tag.putByte("favorite_screen", (byte) favoriteScreen.ordinal());
         if (wheelFraction != 0f)
             tag.putFloat("wheel_fraction", wheelFraction);
+        ListTag dl = new ListTag();
+        for (int i = 0; i < MAX_DISPLAY_LINES; i++) {
+            if (displayLines[i] == null) continue;
+            CompoundTag c = new CompoundTag();
+            c.putInt("i", i);
+            c.putString("t", displayLines[i]);
+            dl.add(c);
+        }
+        if (!dl.isEmpty()) tag.put("display_lines", dl);
     }
 
     @Override
@@ -1024,6 +1056,15 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             for (int i = 0; i < lfl.size() && i < MAX_WIRELESS_FREQS; i++) {
                 String v = lfl.getString(i);
                 wirelessFreqs[i] = v.isEmpty() ? null : v;
+            }
+        }
+        java.util.Arrays.fill(displayLines, null);
+        if (tag.contains("display_lines", Tag.TAG_LIST)) {
+            ListTag dl = tag.getList("display_lines", Tag.TAG_COMPOUND);
+            for (int i = 0; i < dl.size(); i++) {
+                CompoundTag c = dl.getCompound(i);
+                int idx = c.getInt("i");
+                if (idx >= 0 && idx < MAX_DISPLAY_LINES) displayLines[idx] = c.getString("t");
             }
         }
         favoriteScreen = tag.contains("favorite_screen")

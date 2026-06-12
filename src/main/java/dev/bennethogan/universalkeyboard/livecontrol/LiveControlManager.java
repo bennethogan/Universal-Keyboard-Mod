@@ -400,7 +400,7 @@ public class LiveControlManager {
                     if (toggledOn.contains(i)) {
                         toggledOn.remove(i);
                         tglLockedMag.remove(i);
-                    } else if (GamepadCodes.isAnalogCode(b.keyCode) && scalingOn()) {
+                    } else if (isAnalogInput(b.keyCode) && scalingOn()) {
                         tglPendingPeak.put(i, 0.0);
                     } else {
                         toggledOn.add(i);
@@ -450,7 +450,7 @@ public class LiveControlManager {
                             toggledOn.remove(i);
                             tglLockedMag.remove(i);
                             out.add(varActionOd(b.varIndex, 0, i));
-                        } else if (GamepadCodes.isAnalogCode(b.keyCode) && scalingOn()) {
+                        } else if (isAnalogInput(b.keyCode) && scalingOn()) {
                             tglPendingPeak.put(i, 0.0);
                         } else {
                             toggledOn.add(i);
@@ -706,7 +706,7 @@ public class LiveControlManager {
         LiveControlBinding b = bindings.get(idx);
         if (b.inverted && b.mode == Mode.HLD) {
             // for analog inverted, always active, magnitude handles the curve
-            if (GamepadCodes.isAnalogCode(b.keyCode) && scalingOn()) return true;
+            if (isAnalogInput(b.keyCode) && scalingOn()) return true;
             return !heldKeys.contains(b.keyCode);
         }
         return switch (b.mode) {
@@ -724,17 +724,22 @@ public class LiveControlManager {
         catch (Exception e) { return false; }
     }
 
+    // added so mouse inputs can be read as analog too
+    private static boolean isAnalogInput(int code) {
+        return GamepadCodes.isAnalogCode(code) || MouseCodes.isAnalog(code);
+    }
+
     private static boolean isScaledAnalog(LiveControlBinding b) {
         return scalingOn()
                 && b.mode == Mode.HLD
                 && b.actionType != ActionType.OVERDRIVE
-                && GamepadCodes.isAnalogCode(b.keyCode);
+                && isAnalogInput(b.keyCode);
     }
 
     private static double joystickMagnitude(LiveControlBinding b, int bindingIdx) {
-        if (b.inverted && b.mode == Mode.HLD && GamepadCodes.isAnalogCode(b.keyCode) && scalingOn())
+        if (b.inverted && b.mode == Mode.HLD && isAnalogInput(b.keyCode) && scalingOn())
             return 1.0 - GamepadLiveDriver.analogMagnitude(b.keyCode);
-        if (b.mode == Mode.TGL && bindingIdx >= 0 && GamepadCodes.isAnalogCode(b.keyCode) && scalingOn())
+        if (b.mode == Mode.TGL && bindingIdx >= 0 && isAnalogInput(b.keyCode) && scalingOn())
             return tglLockedMag.getOrDefault(bindingIdx, 1.0);
         if (!isScaledAnalog(b)) return 1.0;
         return GamepadLiveDriver.analogMagnitude(b.keyCode);
@@ -855,6 +860,7 @@ public class LiveControlManager {
     }
 
     private static String keyDisplayName(int keyCode) {
+        if (MouseCodes.isMouseCode(keyCode)) return MouseCodes.name(keyCode);
         if (GamepadCodes.isGamepadCode(keyCode)) return GamepadCodes.name(keyCode);
         String name = org.lwjgl.glfw.GLFW.glfwGetKeyName(keyCode, 0);
         if (name != null && !name.isEmpty()) return name.toUpperCase();

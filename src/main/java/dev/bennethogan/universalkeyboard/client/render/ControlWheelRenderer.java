@@ -57,8 +57,13 @@ public class ControlWheelRenderer implements BlockEntityRenderer<LinkedKeyboardB
     public void render(LinkedKeyboardBlockEntity be, float partialTick, PoseStack poseStack,
                        MultiBufferSource buffer, int packedLight, int packedOverlay) {
         BlockState state = be.getBlockState();
-        if (!(state.getBlock() instanceof LinkedControlWheelBlock)) return;
         if (be.getLevel() == null) return;
+        if (!(state.getBlock() instanceof LinkedControlWheelBlock)) {
+            // adding in Keyboard animation
+            if (state.getBlock() instanceof dev.bennethogan.universalkeyboard.block.LinkedKeyboardBlock)
+                KeyboardAnimations.render(be, state, partialTick, poseStack, buffer, packedLight);
+            return;
+        }
 
         AttachFace face   = state.getValue(LinkedControlWheelBlock.FACE);
         Direction  facing = state.getValue(LinkedControlWheelBlock.FACING);
@@ -113,7 +118,7 @@ public class ControlWheelRenderer implements BlockEntityRenderer<LinkedKeyboardB
         return start + delta * LinkedKeyboardBlockEntity.wheelSmoothstep(t);
     }
 
-    private static BlockModelRotation orientationFor(AttachFace face, Direction facing) {
+    static BlockModelRotation orientationFor(AttachFace face, Direction facing) {
         return switch (face) {
             case FLOOR   -> BlockModelRotation.by(0,   yFloor(facing));
             case CEILING -> BlockModelRotation.by(180, yFloor(facing));

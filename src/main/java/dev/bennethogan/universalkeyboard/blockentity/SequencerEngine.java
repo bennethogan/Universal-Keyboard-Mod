@@ -147,6 +147,11 @@ class SequencerEngine {
                 advance();
                 return false;
             }
+            case DISPLAY -> {
+                be.setDisplayLine(step.displayLine - 1, substituteVars(step.typeTextStr));
+                advance();
+                return false;
+            }
             case CYCLE -> {
                 currentStep = 0;
                 delayTicker = 0;
@@ -371,12 +376,20 @@ class SequencerEngine {
 
     private void applySetRedstone(SequencerStep step) {
         int signal = (int) Math.round(resolveSource(step.redstoneOutSignalStr, 1));
-        if (step.wirelessFreqOutIdx > 0)
+        if (step.rsTargetVar > 0) {
+            int idx = (int) Math.round(vars[step.rsTargetVar - 1]) - 1; // convert 1-based to 0-based
+            if (step.rsTargetIsLink) {
+                if (idx >= 0 && idx < LinkedKeyboardBlockEntity.MAX_RSLINKS) be.setRsLinkOutput(idx, signal);
+            } else {
+                if (idx >= 0 && idx < LinkedKeyboardBlockEntity.MAX_WIRELESS_FREQS) be.broadcastWirelessFreq(idx, signal);
+            }
+        } else if (step.wirelessFreqOutIdx > 0) {
             be.broadcastWirelessFreq(step.wirelessFreqOutIdx - 1, signal);
-        else if (step.rsLinkOutIdx > 0)
+        } else if (step.rsLinkOutIdx > 0) {
             be.setRsLinkOutput(step.rsLinkOutIdx - 1, signal);
-        else
+        } else {
             be.setRedstoneOutput(step.redstoneOutDir, signal);
+        }
     }
 
     private static double applyMathOp(String op, double a, double b) {
@@ -401,8 +414,27 @@ class SequencerEngine {
             case "acos"  -> Math.toDegrees(Math.acos(Math.max(-1.0, Math.min(1.0, a))));
             case "atan"  -> Math.toDegrees(Math.atan(a));
             case "atan2" -> Math.toDegrees(Math.atan2(a, b));
+            case "rand"  -> Math.random(); // [0.0, 1.0)
+            case "randL" -> 1 + (int) (Math.random() * Math.max(1, Math.min(20,  (int) Math.round(a))));
+            case "randW" -> 1 + (int) (Math.random() * Math.max(1, Math.min(100, (int) Math.round(a))));
             default      -> a;
         };
+    }
+
+    private static final java.util.regex.Pattern DISPLAY_VAR_PATTERN =
+            java.util.regex.Pattern.compile("\\bV([1-9]|1[0-6])\\b");
+
+    // Replaces variables V1-V16 in the DISPLAY, with their formatted values
+    private String substituteVars(String text) {
+        if (text == null || text.isEmpty()) return "";
+        java.util.regex.Matcher m = DISPLAY_VAR_PATTERN.matcher(text);
+        StringBuilder sb = new StringBuilder();
+        while (m.find()) {
+            int idx = Integer.parseInt(m.group(1)) - 1;
+            m.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(formatVar(vars[idx])));
+        }
+        m.appendTail(sb);
+        return sb.toString();
     }
 
     private static String formatVar(double val) {

@@ -63,12 +63,19 @@ public class ModConfig {
         public final ModConfigSpec.BooleanValue enableGamepad;
         public final ModConfigSpec.BooleanValue enableAdvancedInput;
         public final ModConfigSpec.DoubleValue  stickThreshold;
+        public final ModConfigSpec.BooleanValue enableMouseInput;
+        public final ModConfigSpec.BooleanValue mouseAbsoluteMode;
+        public final ModConfigSpec.DoubleValue  mouseAxisSensitivity;
         public final ModConfigSpec.DoubleValue  triggerThreshold;
         public final ModConfigSpec.BooleanValue joystickScaling;
         public final ModConfigSpec.ConfigValue<List<? extends Double>> stickCalibration;
         public final ModConfigSpec.ConfigValue<String> controlWheelLeftRows;
         public final ModConfigSpec.ConfigValue<String> controlWheelRightRows;
         public final ModConfigSpec.BooleanValue redstoneWildcardWarningDismissed;
+        public final ModConfigSpec.BooleanValue enableKeyboardAnimations;
+        public final ModConfigSpec.BooleanValue doubleExplosion;
+        public final ModConfigSpec.DoubleValue  mainWaveSpeed;
+        public final ModConfigSpec.DoubleValue  clusterWaveSpeed;
 
         Client(ModConfigSpec.Builder builder) {
             builder.comment("Universal Keyboard — Client Settings").push("gamepad");
@@ -91,7 +98,6 @@ public class ModConfig {
                              "Leave off if you only use standard gamepads. Default: false.")
                     .translation("config.universalkeyboard.gamepad.enableAdvancedInput")
                     .define("enableAdvancedInput", false);
-
 
             stickThreshold = builder
                     .comment("How far an analog stick must be pushed before it counts as a directional press.",
@@ -131,7 +137,55 @@ public class ModConfig {
 
             builder.pop();
 
-            builder.comment("Universal Control Wheel").push("controlwheel");
+            builder.comment("Universal Keyboard — Mouse Input").push("mouse");
+
+            enableMouseInput = builder
+                    .comment("Allow the mouse to be bound in Live Controls",
+                             "Default: false.")
+                    .translation("config.universalkeyboard.mouse.enableMouseInput")
+                    .define("enableMouseInput", false);
+
+            mouseAbsoluteMode = builder
+                    .comment("Choose two options for mouse movement",
+                             "false (Velocity mode, default): mimics a real joystick, measures input speed as",
+                             "the power, and reverts back to 0",
+                             "true (Absolute mode): mimics the Aeroworks' joystick, which keeps the cursor locked, ",
+                             "where you put it",
+                             "Default: false.")
+                    .translation("config.universalkeyboard.mouse.mouseAbsoluteMode")
+                    .define("mouseAbsoluteMode", false);
+
+            mouseAxisSensitivity = builder
+                    .comment("Multiplier for how strongly mouse movement deflects its analog axes")
+                    .translation("config.universalkeyboard.mouse.mouseAxisSensitivity")
+                    .defineInRange("mouseAxisSensitivity", 1.0, 0.1, 10.0);
+
+            builder.pop();
+
+            builder.comment("Universal Keyboard: Animations").push("animations");
+
+            enableKeyboardAnimations = builder
+                    .comment("Turns off all keyboard animations if false",
+                             "Default: true.")
+                    .translation("config.universalkeyboard.animations.enableKeyboardAnimations")
+                    .define("enableKeyboardAnimations", true);
+
+            doubleExplosion = builder
+                    .comment("Double explosion!!")
+                    .translation("config.universalkeyboard.animations.doubleExplosion")
+                    .define("doubleExplosion", false);
+
+            mainWaveSpeed = builder
+                    .comment("Keyboard main wave animation's speed",
+                             "Range: 0.0–1.0. Default: 0.15.")
+                    .translation("config.universalkeyboard.animations.mainWaveSpeed")
+                    .defineInRange("mainWaveSpeed", 0.15, 0.0, 1.0);
+
+            clusterWaveSpeed = builder
+                    .comment("Keyboard cluster area animation speed",
+                             "Range: 0.0–1.0. Default: 0.05.")
+                    .translation("config.universalkeyboard.animations.clusterWaveSpeed")
+                    .defineInRange("clusterWaveSpeed", 0.05, 0.0, 1.0);
 
             controlWheelLeftRows = builder
                     .comment("Comma-separated Live Controller row numbers (1–40) whose active state",

@@ -218,6 +218,7 @@ public class LiveControlBinding {
 
     public static String keyName(int keyCode) {
         if (keyCode < 0) return "(none)";
+        if (MouseCodes.isMouseCode(keyCode)) return MouseCodes.name(keyCode);
         if (GamepadCodes.isGamepadCode(keyCode)) return GamepadCodes.name(keyCode);
         String glfwName = GLFW.glfwGetKeyName(keyCode, 0);
         if (glfwName != null && !glfwName.isEmpty()) return glfwName.toUpperCase();

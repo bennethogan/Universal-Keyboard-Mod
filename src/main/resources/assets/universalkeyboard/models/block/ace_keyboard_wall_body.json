@@ -1,0 +1,8 @@
+{
+  "parent": "universalkeyboard:custom/keyboard_body_wall",
+  "textures": {
+    "particle": "universalkeyboard:block/mousetexture_ace",
+    "1": "universalkeyboard:block/keyboardtexture_ace"
+  },
+  "render_type": "solid"
+}
