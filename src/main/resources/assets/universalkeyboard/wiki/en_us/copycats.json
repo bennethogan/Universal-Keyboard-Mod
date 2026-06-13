@@ -2,7 +2,7 @@
   "label": "Copycats",
   "entries": [
     {"type": "heading", "text": "Wireless Copycats"},
-    {"type": "text", "body": "These blocks behave just like the Copycats you know and love, except you can also send a different redstone signal to each side! \n\n Take the 6 character alphanumeric string from one menu, paste it into the other menu, and that's it! Figuring out the side can be a little confusing at first, and I will tell you now that assembling/dissassembling swapped the faces for me in one test. I'm still working that out.\n\n Hover over the image below to learn more about the Wireless Copycat Menus.\n\n§6§lKeyboard's Menu§r"},
+    {"type": "text", "body": "These blocks behave just like the Copycats you know and love, except you can also send a different redstone signal to each side! \n\n Take the 6 character alphanumeric string from one menu, paste it into the other menu, and that's it! Figuring out the side can be a little confusing at first, and I will tell you now that disassembling will realign the faces to the new cardinal direction.\n\n Hover over the image below to learn more about the Wireless Copycat Menus.\n\n§6§lKeyboard's Menu§r"},
     {
       "type": "image",
       "texture": "textures/wiki/en_us/copycats_ui_1.png",
@@ -130,7 +130,7 @@
           "px1": 140,
           "py1": 570,
           "title": "Sending / Receiving Side",
-          "body": "The sun rises in the East! Maybe that will help here. There is also a test button (the play button on the right).\nThere is a bug that causes these sides to swap E->W or N->S, or just not correctly align when assembling/disassembling. This is being worked on, but it will be annoying until its fixed"
+          "body": "The sun rises in the East! Maybe that will help here. There is also a test button (the play button on the right).\nIf you disassemble your ship, the faces will be realigned to the new cardinal direction. Just a warning"
         },
         {
           "px0": 208,
