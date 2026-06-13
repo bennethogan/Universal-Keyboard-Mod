@@ -255,6 +255,8 @@ class SequencerEngine {
             int idx = Integer.parseInt(step.ifGetter.substring(1)) - 1;
             actual = (RsLinkPresence.isPresent() && idx < be.getRsLinkCount())
                     ? be.getWirelessEntries().get(idx).getReceivedPower() : 0;
+        } else if (step.ifGetter.matches("W([1-9]|[1-9][0-9]|100)")) {
+            actual = be.getWirelessFreqPower(Integer.parseInt(step.ifGetter.substring(1)) - 1);
         } else if (SableCompat.isPresent() && SableCompat.isSableGetter(step.ifGetter)
                 && SableCompat.isOnSublevel(be.getLevel(), be.getBlockPos())) {
             actual = SableCompat.getValue(be.getLevel(), be.getBlockPos(), step.ifGetter);
