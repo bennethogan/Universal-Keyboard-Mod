@@ -159,6 +159,13 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
         if (!(level.getBlockEntity(pos) instanceof LinkedKeyboardBlockEntity be))
             return InteractionResult.CONSUME;
 
+        // If the keyboard moved since it was last used, ask the player why before opening the menu
+        if (be.needsPositionCheck()) {
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(sp,
+                    new dev.bennethogan.universalkeyboard.network.ModPackets.ShowPositionMovePacket(pos));
+            return InteractionResult.CONSUME;
+        }
+
         // Shift+click always opens the main mode-selection menu
         if (!player.isShiftKeyDown() && be.getFavoriteScreen() != dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen.NONE) {
             ModPackets.openFavoriteForPlayer(sp, pos, be);

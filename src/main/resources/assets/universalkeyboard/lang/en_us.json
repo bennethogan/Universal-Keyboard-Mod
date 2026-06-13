@@ -176,6 +176,17 @@
   "gui.universalkeyboard.dialog.tw_import_warn1": "§8Overwrites wireless config & live bindings.",
   "gui.universalkeyboard.dialog.tw_import_warn2": "§8Peripheral links are preserved.",
 
+  "gui.universalkeyboard.dialog.position_move.title": "Controller Has Changed Position",
+  "gui.universalkeyboard.dialog.position_move.heading": "§eController Has Moved",
+  "gui.universalkeyboard.dialog.position_move.subtitle": "§7Choose a reason:",
+  "gui.universalkeyboard.dialog.position_move.dont_ask": "§7Don't ask again",
+  "gui.universalkeyboard.dialog.position_move.btn_a": "A: I moved only the controller",
+  "gui.universalkeyboard.dialog.position_move.btn_b": "B: Sub-level assembly or schematic print",
+  "gui.universalkeyboard.dialog.position_move.btn_c": "C: Must be a mistake, nothing moved",
+  "gui.universalkeyboard.dialog.position_move.tip_a": "§7The controller moved but linked\n§7peripherals stayed in the same place.\n§7Effect: don't update peripheral positions",
+  "gui.universalkeyboard.dialog.position_move.tip_b": "§7Choose this option for sub-level\n§7assembly / disassembly, or schematic\n§7printing. Effect:\n§7Relative positions remain the same,\n§7update absolute position.",
+  "gui.universalkeyboard.dialog.position_move.tip_c": "§7Treat this as a false positive and\n§7ignore the position change",
+
   "gui.universalkeyboard.thruster.type.standard": "THRUSTER CONTROL",
   "gui.universalkeyboard.thruster.type.ion": "ION THRUSTER",
   "gui.universalkeyboard.thruster.type.vector": "VECTOR THRUSTER",

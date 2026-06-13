@@ -149,6 +149,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         for (int i = 0; i < Math.min(bindings.size(), MAX_LIVE_BINDINGS); i++)
             slot.add(bindings.get(i));
         setChanged();
+        // sync to client needed here for schematic saving, key bindings werent always saving otherwise
+        syncToClients();
     }
 
     public List<List<LiveControlBinding>> getAllProfileBindings() {
@@ -224,6 +226,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         }
 
         setChanged();
+        syncToClients(); // sync to client again for schematic saving
         return null; // null = success
     }
 
@@ -243,6 +246,10 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     // renamed for clarity - this is the wireless Copycats, interally called W1-W100
     public static final int MAX_WIRELESS_FREQS = 100;
     private final String[] wirelessFreqs = new String[MAX_WIRELESS_FREQS];
+
+    // Track postition change so links can work with assembly & printing a schematic
+    private BlockPos lastKnownPos = null;
+    private boolean suppressPositionDialog = false;
 
     // Cached peripheral getter values for Create display source
     private final Map<String, String> cachedGetterValues = new LinkedHashMap<>();
@@ -377,6 +384,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         java.util.Arrays.fill(redstoneOutputs, 0);
         java.util.Arrays.fill(wirelessFreqs, null);
         setChanged();
+        syncToClients(); // sync to client, for schematic saving again
     }
 
     public boolean hasData() {
@@ -391,6 +399,38 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         if (primary == null || level == null) return false;
         double range = ModConfig.COMMON.keyboardRange.get();
         return worldPosition.distSqr(primary) <= range * range;
+    }
+
+    public boolean needsPositionCheck() {
+        if (suppressPositionDialog) return false;
+        // schematic pasting case
+        if (lastKnownPos == null) return !channelTargets.isEmpty();
+        if (worldPosition.equals(lastKnownPos)) return false;
+        return !channelTargets.isEmpty();
+    }
+
+    public BlockPos getLastKnownPos() { return lastKnownPos; }
+
+    public void applyPositionChoice(int choice, boolean dontAsk) {
+        if (dontAsk) suppressPositionDialog = true;
+        if (choice == 1 && lastKnownPos != null) {
+            // Option B: everything moves together, relative position is the same
+            BlockPos delta = worldPosition.subtract(lastKnownPos);
+            Map<Integer, List<BlockPos>> updated = new java.util.LinkedHashMap<>();
+            for (var entry : channelTargets.entrySet()) {
+                List<BlockPos> newList = new ArrayList<>();
+                for (BlockPos p : entry.getValue()) newList.add(p.offset(delta));
+                updated.put(entry.getKey(), newList);
+            }
+            channelTargets.clear();
+            channelTargets.putAll(updated);
+        }
+        lastKnownPos = worldPosition.immutable();
+        setChanged();
+        syncToClients();
+        UniversalKeyboardMod.LOGGER.info(
+                "[UKB pos-apply] choice={} dontAsk={} worldPos={} resolvedTargets={}",
+                choice, dontAsk, worldPosition, channelTargets);
     }
 
     public boolean isLinkedAsComputer() {
@@ -758,12 +798,17 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
         be.updateShipMass(level, pos, state);
 
-        // Remove broken targets across all channels (only when loaded)
-        if (level.getGameTime() % 100 == 0 && be.isLinked()) {
+        // Suppress cleanup until position check isnt needed, assembly causes a cleanup of targets
+        if (level.getGameTime() % 100 == 0 && be.isLinked() && !be.needsPositionCheck()) {
             boolean changed = false;
             for (List<BlockPos> list : be.channelTargets.values())
                 changed |= list.removeIf(t -> level.isLoaded(t) && level.getBlockEntity(t) == null);
-            if (changed) be.setChanged();
+            if (changed) {
+                UniversalKeyboardMod.LOGGER.info(
+                        "[UKB tick-removed] stale targets cleaned at worldPos={} remaining={}",
+                        be.worldPosition, be.channelTargets);
+                be.setChanged();
+            }
         }
     }
 
@@ -941,6 +986,15 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             dl.add(c);
         }
         if (!dl.isEmpty()) tag.put("display_lines", dl);
+
+        if (lastKnownPos != null) {
+            CompoundTag lkp = new CompoundTag();
+            lkp.putInt("x", lastKnownPos.getX());
+            lkp.putInt("y", lastKnownPos.getY());
+            lkp.putInt("z", lastKnownPos.getZ());
+            tag.put("last_known_pos", lkp);
+        }
+        if (suppressPositionDialog) tag.putBoolean("suppress_pos_dialog", true);
     }
 
     @Override
@@ -966,6 +1020,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         }
 
         // Relative-only data means a schematic was printed — convert offsets to absolute at this location.
+        boolean loadedRelative = false;
         if (channelTargets.isEmpty()) {
             for (int ch = 1; ch <= MAX_CHANNELS; ch++) {
                 String relKey = "ch" + ch + "_rel_targets";
@@ -979,9 +1034,30 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                             worldPosition.getY() + e.getInt("ry"),
                             worldPosition.getZ() + e.getInt("rz")));
                 }
-                if (!converted.isEmpty()) channelTargets.put(ch, converted);
+                if (!converted.isEmpty()) { channelTargets.put(ch, converted); loadedRelative = true; }
             }
         }
+
+        // TEMPORARY DIAGNOSTIC
+        if (!channelTargets.isEmpty()) {
+            boolean hasAbsTag = false, hasRelTag = false;
+            for (int ch = 1; ch <= MAX_CHANNELS; ch++) {
+                if (tag.contains("ch" + ch + "_targets", Tag.TAG_LIST))     hasAbsTag = true;
+                if (tag.contains("ch" + ch + "_rel_targets", Tag.TAG_LIST)) hasRelTag = true;
+            }
+            int bindingCount = 0;
+            for (int p = 0; p < MAX_PROFILES; p++) {
+                String key = "profile_" + p + "_bindings";
+                if (tag.contains(key, Tag.TAG_LIST))
+                    bindingCount += tag.getList(key, Tag.TAG_COMPOUND).size();
+            }
+            UniversalKeyboardMod.LOGGER.info(
+                    "[UKB pos-load] worldPos={} absTag={} relTag={} loadedRelative={} resolvedTargets={} bindingsInTag={}",
+                    worldPosition, hasAbsTag, hasRelTag, loadedRelative, channelTargets, bindingCount);
+        }
+        // ------------------------------------------------
+
+
 
         // Legacy: old single-channel mesh_targets → channel 1
         if (channelTargets.isEmpty()) {
@@ -1077,6 +1153,16 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             wheelTargetFraction = wheelFraction;
             wheelAnimStartTick  = Long.MIN_VALUE;
         }
+
+        if (tag.contains("last_known_pos", Tag.TAG_COMPOUND)) {
+            CompoundTag lkp = tag.getCompound("last_known_pos");
+            lastKnownPos = new BlockPos(lkp.getInt("x"), lkp.getInt("y"), lkp.getInt("z"));
+        } else if (!loadedRelative) {
+            // first load without saved position and no relative targets to establish base
+            lastKnownPos = worldPosition.immutable();
+        }
+        // else for a schematic paste case, leaves lastKnownPos null so that needsPositionCheck triggers on the next click
+        suppressPositionDialog = tag.getBoolean("suppress_pos_dialog");
     }
 
     @Override
@@ -1085,6 +1171,17 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         if (level != null && !level.isClientSide && RsLinkPresence.isPresent()) {
             for (RsLinkEntry e : rsLinkEntries)
                 CreateRsLinkHelper.ensureRegistered(level, e);
+        }
+        if (level != null && !level.isClientSide) {
+            if (lastKnownPos == null && channelTargets.isEmpty()) {
+                // newly placed without data, establish base
+                lastKnownPos = worldPosition.immutable();
+                setChanged();
+            } else if (lastKnownPos != null && lastKnownPos.equals(worldPosition)) {
+                // baseline matches, persist and set again to be sure chunk saved
+                setChanged();
+            }
+            // else: pasting a schematic or position changes, so state left open
         }
     }
 
@@ -1130,6 +1227,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             tag.put("wireless_entries", wl);
         }
         tag.putInt("active_profile", activeProfile);
+        int writeSafeBindingCount = 0;
         for (int p = 0; p < MAX_PROFILES; p++) {
             List<LiveControlBinding> list = profileBindings.get(p);
             if (!list.isEmpty()) {
@@ -1140,8 +1238,12 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                     lcl.add(bt);
                 }
                 tag.put("profile_" + p + "_bindings", lcl);
+                writeSafeBindingCount += list.size();
             }
         }
+        UniversalKeyboardMod.LOGGER.info(
+                "[UKB writeSafe] worldPos={} lastKnownPos={} targets={} totalBindings={}",
+                worldPosition, lastKnownPos, channelTargets, writeSafeBindingCount);
         int lfCount = getWirelessFreqCount();
         if (lfCount > 0) {
             net.minecraft.nbt.ListTag lfl = new net.minecraft.nbt.ListTag();
@@ -1150,15 +1252,21 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             }
             tag.put("link_freqs", lfl);
         }
+
+        /** Relative offsets based on keyboards lastKnownPos rather than world pos. This should fix Schematic saving
+         * so that is now writeSaves with that included. So when pasting, the relative positioning math isnt
+         * reversed back to the original absolute position (rel = target - pastePos, then pastePos + rel = target)
+         **/
+        BlockPos relBase = lastKnownPos != null ? lastKnownPos : worldPosition;
         for (Map.Entry<Integer, List<BlockPos>> entry : channelTargets.entrySet()) {
             List<BlockPos> list = entry.getValue();
             if (list.isEmpty()) continue;
             ListTag relList = new ListTag();
             for (BlockPos p : list) {
                 CompoundTag e = new CompoundTag();
-                e.putInt("rx", p.getX() - worldPosition.getX());
-                e.putInt("ry", p.getY() - worldPosition.getY());
-                e.putInt("rz", p.getZ() - worldPosition.getZ());
+                e.putInt("rx", p.getX() - relBase.getX());
+                e.putInt("ry", p.getY() - relBase.getY());
+                e.putInt("rz", p.getZ() - relBase.getZ());
                 relList.add(e);
             }
             tag.put("ch" + entry.getKey() + "_rel_targets", relList);

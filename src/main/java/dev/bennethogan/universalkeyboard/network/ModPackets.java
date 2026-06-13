@@ -361,6 +361,29 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
+    // server → client: keyboard position changed since last use, ask the player why
+    public record ShowPositionMovePacket(BlockPos kbPos) implements CustomPacketPayload {
+        public static final Type<ShowPositionMovePacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "show_position_move"));
+        public static final StreamCodec<FriendlyByteBuf, ShowPositionMovePacket> CODEC = StreamCodec.of(
+                (buf, pkt) -> BlockPos.STREAM_CODEC.encode(buf, pkt.kbPos()),
+                buf -> new ShowPositionMovePacket(BlockPos.STREAM_CODEC.decode(buf)));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // client → server: player chose how to resolve the position change
+    public record ApplyPositionMovePacket(BlockPos kbPos, byte choice, boolean dontAsk) implements CustomPacketPayload {
+        public static final Type<ApplyPositionMovePacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "apply_position_move"));
+        public static final StreamCodec<FriendlyByteBuf, ApplyPositionMovePacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, ApplyPositionMovePacket::kbPos,
+                        ByteBufCodecs.BYTE,    ApplyPositionMovePacket::choice,
+                        ByteBufCodecs.BOOL,    ApplyPositionMovePacket::dontAsk,
+                        ApplyPositionMovePacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
     public static void onRegisterServerPayloads(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar("1");
         // playToServer — handlers run on the server, safe to register from the common @Mod class
@@ -394,6 +417,7 @@ public class ModPackets {
         registrar.optional().playToServer(SaveLinkFreqsPacket.TYPE,               SaveLinkFreqsPacket.STREAM_CODEC,               ModPackets::handleSaveLinkFreqs);
         registrar.optional().playToServer(RequestLinkFreqScreenPacket.TYPE,       RequestLinkFreqScreenPacket.STREAM_CODEC,       ModPackets::handleRequestLinkFreqScreen);
         registrar.playToServer(SetFavoritePacket.TYPE,              SetFavoritePacket.CODEC,              ModPackets::handleSetFavorite);
+        registrar.playToServer(ApplyPositionMovePacket.TYPE,        ApplyPositionMovePacket.CODEC,        ModPackets::handleApplyPositionMove);
 
         // playToClient — the server must declare these channels so the handshake succeeds.
         // Real handlers are registered by ClientPacketHandlers (client only); skip here on client
@@ -411,6 +435,7 @@ public class ModPackets {
             registrar.playToClient(OpenLiveControlScreenPacket.TYPE, OpenLiveControlScreenPacket.CODEC, (p, c) -> {});
             registrar.playToClient(ControlWheelAnimateClientPacket.TYPE, ControlWheelAnimateClientPacket.CODEC, (p, c) -> {});
             registrar.playToClient(SyncFavoritePacket.TYPE,            SyncFavoritePacket.CODEC,            (p, c) -> {});
+            registrar.playToClient(ShowPositionMovePacket.TYPE,         ShowPositionMovePacket.CODEC,         (p, c) -> {});
             registrar.optional().playToClient(OpenWirelessCopycatScreenPacket.TYPE, OpenWirelessCopycatScreenPacket.STREAM_CODEC, (p, c) -> {});
             registrar.optional().playToClient(OpenLinkFreqScreenPacket.TYPE,        OpenLinkFreqScreenPacket.STREAM_CODEC,        (p, c) -> {});
         }
@@ -1546,6 +1571,16 @@ public class ModPackets {
             kb.setFavoriteScreen(FavoriteScreen.fromByte(packet.favorite()));
             // Confirm back to client so the star button updates immediately.
             PacketDistributor.sendToPlayer(sp, new SyncFavoritePacket(packet.keyboardPos(), packet.favorite()));
+        });
+    }
+
+    private static void handleApplyPositionMove(ApplyPositionMovePacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.kbPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            kb.applyPositionChoice(packet.choice(), packet.dontAsk());
+            openModeSelectionFallback(sp, packet.kbPos(), kb, sp.serverLevel());
         });
     }
 

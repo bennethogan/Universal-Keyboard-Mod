@@ -1,5 +1,6 @@
 package dev.bennethogan.universalkeyboard.blockentity;
 
+import com.simibubi.create.api.schematic.nbt.PartialSafeNBT;
 import com.simibubi.create.content.decoration.copycat.CopycatBlockEntity;
 import dev.bennethogan.universalkeyboard.block.WirelessCopycatPanelBlock;
 import dev.bennethogan.universalkeyboard.block.WirelessCopycatStepBlock;
@@ -24,7 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
-public class WirelessCopycatBlockEntity extends CopycatBlockEntity {
+public class WirelessCopycatBlockEntity extends CopycatBlockEntity implements PartialSafeNBT {
 
     public static final ModelProperty<Integer> PREVIEW_FACE_PROPERTY = new ModelProperty<>();
 
@@ -217,6 +218,12 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity {
     public void onChunkUnloaded() {
         if (level != null && !level.isClientSide) WirelessRSNetwork.unregisterAll((Level) level, worldPosition);
         super.onChunkUnloaded();
+    }
+
+    @Override
+    public void writeSafe(CompoundTag tag, HolderLookup.Provider registries) {
+        super.writeSafe(tag, registries);
+        writeWireless(tag, false);
     }
 
     @Override

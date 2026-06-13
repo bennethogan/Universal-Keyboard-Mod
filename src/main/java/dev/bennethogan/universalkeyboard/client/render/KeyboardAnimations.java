@@ -270,7 +270,8 @@ public final class KeyboardAnimations {
         if (wall) poseStack.translate(ox / 16f, -oy / 16f, 0);
         else      poseStack.translate(ox / 16f, 0, oy / 16f);
 
-        float rotX = 14f / 16f;
+        // apply the same rotation as the model
+        float rotX = wall ? 16f / 16f : 14f / 16f;
         float rotY = wall ? 7f / 16f : 0f;
         float rotZ = wall ? 0f : 7f / 16f;
         poseStack.translate(rotX, rotY, rotZ);
@@ -292,12 +293,12 @@ public final class KeyboardAnimations {
             emitMouseQuad(vc, pose, 15, 16, y, 8,  9, animColors[2], false, light); // (0,1)
             emitMouseQuad(vc, pose, 14, 15, y, 8,  9, animColors[3], false, light); // (1,1)
         } else {
-            // Wall mouse, use z
+            // Wall mouse: SOUTH face at z=1/16; model shifted to x=16-18
             float z = 1f / 16f + e;
-            emitMouseQuad(vc, pose, 15, 16, z, 9, 10, animColors[0], true, light); // (0,0)
-            emitMouseQuad(vc, pose, 14, 15, z, 9, 10, animColors[1], true, light); // (1,0)
-            emitMouseQuad(vc, pose, 15, 16, z, 8,  9, animColors[2], true, light); // (0,1)
-            emitMouseQuad(vc, pose, 14, 15, z, 8,  9, animColors[3], true, light); // (1,1)
+            emitMouseQuad(vc, pose, 17, 18, z, 9, 10, animColors[0], true, light); // (0,0)
+            emitMouseQuad(vc, pose, 16, 17, z, 9, 10, animColors[1], true, light); // (1,0)
+            emitMouseQuad(vc, pose, 17, 18, z, 8,  9, animColors[2], true, light); // (0,1)
+            emitMouseQuad(vc, pose, 16, 17, z, 8,  9, animColors[3], true, light); // (1,1)
         }
 
         poseStack.popPose();

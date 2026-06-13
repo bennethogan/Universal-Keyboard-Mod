@@ -6,6 +6,6 @@
     {"type": "text", "body": "Other Screens - Thruster Control:\n\nBefore I made the live control mode, I spent a medium amount of time making this cute little GUI to mimic some flight control panel. I like it so I'm keeping it. You can control thrusters with it, and see Sable sub-level statistics live.\n-----------------\n"},
     {"type": "text", "body": "Other Screens - Value Panel:\n\nThis mode will capture your keyboard just like the Live Controller, but its focused on just changing Create's \"Value Panels\". If a block has a slider allowing you to flip it from, say, counter-clockwise to clockwise, you could type 0 or 1 to trigger those.\n-----------------\n"},
     {"type": "text", "body": "Other Screens - CC Peripheral:\n\nThis screen allows you to see all the CC:Tweaked 'getters' and 'setters' available to a certain peripheral. This is all available to be used in the Sequencer mode, but you can also manually change something here. This screen is a remnant of the old UI, so it will be modernized in a future update.\n-----------------\n"},
-    {"type": "text", "body": "Other Screens - CC Computer:\n\nLive captures the keyboard, allowing you to type on the a CC:Tweaked computer. It is a keyboard, after all.\n-----------------\n"}
+    {"type": "text", "body": "Other Screens - CC Computer:\n\nLive captures the keyboard, allowing you to type on a linked monitor or keyboard. Animated the mouse input as well. It is a keyboard, after all.\n-----------------\n"}
     ]
 }

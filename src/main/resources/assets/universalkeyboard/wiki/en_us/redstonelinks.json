@@ -10,6 +10,6 @@
       "height": 992,
       "max_width": 0.50
     },
-    {"type": "text", "body": "As you can see above, there are up to 20 configurable frequencies, interally called L1 - L20 \n\n You can also receive redstone signals in the Sequencer mode, if you set up that receiving frequency here."}
+    {"type": "text", "body": "As you can see above, there are up to 20 configurable frequencies, internally called L1 - L20 \n\n You can also receive redstone signals in the Sequencer mode, if you set up that receiving frequency here."}
   ]
 }

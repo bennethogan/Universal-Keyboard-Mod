@@ -709,9 +709,9 @@ public class SequencerScreen extends Screen {
         List<Type> list = new ArrayList<>();
         list.add(Type.MATH);
         if (typeable) { list.add(Type.TYPE_VARIABLE); list.add(Type.TYPE_TEXT); }
-        if (net.neoforged.fml.ModList.get().isLoaded("create")) list.add(Type.DISPLAY);
         list.add(Type.SET_REDSTONE);
         if (ccPresent) list.add(Type.SET_VALUE);
+        if (net.neoforged.fml.ModList.get().isLoaded("create")) list.add(Type.DISPLAY);
         list.add(Type.REGRESS);
         list.add(Type.IF);
         list.add(Type.CONDITION);
@@ -1993,6 +1993,25 @@ public class SequencerScreen extends Screen {
             mathBChBtn.setMessage(Component.literal(String.valueOf(step.mathBCh)));
         }
 
+        /** Repositions A-source and op button for randL/randW (op first, max box after). */
+        // reposition the A source for randL/W, makes it less confusing. Still a bit confusing
+        private void applyRandLayout(boolean isRand) {
+            int base = panelX + PAD + COL_CTX;
+            if (isRand) {
+                mathOpBtn.setX(base + 48);
+                mathOpBtn.setWidth(40);
+                mathASourceBtn.setX(base + 92);
+                mathAInput.setX(base + 92);
+                mathAChBtn.setX(base + 160);
+            } else {
+                mathOpBtn.setX(base + 140);
+                mathOpBtn.setWidth(36);
+                mathASourceBtn.setX(base + 48);
+                mathAInput.setX(base + 48);
+                mathAChBtn.setX(base + 114);
+            }
+        }
+
         private void cycleMathOp(int dir) {
             int si = scrollOffset + rowIdx; if (si >= steps.size()) return;
             SequencerStep step = steps.get(si);
@@ -2004,6 +2023,8 @@ public class SequencerScreen extends Screen {
             mathOpBtn.setMessage(Component.literal(step.mathOp));
             boolean unary   = isUnaryOp(step.mathOp);
             boolean nullary = isNullaryOp(step.mathOp);
+            boolean isRand  = step.mathOp.equals("randL") || step.mathOp.equals("randW");
+            applyRandLayout(isRand);
             mathAInput.visible     = !nullary && step.mathAManual;
             mathASourceBtn.visible = !nullary && !step.mathAManual;
             mathAChBtn.visible     = !nullary && !step.mathAManual && srcNeedsChannel(step.mathA, false);
@@ -2156,6 +2177,8 @@ public class SequencerScreen extends Screen {
                     boolean nullary = isNullaryOp(step.mathOp);
                     boolean aManual = step.mathAManual;
                     boolean bManual = step.mathBManual;
+                    boolean isRand  = step.mathOp.equals("randL") || step.mathOp.equals("randW");
+                    applyRandLayout(isRand);
                     mathAInput.visible     = !nullary && aManual;
                     mathASourceBtn.visible = !nullary && !aManual;
                     mathAChBtn.visible     = !nullary && !aManual && srcNeedsChannel(step.mathA, false);
@@ -2167,9 +2190,8 @@ public class SequencerScreen extends Screen {
                     mathDestBtn.setMessage(Component.literal(dest));
                     if (aManual) mathAInput.setValue(step.mathA);
                     else {
-                        boolean randRange = step.mathOp.equals("randL") || step.mathOp.equals("randW");
-                        String aEmpty = randRange ? "max..." : "src A...";
-                        mathASourceBtn.setMessage(Component.literal(step.mathA.isEmpty() ? aEmpty : fitLabel(step.mathA, 56)));
+                        mathASourceBtn.setMessage(Component.literal(
+                                step.mathA.isEmpty() ? (isRand ? "max..." : "src A...") : fitLabel(step.mathA, 56)));
                     }
                     mathAChBtn.setMessage(Component.literal(String.valueOf(step.mathACh)));
                     mathOpBtn.setMessage(Component.literal(step.mathOp));

@@ -6,6 +6,7 @@ import dev.bennethogan.universalkeyboard.client.screen.LiveControlScreen;
 import dev.bennethogan.universalkeyboard.client.screen.MenuNav;
 import dev.bennethogan.universalkeyboard.client.screen.ModeSelectionScreen;
 import dev.bennethogan.universalkeyboard.client.screen.PeripheralControlScreen;
+import dev.bennethogan.universalkeyboard.client.screen.PositionMoveScreen;
 import dev.bennethogan.universalkeyboard.client.screen.SequencerScreen;
 import dev.bennethogan.universalkeyboard.client.screen.ThrusterControlScreen;
 import dev.bennethogan.universalkeyboard.client.screen.WikiScreen;
@@ -38,6 +39,7 @@ public class ClientPacketHandlers {
         registrar.playToClient(ModPackets.SyncFavoritePacket.TYPE, ModPackets.SyncFavoritePacket.CODEC, ClientPacketHandlers::handleSyncFavorite);
         registrar.optional().playToClient(ModPackets.OpenWirelessCopycatScreenPacket.TYPE, ModPackets.OpenWirelessCopycatScreenPacket.STREAM_CODEC, ClientPacketHandlers::handleOpenWirelessCopycatScreen);
         registrar.optional().playToClient(ModPackets.OpenLinkFreqScreenPacket.TYPE,        ModPackets.OpenLinkFreqScreenPacket.STREAM_CODEC,        ClientPacketHandlers::handleOpenLinkFreqScreen);
+        registrar.playToClient(ModPackets.ShowPositionMovePacket.TYPE,                     ModPackets.ShowPositionMovePacket.CODEC,                     ClientPacketHandlers::handleShowPositionMove);
     }
 
     private static void handleKeyboardCapture(KeyboardCapturePacket packet, IPayloadContext ctx) {
@@ -193,5 +195,10 @@ public class ClientPacketHandlers {
         ctx.enqueueWork(() ->
                 Minecraft.getInstance().setScreen(
                         new LinkFrequencyScreen(packet.pos(), packet.freqs())));
+    }
+
+    private static void handleShowPositionMove(ModPackets.ShowPositionMovePacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() ->
+                Minecraft.getInstance().setScreen(new PositionMoveScreen(packet.kbPos())));
     }
 }
