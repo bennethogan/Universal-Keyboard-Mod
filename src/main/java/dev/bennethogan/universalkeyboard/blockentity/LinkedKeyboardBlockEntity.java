@@ -250,6 +250,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     // Track postition change so links can work with assembly & printing a schematic
     private BlockPos lastKnownPos = null;
     private boolean suppressPositionDialog = false;
+    // new flag that is set with schematic paste, so assembly directly afterwards rolls better into the relative position check
+    private boolean pendingPositionDialog = false;
 
     // Cached peripheral getter values for Create display source
     private final Map<String, String> cachedGetterValues = new LinkedHashMap<>();
@@ -403,7 +405,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     public boolean needsPositionCheck() {
         if (suppressPositionDialog) return false;
-        // schematic pasting case
+        // Schematic pasting case
+        if (pendingPositionDialog) return !channelTargets.isEmpty();
         if (lastKnownPos == null) return !channelTargets.isEmpty();
         if (worldPosition.equals(lastKnownPos)) return false;
         return !channelTargets.isEmpty();
@@ -426,6 +429,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             channelTargets.putAll(updated);
         }
         lastKnownPos = worldPosition.immutable();
+        pendingPositionDialog = false;
         setChanged();
         syncToClients();
         UniversalKeyboardMod.LOGGER.info(
@@ -995,6 +999,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             tag.put("last_known_pos", lkp);
         }
         if (suppressPositionDialog) tag.putBoolean("suppress_pos_dialog", true);
+        if (pendingPositionDialog)  tag.putBoolean("pending_pos_dialog", true);
     }
 
     @Override
@@ -1154,14 +1159,18 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             wheelAnimStartTick  = Long.MIN_VALUE;
         }
 
+        pendingPositionDialog = tag.getBoolean("pending_pos_dialog");
         if (tag.contains("last_known_pos", Tag.TAG_COMPOUND)) {
             CompoundTag lkp = tag.getCompound("last_known_pos");
             lastKnownPos = new BlockPos(lkp.getInt("x"), lkp.getInt("y"), lkp.getInt("z"));
-        } else if (!loadedRelative) {
+        } else if (loadedRelative) {
+            // better handling for immediate assembly after schematic paste
+            lastKnownPos = worldPosition.immutable();
+            pendingPositionDialog = true;
+        } else {
             // first load without saved position and no relative targets to establish base
             lastKnownPos = worldPosition.immutable();
         }
-        // else for a schematic paste case, leaves lastKnownPos null so that needsPositionCheck triggers on the next click
         suppressPositionDialog = tag.getBoolean("suppress_pos_dialog");
     }
 

@@ -12,6 +12,8 @@ public final class MenuGlyphs {
 
     private static final ResourceLocation ICONS = ResourceLocation.fromNamespaceAndPath(
             "universalkeyboard", "textures/gui/bennets_icons.png");
+    //public so I can put a wifi icon on the Wireless copycat sprite
+    public static final ResourceLocation ICONS_LOC = ICONS;
     private static final int ICON_SIZE  = 50;
     private static final int SHEET_SIZE = 100;
 

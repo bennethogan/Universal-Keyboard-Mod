@@ -9,6 +9,8 @@ import dev.bennethogan.universalkeyboard.client.LinkingModeRenderer;
 import dev.bennethogan.universalkeyboard.client.model.WirelessCopycatBaseModel;
 import dev.bennethogan.universalkeyboard.client.model.WirelessCopycatPanelModel;
 import dev.bennethogan.universalkeyboard.client.model.WirelessCopycatStepModel;
+import dev.bennethogan.universalkeyboard.client.screen.MenuGlyphs;
+import dev.bennethogan.universalkeyboard.item.ModItems;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlManager;
 import net.minecraft.client.renderer.block.BlockModelShaper;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -34,6 +36,7 @@ public class UniversalKeyboardModClient {
         modEventBus.addListener(this::onRegisterRenderers);
         modEventBus.addListener(this::onRegisterAdditionalModels);
         modEventBus.addListener(dev.bennethogan.universalkeyboard.client.ModKeyMappings::register);
+        modEventBus.addListener(this::onRegisterItemDecorations);
         if (ModList.get().isLoaded("create")) {
             modEventBus.addListener(this::onModelBake);
         }
@@ -45,6 +48,21 @@ public class UniversalKeyboardModClient {
         NeoForge.EVENT_BUS.addListener(KeyboardInputHandler::onMouseScroll);
         NeoForge.EVENT_BUS.addListener(LinkingModeRenderer::onRenderLevelStage);
         NeoForge.EVENT_BUS.addListener(UniversalKeyboardModClient::onPlayerLogout);
+    }
+
+    // wifi icon on the wireless copycat sprite to distinguish better
+    private void onRegisterItemDecorations(net.neoforged.neoforge.client.event.RegisterItemDecorationsEvent event) {
+        net.neoforged.neoforge.client.IItemDecorator wifiBadge = (g, font, stack, x, y) -> {
+            g.pose().pushPose();
+            g.pose().translate(x + 8, y, 200);
+            g.pose().scale(0.14f, 0.14f, 1f);
+            g.blit(MenuGlyphs.ICONS_LOC, 0, 0, 0, 50, 0, 50, 50, 100, 100);
+            g.pose().popPose();
+            return false;
+        };
+        if (ModItems.WIRELESS_COPYCAT       != null) event.register(ModItems.WIRELESS_COPYCAT,       wifiBadge);
+        if (ModItems.WIRELESS_COPYCAT_PANEL != null) event.register(ModItems.WIRELESS_COPYCAT_PANEL, wifiBadge);
+        if (ModItems.WIRELESS_COPYCAT_STEP  != null) event.register(ModItems.WIRELESS_COPYCAT_STEP,  wifiBadge);
     }
 
     private void onModelBake(ModelEvent.ModifyBakingResult event) {
