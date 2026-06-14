@@ -15,7 +15,11 @@ public final class KeyTexels {
     private static final Map<Integer, int[]> MAP = new HashMap<>();
 
     private static void k(int key, int tx, int ty) {
-        MAP.put(key, new int[]{tx, ty});
+        MAP.put(key, new int[]{tx, ty, 1, 1});
+    }
+
+    private static void k(int key, int tx, int ty, int w, int h) {
+        MAP.put(key, new int[]{tx, ty, w, h});
     }
 
     static {
@@ -48,10 +52,10 @@ public final class KeyTexels {
         k(GLFW.GLFW_KEY_0,         12,  4);
         k(GLFW.GLFW_KEY_MINUS,     11,  4);
         k(GLFW.GLFW_KEY_EQUAL,     10,  4);
-        k(GLFW.GLFW_KEY_BACKSPACE, 9,  4);
+        k(GLFW.GLFW_KEY_BACKSPACE, 9,  4, 2, 1);
 
         // QWERTY row
-        k(GLFW.GLFW_KEY_TAB,       22,  3);
+        k(GLFW.GLFW_KEY_TAB,       22,  3, 2, 1);
         k(GLFW.GLFW_KEY_Q,         21,  3);
         k(GLFW.GLFW_KEY_W,         20,  3);
         k(GLFW.GLFW_KEY_E,         19,  3);
@@ -67,7 +71,7 @@ public final class KeyTexels {
         k(GLFW.GLFW_KEY_BACKSLASH, 9,  3);
 
         // ASDF row
-        k(GLFW.GLFW_KEY_CAPS_LOCK, 22,  2);
+        k(GLFW.GLFW_KEY_CAPS_LOCK, 22,  2, 2, 1);
         k(GLFW.GLFW_KEY_A,         21,  2);
         k(GLFW.GLFW_KEY_S,         20,  2);
         k(GLFW.GLFW_KEY_D,         19,  2);
@@ -79,10 +83,10 @@ public final class KeyTexels {
         k(GLFW.GLFW_KEY_L,         13,  2);
         k(GLFW.GLFW_KEY_SEMICOLON, 12,  2);
         k(GLFW.GLFW_KEY_APOSTROPHE,11,  2);
-        k(GLFW.GLFW_KEY_ENTER,     9,  2);
+        k(GLFW.GLFW_KEY_ENTER,     9,  2, 2, 1);
 
         // ZXCV row
-        k(GLFW.GLFW_KEY_LEFT_SHIFT, 22, 1);
+        k(GLFW.GLFW_KEY_LEFT_SHIFT, 22, 1, 3, 1);
         k(GLFW.GLFW_KEY_Z,         21,  1);
         k(GLFW.GLFW_KEY_X,         20,  1);
         k(GLFW.GLFW_KEY_C,         19,  1);
@@ -93,13 +97,13 @@ public final class KeyTexels {
         k(GLFW.GLFW_KEY_COMMA,     12,  1);
         k(GLFW.GLFW_KEY_PERIOD,    11,  1);
         k(GLFW.GLFW_KEY_SLASH,     10,  1);
-        k(GLFW.GLFW_KEY_RIGHT_SHIFT, 9, 1);
+        k(GLFW.GLFW_KEY_RIGHT_SHIFT, 9, 1, 2, 1);
 
         // Bottom row
         k(GLFW.GLFW_KEY_LEFT_CONTROL, 22, 1);
         k(GLFW.GLFW_KEY_LEFT_SUPER,   21, 1);
         k(GLFW.GLFW_KEY_LEFT_ALT,     20, 1);
-        k(GLFW.GLFW_KEY_SPACE,        15, 1);
+        k(GLFW.GLFW_KEY_SPACE,        13, 1, 6, 1);
         k(GLFW.GLFW_KEY_RIGHT_ALT,    12, 1);
         k(GLFW.GLFW_KEY_RIGHT_SUPER,  11, 1);
         k(GLFW.GLFW_KEY_MENU,         10, 1);

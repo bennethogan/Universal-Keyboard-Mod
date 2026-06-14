@@ -1,160 +1,73 @@
 package dev.bennethogan.universalkeyboard.compat;
 
-import dev.bennethogan.universalkeyboard.UniversalKeyboardMod;
+import dev.ryanhcode.sable.companion.SableCompanion;
+import dev.ryanhcode.sable.companion.SubLevelAccess;
+import dev.ryanhcode.sable.companion.math.BoundingBox3dc;
+import dev.ryanhcode.sable.companion.math.Pose3dc;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.Vec3;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.Quaterniondc;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
-/**
- * Optional Sable integration
- *
- * Sable.HELPER.getContaining(level, blockPos)-  non-null means on sublevel.
- *
- *
- *   sublevel.logicalPose()       --     Pose3dc
- *     pose.position()            --     Vector3dc  — methods x(), y(), z()
- *     pose.orientation()           --   Quaterniondc — methods x(), y(), z(), w()
- *   sublevel.latestLinearVelocity   --  org.joml.Vector3d — public fields x, y, z
- *   sublevel.latestAngularVelocity --   org.joml.Vector3d — public fields x, y, z
- */
+
 public class SableCompat {
 
     private static final Logger LOGGER = LogManager.getLogger("universalkeyboard/SableCompat");
-    private static final String DETECT_CLASS = "dev.ryanhcode.sable.companion.SableCompanion";
 
     public static final String[] GETTER_NAMES = {
-        "posX",    "posY",    "posZ",
-        "velX",    "velY",    "velZ",
-        "angVelX", "angVelY", "angVelZ",
-        "pitch",   "yaw",     "roll"
+        "posX",      "posY",      "posZ",
+        "velX",      "velY",      "velZ",
+        "angVelX",   "angVelY",   "angVelZ",
+        "pitch",     "yaw",       "roll",
+        "shipSizeX", "shipSizeY", "shipSizeZ"
     };
 
-    // ── Init state ────────────────────────────────────────────────────────────
+
     private static boolean initialized = false;
     static          boolean present    = false;
 
-    private static Object sableHelper;   // Sable.HELPER
-    private static Method getContainingVec3i;   // getContaining(Level, Vec3i) — BlockPos works
-    private static Method getContainingChunk;   // getContaining(Level, ChunkPos)
-    private static Method getContainingVec3;    // getContaining(Level, Vec3)
+    private static Object companionRef;
 
-    // ── Sublevel handles (resolved lazily from first sublevel object) ─────────
-    private static Method logicalPoseMethod; // ServerSubLevel.logicalPose() → Pose3dc
-    private static Field  linVelField;       // Vector3d latestLinearVelocity
-    private static Field  angVelField;       // Vector3d latestAngularVelocity
-    // Public fields on concrete Vector3d (joml)
-    private static Field  vecXF, vecYF, vecZF;
-    private static volatile boolean sublevelResolved = false;
-
-    // ── Pose3dc handles (resolved lazily from first pose object) ─────────────
-    private static Method posePositionMethod;    // Pose3dc.position()  → Vector3dc
-    private static Method poseOrientationMethod; // Pose3dc.orientation() → Quaterniondc
-    private static Method poseTransformPosMethod; // Pose3dc.transformPosition(Vec3) → Vec3
-    // Vector3dc interface methods: x(), y(), z()
-    private static Method vdcX, vdcY, vdcZ;
-    // Quaterniondc interface methods: w(), x(), y(), z()
-    private static Method qdcW, qdcX, qdcY, qdcZ;
-    private static volatile boolean poseResolved = false;
-
-    // ── Mass-tracker handles (resolved lazily from first server sublevel) ─────
-    private static Method getSelfMassTrackerMethod; // ServerSubLevel.getSelfMassTracker() → MassTracker
-    private static Method addBlockMassMethod;        // MassTracker.addBlockMass(BlockGetter, BlockState, BlockPos, double, Vec3)
-    private static Method getInertiaStaticMethod;    // PhysicsBlockPropertyHelper.getInertia(Level, BlockPos, BlockState) → Vec3 (static)
-    private static Method sableGetPropertyMethod;    // BlockState.sable$getProperty(propertyType)
-    private static Object massPropertyType;          // PhysicsBlockPropertyTypes.MASS.get()
+    // mass tracker handles
+    private static Method getSelfMassTrackerMethod;
+    private static Method addBlockMassMethod;
+    private static Method getInertiaStaticMethod;
+    private static Method sableGetPropertyMethod;
+    private static Object massPropertyType;
     private static volatile boolean massHandlesResolved = false;
     private static boolean massSupported = false;
 
-    // ── Init ──────────────────────────────────────────────────────────────────
-
+    //
     private static void init() {
         if (initialized) return;
         initialized = true;
         try {
-            Class<?> companionClass = Class.forName(DETECT_CLASS);
-
-            // SableCompanion.INSTANCE — the documented compatibility singleton
-            Field instanceField = companionClass.getDeclaredField("INSTANCE");
-            instanceField.setAccessible(true);
-            sableHelper = instanceField.get(null);
-
-            // Find all getContaining(LevelLike, X) overloads — Vec3i, ChunkPos, Vec3.
-            // The first param must accept Level (or a Level subclass passed at runtime).
-            if (sableHelper != null) {
-                for (Method m : sableHelper.getClass().getMethods()) {
-                    if (!"getContaining".equals(m.getName()) || m.getParameterCount() != 2) continue;
-                    Class<?> p0 = m.getParameterTypes()[0];
-                    Class<?> p1 = m.getParameterTypes()[1];
-                    LOGGER.debug("SableCompat: found getContaining overload with [0]={} [1]={}",
-                            p0.getName(), p1.getName());
-                    // Skip overloads whose first param isn't compatible with Level.
-                    if (!p0.isAssignableFrom(Level.class)
-                            && !Level.class.isAssignableFrom(p0)) continue;
-                    if (Vec3i.class.isAssignableFrom(p1))         getContainingVec3i = m;
-                    else if (ChunkPos.class.isAssignableFrom(p1)) getContainingChunk = m;
-                    else if (Vec3.class.isAssignableFrom(p1))     getContainingVec3  = m;
-                }
-            }
-
-            if (getContainingVec3i == null && getContainingChunk == null && getContainingVec3 == null) {
-                LOGGER.warn("SableCompat: no getContaining() overload found on SableCompanion ({}); Sable getters disabled.",
-                        sableHelper != null ? sableHelper.getClass().getName() : "null");
-                return;
-            }
-
+            SableCompanion instance = SableCompanion.INSTANCE;
+            companionRef = instance;
             present = true;
-            LOGGER.info("Sable detected — sublevel getter support enabled.");
-        } catch (ClassNotFoundException | NoClassDefFoundError e) {
-            LOGGER.info("Sable not present — sublevel getters disabled.");
-        } catch (Exception e) {
-            LOGGER.warn("Sable reflection init failed: {}", e.getMessage());
+            LOGGER.info("Sable detected — companion API enabled.");
+        } catch (Throwable t) {
+            LOGGER.info("Sable not present — sublevel getters disabled. ({})", t.getMessage());
         }
     }
 
-    // ── Public API ────────────────────────────────────────────────────────────
+    // Public API
 
     public static boolean isPresent() { init(); return present; }
 
-    /** Returns the ServerSubLevel object for the given position, or null if not on a sublevel. */
     public static Object getSublevel(Level level, BlockPos pos) {
         init();
         if (!present || level == null) return null;
-        Object result = tryOverload(0, level, pos);
-        if (result != null) return result;
-        result = tryOverload(1, level, new ChunkPos(pos));
-        if (result != null) return result;
-        result = tryOverload(2, level, new Vec3(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5));
-        return result;
-    }
-
-    /** Disable any overload that has failed once, prevents per-tick log spam. */
-    private static Object tryOverload(int slot, Level level, Object arg) {
-        Method m = switch (slot) {
-            case 0 -> getContainingVec3i;
-            case 1 -> getContainingChunk;
-            default -> getContainingVec3;
-        };
-        if (m == null) return null;
         try {
-            return m.invoke(sableHelper, level, arg);
+            return companion().getContaining(level, (Vec3i) pos);
         } catch (Throwable t) {
-            Throwable cause = (t instanceof java.lang.reflect.InvocationTargetException ite && ite.getCause() != null)
-                    ? ite.getCause() : t;
-            LOGGER.warn("SableCompat: getContaining({}) failed: {} — disabling this overload.",
-                    arg.getClass().getSimpleName(), cause.getMessage());
-            switch (slot) {
-                case 0 -> getContainingVec3i = null;
-                case 1 -> getContainingChunk = null;
-                default -> getContainingVec3  = null;
-            }
             return null;
         }
     }
@@ -163,8 +76,35 @@ public class SableCompat {
         return getSublevel(level, pos) != null;
     }
 
-    // ── Mass override ───────────────────────────────────────────────────────────
+    public static boolean isSableGetter(String name) {
+        for (String g : GETTER_NAMES) if (g.equals(name)) return true;
+        return false;
+    }
 
+    public static double[] getSnapshot(Level level, BlockPos pos) {
+        double[] out = new double[GETTER_NAMES.length];
+        Object raw = getSublevel(level, pos);
+        if (raw == null) return out;
+        try {
+            SubLevelAccess sla = (SubLevelAccess) raw;
+            for (int i = 0; i < GETTER_NAMES.length; i++) {
+                out[i] = getFromSublevel(sla, GETTER_NAMES[i], level, pos);
+            }
+        } catch (Throwable ignored) {}
+        return out;
+    }
+
+    public static double getValue(Level level, BlockPos pos, String name) {
+        Object raw = getSublevel(level, pos);
+        if (raw == null) return 0;
+        try {
+            return getFromSublevel((SubLevelAccess) raw, name, level, pos);
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    // Mass override
 
     public static double getDefaultBlockMass(BlockState state) {
         if (sableGetPropertyMethod == null || massPropertyType == null) return 1.0;
@@ -175,7 +115,6 @@ public class SableCompat {
         return 1.0;
     }
 
-  
     public static boolean addBlockMass(Level level, BlockPos pos, BlockState state, double massDelta) {
         init();
         if (!present || level == null || level.isClientSide) return false;
@@ -195,52 +134,156 @@ public class SableCompat {
             return false;
         }
     }
-    // ------------------------------------------
+
+    // Internal data access
+
+    private static double getFromSublevel(SubLevelAccess sla, String name, Level level, BlockPos kbPos) {
+        return switch (name) {
+            case "posX"      -> worldPos(sla, kbPos, 0);
+            case "posY"      -> worldPos(sla, kbPos, 1);
+            case "posZ"      -> worldPos(sla, kbPos, 2);
+            case "velX"      -> pointVelocity(sla, level, kbPos, 0);
+            case "velY"      -> pointVelocity(sla, level, kbPos, 1);
+            case "velZ"      -> pointVelocity(sla, level, kbPos, 2);
+            case "angVelX"   -> angularVelocity(sla, 0);
+            case "angVelY"   -> angularVelocity(sla, 1);
+            case "angVelZ"   -> angularVelocity(sla, 2);
+            case "pitch"     -> euler(sla, 0);
+            case "yaw"       -> euler(sla, 1);
+            case "roll"      -> euler(sla, 2);
+            case "shipSizeX" -> shipSize(sla, 0);
+            case "shipSizeY" -> shipSize(sla, 1);
+            case "shipSizeZ" -> shipSize(sla, 2);
+            default          -> 0;
+        };
+    }
+
+    private static double worldPos(SubLevelAccess sla, BlockPos kbPos, int idx) {
+        Vector3d world = toWorldPos(sla.logicalPose(), kbPos);
+        return switch (idx) { case 0 -> world.x; case 1 -> world.y; default -> world.z; };
+    }
+
+    private static double pointVelocity(SubLevelAccess sla, Level level, BlockPos kbPos, int idx) {
+        Vector3d worldPos = toWorldPos(sla.logicalPose(), kbPos);
+        Vector3d vel = new Vector3d();
+        companion().getVelocity(level, sla, worldPos, vel);
+        return switch (idx) { case 0 -> vel.x; case 1 -> vel.y; default -> vel.z; };
+    }
+    
+    private static double angularVelocity(SubLevelAccess sla, int idx) {
+        Quaterniondc qc = sla.logicalPose().orientation();
+        Quaterniondc qp = sla.lastPose().orientation();
+
+        // delta = q_cur * conj(q_prev)  (conj of unit quaternion = inverse)
+        double dw =  qc.w()*qp.w() + qc.x()*qp.x() + qc.y()*qp.y() + qc.z()*qp.z();
+        double dx = -qc.w()*qp.x() + qc.x()*qp.w() - qc.y()*qp.z() + qc.z()*qp.y();
+        double dy = -qc.w()*qp.y() + qc.x()*qp.z() + qc.y()*qp.w() - qc.z()*qp.x();
+        double dz = -qc.w()*qp.z() - qc.x()*qp.y() + qc.y()*qp.x() + qc.z()*qp.w();
+
+        // Always take the shorter arc (dw >= 0 convention).
+        if (dw < 0) { dx = -dx; dy = -dy; dz = -dz; }
+
+        // ω ≈ 2 * delta.xyz * 20 ticks/s, then to degrees/s
+        double scale = 2.0 * 20.0;
+        return Math.toDegrees(switch (idx) { case 0 -> dx; case 1 -> dy; default -> dz; } * scale);
+    }
+
+    private static double euler(SubLevelAccess sla, int idx) {
+        Quaterniondc q = sla.logicalPose().orientation();
+        double w = q.w(), x = q.x(), y = q.y(), z = q.z();
+        return switch (idx) {
+            case 0 -> Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, 2*(w*x - y*z)))));  // pitch
+            case 1 -> Math.toDegrees(Math.atan2(2*(w*y + x*z), 1 - 2*(x*x + y*y)));          // yaw
+            default -> Math.toDegrees(Math.atan2(2*(w*z + x*y), 1 - 2*(y*y + z*z)));          // roll
+        };
+    }
+
+
+    private static double shipSize(SubLevelAccess sla, int idx) {
+        BoundingBox3dc bb = sla.boundingBox();
+        return switch (idx) {
+            case 0 -> bb.maxX() - bb.minX();
+            case 1 -> bb.maxY() - bb.minY();
+            default -> bb.maxZ() - bb.minZ();
+        };
+    }
+
+    // Utilities
+    private static Vector3d toWorldPos(Pose3dc pose, BlockPos local) {
+        return pose.transformPosition(
+                new Vector3d(local.getX() + 0.5, local.getY() + 0.5, local.getZ() + 0.5));
+    }
+
+    private static SableCompanion companion() {
+        return (SableCompanion) companionRef;
+    }
+
+    // Mass handles
     private static void ensureMassHandles(Object sublevel, BlockState sampleState) {
         if (massHandlesResolved) return;
         synchronized (SableCompat.class) {
             if (massHandlesResolved) return;
             massHandlesResolved = true;
             try {
-                // ServerSubLevel.getSelfMassTracker() — only present on the server sublevel type
-                try { getSelfMassTrackerMethod = sublevel.getClass().getMethod("getSelfMassTracker"); }
-                catch (NoSuchMethodException e) {
+                try {
+                    getSelfMassTrackerMethod = sublevel.getClass().getMethod("getSelfMassTracker");
+                } catch (NoSuchMethodException e) {
                     LOGGER.info("SableCompat: getSelfMassTracker() not found on {}; mass override disabled.",
                             sublevel.getClass().getName());
                     return;
                 }
                 Object tracker = getSelfMassTrackerMethod.invoke(sublevel);
-                if (tracker == null) { LOGGER.info("SableCompat: mass tracker null; mass override disabled."); return; }
+                if (tracker == null) {
+                    LOGGER.info("SableCompat: mass tracker null; mass override disabled.");
+                    return;
+                }
 
-                // MassTracker.addBlockMass(BlockGetter, BlockState, BlockPos, double, Vec3)
                 for (Method m : tracker.getClass().getMethods()) {
-                    if (m.getName().equals("addBlockMass") && m.getParameterCount() == 5) { addBlockMassMethod = m; break; }
+                    if (m.getName().equals("addBlockMass") && m.getParameterCount() == 5) {
+                        addBlockMassMethod = m;
+                        break;
+                    }
                 }
                 if (addBlockMassMethod == null) {
                     LOGGER.info("SableCompat: addBlockMass(5-arg) not found; mass override disabled.");
                     return;
                 }
 
-                // PhysicsBlockPropertyHelper.getInertia(Level, BlockPos, BlockState) — static
-                Class<?> helper = Class.forName("dev.ryanhcode.sable.physics.config.block_properties.PhysicsBlockPropertyHelper");
+                Class<?> helper = tryForName(
+                        "dev.ryanhcode.sable.physics.config.block_properties.PhysicsBlockPropertyHelper",
+                        "dev.ryanhcode.sable.sable_rapier.physics.config.block_properties.PhysicsBlockPropertyHelper",
+                        "dev.ryanhcode.sable_rapier.physics.config.block_properties.PhysicsBlockPropertyHelper");
+                if (helper == null) {
+                    LOGGER.info("SableCompat: PhysicsBlockPropertyHelper not found; mass override disabled.");
+                    return;
+                }
                 for (Method m : helper.getMethods()) {
-                    if (m.getName().equals("getInertia") && m.getParameterCount() == 3) { getInertiaStaticMethod = m; break; }
+                    if (m.getName().equals("getInertia") && m.getParameterCount() == 3) {
+                        getInertiaStaticMethod = m;
+                        break;
+                    }
                 }
                 if (getInertiaStaticMethod == null) {
-                    LOGGER.info("SableCompat: PhysicsBlockPropertyHelper.getInertia(3-arg) not found; mass override disabled.");
+                    LOGGER.info("SableCompat: getInertia(3-arg) not found; mass override disabled.");
                     return;
                 }
 
-                // Optional: read the default MASS property so the delta tracks Sable's real default.
                 try {
-                    Class<?> types = Class.forName("dev.ryanhcode.sable.physics.config.block_properties.PhysicsBlockPropertyTypes");
+                    Class<?> types = tryForName(
+                            "dev.ryanhcode.sable.physics.config.block_properties.PhysicsBlockPropertyTypes",
+                            "dev.ryanhcode.sable.sable_rapier.physics.config.block_properties.PhysicsBlockPropertyTypes",
+                            "dev.ryanhcode.sable_rapier.physics.config.block_properties.PhysicsBlockPropertyTypes");
+                    if (types == null) throw new ClassNotFoundException("PhysicsBlockPropertyTypes not found");
                     Object massSupplier = types.getField("MASS").get(null);
                     massPropertyType = massSupplier.getClass().getMethod("get").invoke(massSupplier);
                     for (Method m : sampleState.getClass().getMethods()) {
-                        if (m.getName().equals("sable$getProperty") && m.getParameterCount() == 1) { sableGetPropertyMethod = m; break; }
+                        if (m.getName().equals("sable$getProperty") && m.getParameterCount() == 1) {
+                            sableGetPropertyMethod = m;
+                            break;
+                        }
                     }
                 } catch (Throwable t) {
-                    LOGGER.debug("SableCompat: MASS property read unavailable ({}); assuming default 1.0.", t.toString());
+                    LOGGER.debug("SableCompat: MASS property unavailable ({}); assuming default 1.0.", t.toString());
                 }
 
                 massSupported = true;
@@ -251,220 +294,11 @@ public class SableCompat {
         }
     }
 
-    public static boolean isSableGetter(String name) {
-        for (String g : GETTER_NAMES) if (g.equals(name)) return true;
-        return false;
-    }
-
-    public static double[] getSnapshot(Level level, BlockPos pos) {
-        double[] out = new double[GETTER_NAMES.length];
-        Object sublevel = getSublevel(level, pos);
-        if (sublevel == null) return out;
-        ensureSublevelHandles(sublevel);
-        for (int i = 0; i < GETTER_NAMES.length; i++) {
-            try { out[i] = getFromSublevel(sublevel, GETTER_NAMES[i], pos); }
-            catch (Exception ignored) {}
-        }
-        return out;
-    }
-
-    public static double getValue(Level level, BlockPos pos, String name) {
-        Object sublevel = getSublevel(level, pos);
-        if (sublevel == null) return 0;
-        ensureSublevelHandles(sublevel);
-        try { return getFromSublevel(sublevel, name, pos); }
-        catch (Exception e) { return 0; }
-    }
-
-    // ── Data access ───────────────────────────────────────────────────────────
-
-    private static double getFromSublevel(Object sublevel, String name, BlockPos kbPos) throws Exception {
-        return switch (name) {
-            case "posX"    -> poseKeyboardPos(sublevel, kbPos, 0);
-            case "posY"    -> poseKeyboardPos(sublevel, kbPos, 1);
-            case "posZ"    -> poseKeyboardPos(sublevel, kbPos, 2);
-            case "velX"    -> vecField(sublevel, linVelField, vecXF);
-            case "velY"    -> vecField(sublevel, linVelField, vecYF);
-            case "velZ"    -> vecField(sublevel, linVelField, vecZF);
-            case "angVelX" -> vecField(sublevel, angVelField, vecXF);
-            case "angVelY" -> vecField(sublevel, angVelField, vecYF);
-            case "angVelZ" -> vecField(sublevel, angVelField, vecZF);
-            case "pitch"   -> poseEuler(sublevel, 0);
-            case "yaw"     -> poseEuler(sublevel, 1);
-            case "roll"    -> poseEuler(sublevel, 2);
-            default        -> 0;
-        };
-    }
-
-    /** velocity / angVel: public fields x/y/z on concrete Vector3d */
-    private static double vecField(Object sublevel, Field vecField, Field comp) throws Exception {
-        if (vecField == null || comp == null) return 0;
-        Object vec = vecField.get(sublevel);
-        if (vec == null) return 0;
-        Object v = comp.get(vec);
-        return v instanceof Number n ? n.doubleValue() : 0;
-    }
-
-    /** position: pose.position().x() / .y() / .z() via Vector3dc interface methods */
-    private static double posePos(Object sublevel, int idx) throws Exception {
-        Object pose = getPose(sublevel);
-        if (pose == null || posePositionMethod == null) return 0;
-        Object vec = posePositionMethod.invoke(pose);
-        if (vec == null) return 0;
-        Method m = switch (idx) { case 0 -> vdcX; case 1 -> vdcY; default -> vdcZ; };
-        if (m == null) return 0;
-        Object v = m.invoke(vec);
-        return v instanceof Number n ? n.doubleValue() : 0;
-    }
-
-
-    private static double poseKeyboardPos(Object sublevel, BlockPos kbPos, int idx) throws Exception {
-        Object pose = getPose(sublevel);
-        if (pose == null) return 0;
-
-        // Primary path: Pose3dc.transformPosition(Vec3) → Vec3 (no JOML instantiation needed)
-        if (poseTransformPosMethod != null) {
-            Vec3 local = Vec3.atCenterOf(kbPos);
-            Object result = poseTransformPosMethod.invoke(pose, local);
-            if (result instanceof Vec3 world) {
-                return switch (idx) { case 0 -> world.x; case 1 -> world.y; default -> world.z; };
-            }
-        }
-
-        // Fallback: manual quaternion rotation using already-resolved handles.
-        // pose.position() is the world position of ship-local origin (0,0,0).
-        // worldKeyboardPos = pose.position() + rotate(kbLocalPos, quaternion)
-        if (posePositionMethod != null && poseOrientationMethod != null && qdcW != null && vdcX != null) {
-            Object vec  = posePositionMethod.invoke(pose);
-            Object quat = poseOrientationMethod.invoke(pose);
-            if (vec != null && quat != null) {
-                double px = invoke(vdcX, vec), py = invoke(vdcY, vec), pz = invoke(vdcZ, vec);
-                double qw = invoke(qdcW, quat), qx = invoke(qdcX, quat),
-                       qy = invoke(qdcY, quat), qz = invoke(qdcZ, quat);
-                double lx = kbPos.getX() + 0.5, ly = kbPos.getY() + 0.5, lz = kbPos.getZ() + 0.5;
-                // Rodrigues: t = 2 * cross(q.xyz, v);  v' = v + qw*t + cross(q.xyz, t)
-                double tx = 2 * (qy * lz - qz * ly);
-                double ty = 2 * (qz * lx - qx * lz);
-                double tz = 2 * (qx * ly - qy * lx);
-                double rx = lx + qw * tx + qy * tz - qz * ty;
-                double ry = ly + qw * ty + qz * tx - qx * tz;
-                double rz = lz + qw * tz + qx * ty - qy * tx;
-                return switch (idx) { case 0 -> px + rx; case 1 -> py + ry; default -> pz + rz; };
-            }
-        }
-
-        return posePos(sublevel, idx); // last resort: ship centre
-    }
-
-    /** rotation: pose.orientation().w()/x()/y()/z() → Euler degrees, YXZ convention */
-    private static double poseEuler(Object sublevel, int idx) throws Exception {
-        Object pose = getPose(sublevel);
-        if (pose == null || poseOrientationMethod == null || qdcW == null) return 0;
-        Object quat = poseOrientationMethod.invoke(pose);
-        if (quat == null) return 0;
-        double w = invoke(qdcW, quat), x = invoke(qdcX, quat),
-               y = invoke(qdcY, quat), z = invoke(qdcZ, quat);
-        return switch (idx) {
-            case 0 -> Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, 2*(w*x - y*z)))));  // pitch
-            case 1 -> Math.toDegrees(Math.atan2(2*(w*y + x*z), 1 - 2*(x*x + y*y)));         // yaw
-            default -> Math.toDegrees(Math.atan2(2*(w*z + x*y), 1 - 2*(y*y + z*z)));         // roll
-        };
-    }
-
-    private static Object getPose(Object sublevel) throws Exception {
-        if (logicalPoseMethod == null) return null;
-        Object pose = logicalPoseMethod.invoke(sublevel);
-        if (pose != null && !poseResolved) resolvePoseHandles(pose);
-        return pose;
-    }
-
-    // ── Lazy handle resolution ────────────────────────────────────────────────
-
-    private static void ensureSublevelHandles(Object sublevel) {
-        if (sublevelResolved) return;
-        synchronized (SableCompat.class) {
-            if (sublevelResolved) return;
-            Class<?> cls = sublevel.getClass();
-            LOGGER.info("SableCompat: resolving handles on sublevel type {}", cls.getName());
-
-            // logicalPose() is on SubLevelAccess interface — find it on the concrete type
-            try { logicalPoseMethod = cls.getMethod("logicalPose"); }
-            catch (NoSuchMethodException e) {
-                LOGGER.warn("SableCompat: logicalPose() not found on {}; pos/rot returns 0", cls.getName());
-            }
-
-            // latestLinearVelocity / latestAngularVelocity (Vector3d fields)
-            linVelField = fieldAnywhere(cls, "latestLinearVelocity");
-            angVelField = fieldAnywhere(cls, "latestAngularVelocity");
-
-            if (linVelField != null) {
-                // Concrete Vector3d — public fields x, y, z
-                Class<?> vecCls = linVelField.getType();
-                try { vecXF = vecCls.getField("x"); vecYF = vecCls.getField("y"); vecZF = vecCls.getField("z"); }
-                catch (NoSuchFieldException e) {
-                    LOGGER.warn("SableCompat: Vector3d x/y/z fields not found on {}", vecCls.getName());
-                }
-            }
-            sublevelResolved = true;
-        }
-    }
-
-    private static void resolvePoseHandles(Object pose) {
-        synchronized (SableCompat.class) {
-            if (poseResolved) return;
-            Class<?> cls = pose.getClass();
-
-            // Pose3dc.position() → Vector3dc, Pose3dc.orientation() → Quaterniondc
-            try { posePositionMethod    = cls.getMethod("position");    } catch (NoSuchMethodException e) {
-                LOGGER.warn("SableCompat: Pose3dc.position() not found; posX/Y/Z returns 0");
-            }
-            try { poseOrientationMethod = cls.getMethod("orientation"); } catch (NoSuchMethodException e) {
-                LOGGER.warn("SableCompat: Pose3dc.orientation() not found; pitch/yaw/roll returns 0");
-            }
-
-            // Resolve Vector3dc interface methods from the return type of position()
-            if (posePositionMethod != null) {
-                Class<?> vecCls = posePositionMethod.getReturnType();
-                try { vdcX = vecCls.getMethod("x"); vdcY = vecCls.getMethod("y"); vdcZ = vecCls.getMethod("z"); }
-                catch (NoSuchMethodException e) {
-                    LOGGER.warn("SableCompat: Vector3dc x()/y()/z() not found on {}", vecCls.getName());
-                }
-            }
-
-            // Resolve Quaterniondc interface methods from the return type of orientation()
-            if (poseOrientationMethod != null) {
-                Class<?> quatCls = poseOrientationMethod.getReturnType();
-                try {
-                    qdcW = quatCls.getMethod("w"); qdcX = quatCls.getMethod("x");
-                    qdcY = quatCls.getMethod("y"); qdcZ = quatCls.getMethod("z");
-                } catch (NoSuchMethodException e) {
-                    LOGGER.warn("SableCompat: Quaterniondc w()/x()/y()/z() not found on {}", quatCls.getName());
-                }
-            }
-
-            // Pose3dc.transformPosition(Vec3) → Vec3 — preferred path for keyboard world pos
-            try {
-                poseTransformPosMethod = cls.getMethod("transformPosition", Vec3.class);
-            } catch (NoSuchMethodException e) {
-                LOGGER.debug("SableCompat: transformPosition(Vec3) not found; using quaternion fallback for posX/Y/Z");
-            }
-
-            poseResolved = true;
-        }
-    }
-
-    // ── Utilities ─────────────────────────────────────────────────────────────
-
-    private static Field fieldAnywhere(Class<?> cls, String name) {
-        for (Class<?> c = cls; c != null && c != Object.class; c = c.getSuperclass()) {
-            try { Field f = c.getDeclaredField(name); f.setAccessible(true); return f; }
-            catch (NoSuchFieldException ignored) {}
+    private static Class<?> tryForName(String... candidates) {
+        for (String name : candidates) {
+            try { return Class.forName(name); }
+            catch (ClassNotFoundException | NoClassDefFoundError ignored) {}
         }
         return null;
-    }
-
-    private static double invoke(Method m, Object obj) {
-        try { Object v = m.invoke(obj); return v instanceof Number n ? n.doubleValue() : 0; }
-        catch (Exception e) { return 0; }
     }
 }

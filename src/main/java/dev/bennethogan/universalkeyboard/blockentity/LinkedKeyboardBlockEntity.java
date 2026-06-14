@@ -432,9 +432,6 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         pendingPositionDialog = false;
         setChanged();
         syncToClients();
-        UniversalKeyboardMod.LOGGER.info(
-                "[UKB pos-apply] choice={} dontAsk={} worldPos={} resolvedTargets={}",
-                choice, dontAsk, worldPosition, channelTargets);
     }
 
     public boolean isLinkedAsComputer() {
@@ -808,9 +805,6 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             for (List<BlockPos> list : be.channelTargets.values())
                 changed |= list.removeIf(t -> level.isLoaded(t) && level.getBlockEntity(t) == null);
             if (changed) {
-                UniversalKeyboardMod.LOGGER.info(
-                        "[UKB tick-removed] stale targets cleaned at worldPos={} remaining={}",
-                        be.worldPosition, be.channelTargets);
                 be.setChanged();
             }
         }
@@ -1043,24 +1037,6 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             }
         }
 
-        // TEMPORARY DIAGNOSTIC
-        if (!channelTargets.isEmpty()) {
-            boolean hasAbsTag = false, hasRelTag = false;
-            for (int ch = 1; ch <= MAX_CHANNELS; ch++) {
-                if (tag.contains("ch" + ch + "_targets", Tag.TAG_LIST))     hasAbsTag = true;
-                if (tag.contains("ch" + ch + "_rel_targets", Tag.TAG_LIST)) hasRelTag = true;
-            }
-            int bindingCount = 0;
-            for (int p = 0; p < MAX_PROFILES; p++) {
-                String key = "profile_" + p + "_bindings";
-                if (tag.contains(key, Tag.TAG_LIST))
-                    bindingCount += tag.getList(key, Tag.TAG_COMPOUND).size();
-            }
-            UniversalKeyboardMod.LOGGER.info(
-                    "[UKB pos-load] worldPos={} absTag={} relTag={} loadedRelative={} resolvedTargets={} bindingsInTag={}",
-                    worldPosition, hasAbsTag, hasRelTag, loadedRelative, channelTargets, bindingCount);
-        }
-        // ------------------------------------------------
 
 
 
@@ -1250,9 +1226,6 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                 writeSafeBindingCount += list.size();
             }
         }
-        UniversalKeyboardMod.LOGGER.info(
-                "[UKB writeSafe] worldPos={} lastKnownPos={} targets={} totalBindings={}",
-                worldPosition, lastKnownPos, channelTargets, writeSafeBindingCount);
         int lfCount = getWirelessFreqCount();
         if (lfCount > 0) {
             net.minecraft.nbt.ListTag lfl = new net.minecraft.nbt.ListTag();

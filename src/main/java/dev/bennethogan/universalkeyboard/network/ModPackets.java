@@ -1622,7 +1622,10 @@ public class ModPackets {
         } else {
             int bits = KeyboardMode.availableBitfield(level, targetPos)
                     | (1 << KeyboardMode.PERIPHERAL_SEQUENCER.ordinal());
-            String typeName = level.getBlockState(targetPos).getBlock().getName().getString();
+            // getBlockState also force-loads chunks; skip if not already loaded
+            String typeName = level.isLoaded(targetPos)
+                    ? level.getBlockState(targetPos).getBlock().getName().getString()
+                    : "";
             sendOpenModeSelection(sp, keyboardPos, typeName, bits);
         }
     }

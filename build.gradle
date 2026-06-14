@@ -23,6 +23,7 @@ repositories {
     }
     maven { url = "https://maven.createmod.net" }
     maven { url = "https://maven.ithundxr.dev/snapshots" }
+    maven { url = "https://maven.ryanhcode.dev/releases" } // Sable companion API
 }
 
 base {
@@ -55,11 +56,8 @@ configurations {
 
 dependencies {
     implementation "net.neoforged:neoforge:${neo_version}"
-
-    // CC:Tweaked — optional at runtime, needed at compile time for KeyboardPeripheral
     compileOnly "cc.tweaked:cc-tweaked-1.21.1-core-api:${cc_version}"
-
-    // Create — optional at runtime, accessed entirely via reflection (compileOnly for IDE support)
+    compileOnly "dev.ryanhcode.sable-companion:sable-companion-common-${minecraft_version}:${sable_companion_version}"
     compileOnly("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
     compileOnly("net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}")
     compileOnly("dev.engine-room.flywheel:flywheel-neoforge-api-${minecraft_version}:${flywheel_version}")
@@ -81,8 +79,6 @@ processResources {
         expand replaceProperties
     }
 
-    // Ship es_es.json under every supported Spanish locale without keeping
-    // duplicate files in the repo. The translator maintains only es_es.json.
     def spanishLangDir = 'assets/universalkeyboard/lang'
     def esSource = file("src/main/resources/${spanishLangDir}/es_es.json")
     ['es_mx', 'es_ar', 'es_cl', 'es_uy', 'es_ve', 'es_ec'].each { locale ->

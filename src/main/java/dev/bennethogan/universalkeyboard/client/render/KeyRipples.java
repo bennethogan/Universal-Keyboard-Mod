@@ -37,11 +37,16 @@ public final class KeyRipples {
         if (level == null) return;
         if (ripples.size() >= MAX_RIPPLES) ripples.remove(0);
         long now = level.getGameTime();
-        ripples.add(new Ripple(t[0] + 0.5f, t[1] + 0.5f, now));
+        // Center the ring on the key's full footprint for wide keys
+        int w = t.length > 2 ? t[2] : 1;
+        int h = t.length > 3 ? t[3] : 1;
+        float cx = t[0] + w / 2f;
+        float cy = t[1] + h / 2f;
+        ripples.add(new Ripple(cx, cy, now));
         // Double explosion!! A second ring chases the first from the same key.
         if (doubleExplosion()) {
             if (ripples.size() >= MAX_RIPPLES) ripples.remove(0);
-            ripples.add(new Ripple(t[0] + 0.5f, t[1] + 0.5f, now + SECOND_RING_DELAY));
+            ripples.add(new Ripple(cx, cy, now + SECOND_RING_DELAY));
         }
     }
 

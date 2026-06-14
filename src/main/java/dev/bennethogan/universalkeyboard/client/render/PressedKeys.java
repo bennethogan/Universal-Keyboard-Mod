@@ -23,7 +23,18 @@ public final class PressedKeys {
         boolean any = false;
         for (int key : pressed) {
             int[] t = KeyTexels.get(key);
-            if (t != null) { g[t[1] * TOP_W + t[0]] = true; any = true; }
+            if (t == null) continue;
+            int w = t.length > 2 ? t[2] : 1;
+            int h = t.length > 3 ? t[3] : 1;
+            // Wide keys light a rectangle of texels
+            for (int dy = 0; dy < h; dy++) {
+                for (int dx = 0; dx < w; dx++) {
+                    int gx = t[0] + dx, gy = t[1] + dy;
+                    if (gx < 0 || gx >= TOP_W || gy < 0 || gy >= TOP_H) continue;
+                    g[gy * TOP_W + gx] = true;
+                    any = true;
+                }
+            }
         }
         return any ? g : null;
     }

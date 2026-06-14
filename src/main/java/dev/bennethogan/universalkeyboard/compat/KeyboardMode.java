@@ -26,6 +26,8 @@ public enum KeyboardMode {
 
     public boolean isAvailableAt(Level level, BlockPos pos) {
         if (level == null || pos == null) return false;
+        // guard against extreme coordinates
+        if (!level.isLoaded(pos)) return false;
         BlockEntity be = level.getBlockEntity(pos);
         if (be == null) return false;
         return switch (this) {
