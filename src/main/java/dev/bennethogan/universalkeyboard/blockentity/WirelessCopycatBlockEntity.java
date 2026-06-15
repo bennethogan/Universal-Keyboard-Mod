@@ -1,6 +1,7 @@
 package dev.bennethogan.universalkeyboard.blockentity;
 
 import com.simibubi.create.api.schematic.nbt.PartialSafeNBT;
+import com.simibubi.create.content.contraptions.StructureTransform;
 import com.simibubi.create.content.decoration.copycat.CopycatBlockEntity;
 import dev.bennethogan.universalkeyboard.block.WirelessCopycatPanelBlock;
 import dev.bennethogan.universalkeyboard.block.WirelessCopycatStepBlock;
@@ -16,6 +17,8 @@ import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.model.data.ModelData;
@@ -220,9 +223,47 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity implements Pa
         super.onChunkUnloaded();
     }
 
+
+    // Logic to rotate cardinal direction faces during schematic printing and disassembly (ideally)
+    @Override
+    public void transform(BlockEntity be, StructureTransform transform) {
+        super.transform(be, transform);
+
+        String[] newFreqs   = new String[FACES];
+        boolean[] newEnabled = new boolean[FACES];
+        int[] newPower      = new int[FACES];
+        for (int i = 0; i < FACES; i++) newFreqs[i] = "";
+
+        for (Direction dir : Direction.values()) {
+            Direction moved = transformDirection(transform, dir);
+            int from = dir.ordinal();
+            int to   = moved.ordinal();
+            newFreqs[to]   = freqs[from] != null ? freqs[from] : "";
+            newEnabled[to] = enabled[from];
+            newPower[to]   = power[from];
+        }
+
+        System.arraycopy(newFreqs,   0, freqs,   0, FACES);
+        System.arraycopy(newEnabled, 0, enabled, 0, FACES);
+        System.arraycopy(newPower,   0, power,   0, FACES);
+
+        notifyUpdate();
+    }
+
+    private static Direction transformDirection(StructureTransform transform, Direction dir) {
+        Direction result = transform.mirrorFacing(dir); // no-op when mirror is null
+        if (transform.rotation != null && transform.rotation != Rotation.NONE && transform.rotationAxis != null) {
+            result = transform.rotateFacing(result);
+        }
+        return result;
+    }
+
     @Override
     public void writeSafe(CompoundTag tag, HolderLookup.Provider registries) {
-        super.writeSafe(tag, registries);
+        try {
+            super.writeSafe(tag, registries);
+        } catch (Exception ignored) {
+        }
         writeWireless(tag, false);
     }
 

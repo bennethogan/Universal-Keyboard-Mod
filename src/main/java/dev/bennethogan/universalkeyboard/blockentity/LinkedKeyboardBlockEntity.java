@@ -14,6 +14,8 @@ import dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
 import dev.bennethogan.universalkeyboard.sequencer.SequencerStep;
+import com.simibubi.create.api.contraption.transformable.TransformableBlockEntity;
+import com.simibubi.create.content.contraptions.StructureTransform;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
@@ -22,8 +24,11 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -35,7 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 
-public class LinkedKeyboardBlockEntity extends BlockEntity {
+public class LinkedKeyboardBlockEntity extends BlockEntity implements TransformableBlockEntity {
 
     public static final int MAX_CHANNELS = 16;
 
@@ -1186,6 +1191,173 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                 CreateRsLinkHelper.removeFromNetwork(level, e);
         }
         super.onChunkUnloaded();
+    }
+
+    // ── Print-Rotation Logic ─────────────────────────────
+    // For when a schematic gets printed in a different direction, throwing off all the cardinal directional user settings
+
+    private static SequencerStep.ConditionSource rotateConditionSource(
+            SequencerStep.ConditionSource src, Rotation rotation) {
+        Direction rotated = rotation.rotate(src.direction);
+        for (SequencerStep.ConditionSource cs : SequencerStep.ConditionSource.values())
+            if (cs.direction == rotated) return cs;
+        return src;
+    }
+
+    private static String rotateRsGetterName(String getter, Rotation rotation) {
+        for (int i = 0; i < SequencerStep.RS_INPUT_GETTER_NAMES.length; i++) {
+            if (SequencerStep.RS_INPUT_GETTER_NAMES[i].equals(getter)) {
+                Direction rotated = rotation.rotate(SequencerStep.RS_INPUT_GETTER_DIRS[i]);
+                for (int j = 0; j < SequencerStep.RS_INPUT_GETTER_DIRS.length; j++)
+                    if (SequencerStep.RS_INPUT_GETTER_DIRS[j] == rotated)
+                        return SequencerStep.RS_INPUT_GETTER_NAMES[j];
+            }
+        }
+        return getter;
+    }
+
+    private static String rotateRsColonStr(String src, Rotation rotation) {
+        if (src == null || !src.startsWith("RS:")) return src;
+        Direction dir = switch (src.substring(3).toUpperCase()) {
+            case "N", "NORTH"               -> Direction.NORTH;
+            case "S", "SOUTH"               -> Direction.SOUTH;
+            case "E", "EAST"                -> Direction.EAST;
+            case "W", "WEST"                -> Direction.WEST;
+            case "U", "UP", "T", "TOP"      -> Direction.UP;
+            case "D", "DOWN", "B", "BOTTOM" -> Direction.DOWN;
+            default -> null;
+        };
+        if (dir == null) return src;
+        return "RS:" + switch (rotation.rotate(dir)) {
+            case NORTH -> "N"; case SOUTH -> "S";
+            case EAST  -> "E"; case WEST  -> "W";
+            case UP    -> "U"; case DOWN  -> "D";
+        };
+    }
+
+    private static Rotation inverseRotation(Rotation r) {
+        return switch (r) {
+            case CLOCKWISE_90        -> Rotation.COUNTERCLOCKWISE_90;
+            case COUNTERCLOCKWISE_90 -> Rotation.CLOCKWISE_90;
+            default                  -> r; // NONE and 180 are self-inverse
+        };
+    }
+
+    // Y-axis rotation of a world vector, same cardinal rotation convention used above
+    private static Vec3 rotateYVec(Vec3 v, Rotation rotation) {
+        return switch (rotation) {
+            case CLOCKWISE_90        -> new Vec3(-v.z, v.y,  v.x);
+            case CLOCKWISE_180       -> new Vec3(-v.x, v.y, -v.z);
+            case COUNTERCLOCKWISE_90 -> new Vec3( v.z, v.y, -v.x);
+            default                  -> v;
+        };
+    }
+
+    // reconstructs vector thrusters gimbal deflection axes
+    private static Vec3 thrusterRight(Direction facing) {
+        Vec3 forward = new Vec3(facing.getStepX(), facing.getStepY(), facing.getStepZ());
+        Vec3 reference = Math.abs(forward.y) > 0.999 ? new Vec3(0, 0, 1) : new Vec3(0, 1, 0);
+        Vec3 right = forward.cross(reference);
+        if (right.lengthSqr() < 1e-8) return new Vec3(1, 0, 0);
+        right = right.normalize();
+        if (Math.abs(forward.y) > 0.999) right = right.scale(-1);
+        return right;
+    }
+
+    private static Vec3 thrusterUp(Direction facing, Vec3 right) {
+        Vec3 forward = new Vec3(facing.getStepX(), facing.getStepY(), facing.getStepZ());
+        return right.cross(forward).normalize();
+    }
+
+    // ask the thruster nicely which way its facing
+    private @Nullable Direction lookupThrusterFacing(int channel) {
+        if (level == null) return null;
+        List<BlockPos> targets = channelTargets.get(channel);
+        if (targets == null) return null;
+        for (BlockPos p : targets) {
+            BlockState st = level.getBlockState(p);
+            if (st.hasProperty(BlockStateProperties.FACING))
+                return st.getValue(BlockStateProperties.FACING);
+        }
+        return null;
+    }
+
+    @Override
+    public void transform(BlockEntity be, StructureTransform transform) {
+        Rotation rotation = transform.rotation;
+        if (rotation == null || rotation == Rotation.NONE) return;
+        if (transform.rotationAxis != Direction.Axis.Y) return;
+        BlockPos base = (lastKnownPos != null && !lastKnownPos.equals(worldPosition))
+                        ? lastKnownPos : worldPosition;
+
+        for (List<BlockPos> list : channelTargets.values()) {
+            list.replaceAll(target -> {
+                int rx = target.getX() - base.getX();
+                int ry = target.getY() - base.getY();
+                int rz = target.getZ() - base.getZ();
+                int nx = switch (rotation) {
+                    case CLOCKWISE_90        -> -rz;
+                    case CLOCKWISE_180       -> -rx;
+                    case COUNTERCLOCKWISE_90 ->  rz;
+                    default                  ->  rx;
+                };
+                int nz = switch (rotation) {
+                    case CLOCKWISE_90        ->  rx;
+                    case CLOCKWISE_180       -> -rz;
+                    case COUNTERCLOCKWISE_90 -> -rx;
+                    default                  ->  rz;
+                };
+                return worldPosition.offset(nx, ry, nz);
+            });
+        }
+
+
+        // Redstone rotation ---------------------
+        // --
+        int[] rotatedOutputs = new int[redstoneOutputs.length];
+        for (Direction dir : Direction.values())
+            rotatedOutputs[rotation.rotate(dir).ordinal()] = redstoneOutputs[dir.ordinal()];
+        System.arraycopy(rotatedOutputs, 0, redstoneOutputs, 0, redstoneOutputs.length);
+
+        // Rotate the binding's cardinal directions
+        for (List<LiveControlBinding> list : profileBindings)
+            for (LiveControlBinding b : list)
+                if (b.actionType == LiveControlBinding.ActionType.REDSTONE && b.rsLinkIdx == 0)
+                    b.rsSide = rotation.rotate(b.rsSide);
+
+        // Rotate any RS sides in sequencer steps
+        for (SequencerStep step : sequencerSteps) {
+            if (step.type == SequencerStep.Type.SET_REDSTONE && step.rsLinkOutIdx == 0)
+                step.redstoneOutDir = rotation.rotate(step.redstoneOutDir);
+            if (step.conditionSource.direction != null)
+                step.conditionSource = rotateConditionSource(step.conditionSource, rotation);
+            step.ifGetter = rotateRsGetterName(step.ifGetter, rotation);
+            step.mathA = rotateRsColonStr(step.mathA, rotation);
+            step.mathB = rotateRsColonStr(step.mathB, rotation);
+        }
+
+        // Vector thruster print-rotating logic --------------------------
+        // reproject (vectorX, vectorY) so that deflection stays pointing the same way as the ship
+        // horizonally mounted thruster maths works out without needing this, but vertically mounted ones do
+        for (List<LiveControlBinding> list : profileBindings) {
+            for (LiveControlBinding b : list) {
+                if (b.actionType != LiveControlBinding.ActionType.THRUSTER_VECTOR) continue;
+                Direction newFacing = lookupThrusterFacing(b.channel);
+                if (newFacing == null) continue;
+                Direction oldFacing = inverseRotation(rotation).rotate(newFacing);
+                Vec3 rightOld = thrusterRight(oldFacing);
+                Vec3 upOld    = thrusterUp(oldFacing, rightOld);
+                Vec3 worldDefl = rightOld.scale(b.vectorX).add(upOld.scale(b.vectorY));
+                Vec3 rotated  = rotateYVec(worldDefl, rotation);
+                Vec3 rightNew = thrusterRight(newFacing);
+                Vec3 upNew    = thrusterUp(newFacing, rightNew);
+                b.vectorX = Math.max(-1.0, Math.min(1.0, rotated.dot(rightNew)));
+                b.vectorY = Math.max(-1.0, Math.min(1.0, rotated.dot(upNew)));
+            }
+        }
+
+        lastKnownPos = worldPosition.immutable();
+        setChanged();
     }
 
     // ── Schematic (PartialSafeNBT) ───────────────────────────────────────────
