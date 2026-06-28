@@ -42,6 +42,11 @@ public class ModItems {
                     new LinkedKeyboardItem(ModBlocks.LINKED_CONTROLWHEEL.get(),
                             new Item.Properties().stacksTo(1).fireResistant()));
 
+    public static final DeferredItem<LinkedKeyboardItem> DASHBOARD =
+            ITEMS.register("dashboard", () ->
+                    new LinkedKeyboardItem(ModBlocks.DASHBOARD.get(),
+                            new Item.Properties().stacksTo(1).fireResistant()));
+
     @Nullable public static DeferredItem<net.minecraft.world.item.BlockItem> WIRELESS_COPYCAT;
     @Nullable public static DeferredItem<net.minecraft.world.item.BlockItem> WIRELESS_COPYCAT_PANEL;
     @Nullable public static DeferredItem<net.minecraft.world.item.BlockItem> WIRELESS_COPYCAT_STEP;

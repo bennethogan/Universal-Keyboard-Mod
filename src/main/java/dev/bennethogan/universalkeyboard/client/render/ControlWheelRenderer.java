@@ -58,6 +58,10 @@ public class ControlWheelRenderer implements BlockEntityRenderer<LinkedKeyboardB
                        MultiBufferSource buffer, int packedLight, int packedOverlay) {
         BlockState state = be.getBlockState();
         if (be.getLevel() == null) return;
+        if (state.getBlock() instanceof dev.bennethogan.universalkeyboard.block.DashboardBlock) {
+            DashboardRenderer.render(be, partialTick, poseStack, buffer, packedLight, packedOverlay);
+            return;
+        }
         if (!(state.getBlock() instanceof LinkedControlWheelBlock)) {
             // adding in Keyboard animation
             if (state.getBlock() instanceof dev.bennethogan.universalkeyboard.block.LinkedKeyboardBlock)
@@ -98,10 +102,13 @@ public class ControlWheelRenderer implements BlockEntityRenderer<LinkedKeyboardB
         mbr.renderModel(poseStack.last(), vc, state, model, 1.0f, 1.0f, 1.0f,
                 packedLight, OverlayTexture.NO_OVERLAY);
 
+        // Dashboard overlay on the wheel's screen plate
+        ControlWheelScreenRenderer.render(be, poseStack, buffer, wall, partialTick);
+
         poseStack.popPose();
     }
 
-    private static float currentAngle(LinkedKeyboardBlockEntity be, float partialTick) {
+    static float currentAngle(LinkedKeyboardBlockEntity be, float partialTick) {
         return currentFraction(be, partialTick) * MAX_ANGLE;
     }
 

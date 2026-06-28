@@ -23,7 +23,8 @@ public class ModBlockEntities {
                         ModBlocks.RAINBOW_KEYBOARD.get(),
                         ModBlocks.ACE_KEYBOARD.get(),
                         ModBlocks.BI_KEYBOARD.get(),
-                        ModBlocks.LINKED_CONTROLWHEEL.get()
+                        ModBlocks.LINKED_CONTROLWHEEL.get(),
+                        ModBlocks.DASHBOARD.get()
                 };
                 BlockEntityType.BlockEntitySupplier<LinkedKeyboardBlockEntity> factory =
                         ModList.get().isLoaded("create")

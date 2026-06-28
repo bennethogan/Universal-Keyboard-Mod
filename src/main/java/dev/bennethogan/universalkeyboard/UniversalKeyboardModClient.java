@@ -96,6 +96,7 @@ public class UniversalKeyboardModClient {
     private void onRegisterAdditionalModels(ModelEvent.RegisterAdditional event) {
         event.register(dev.bennethogan.universalkeyboard.client.render.ControlWheelRenderer.WHEEL_MODEL);
         event.register(dev.bennethogan.universalkeyboard.client.render.ControlWheelRenderer.WALL_MODEL);
+        event.register(dev.bennethogan.universalkeyboard.client.render.DashboardRenderer.WHEEL_MODEL);
         for (var mouseModel : dev.bennethogan.universalkeyboard.client.render.KeyboardAnimations.MOUSE_MODELS)
             event.register(mouseModel);
     }

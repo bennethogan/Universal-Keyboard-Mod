@@ -71,6 +71,9 @@ public class ModConfig {
         public final ModConfigSpec.ConfigValue<List<? extends Double>> stickCalibration;
         public final ModConfigSpec.ConfigValue<String> controlWheelLeftRows;
         public final ModConfigSpec.ConfigValue<String> controlWheelRightRows;
+        public final ModConfigSpec.ConfigValue<String> dashboardRpmRow;
+        public final ModConfigSpec.ConfigValue<String> dashboardThrottleRows;
+        public final ModConfigSpec.ConfigValue<String> dashboardStartStopRow;
         public final ModConfigSpec.BooleanValue redstoneWildcardWarningDismissed;
         public final ModConfigSpec.BooleanValue enableKeyboardAnimations;
         public final ModConfigSpec.BooleanValue doubleExplosion;
@@ -202,6 +205,33 @@ public class ModConfig {
                             "Leave blank to disable. Default: \"\".")
                     .translation("config.universalkeyboard.controlwheel.controlWheelRightRows")
                     .define("controlWheelRightRows", "");
+
+            builder.pop();
+
+            builder.comment("Universal Keyboard — Dashboard Display").push("dashboard");
+
+            dashboardRpmRow = builder
+                    .comment("Live Controller row number (1–40) used as the default RPM source on the dashboard.",
+                             "Shows the an RPM binding's current value for that row.",
+                             "If a different RPM row key was pressed more recently, that row is shown instead.",
+                             "Leave blank to always show the most recently pressed RPM row. Default: \"\".")
+                    .translation("config.universalkeyboard.dashboard.dashboardRpmRow")
+                    .define("dashboardRpmRow", "");
+
+            dashboardThrottleRows = builder
+                    .comment("Comma-separated Live Controller row numbers (1–40) for the dashboard throttle indicator.",
+                             "Reads the REDSTONE signal (0–15) from bindings on these rows; shows the highest.",
+                             "Leave blank to hide the throttle display. Default: \"\".")
+                    .translation("config.universalkeyboard.dashboard.dashboardThrottleRows")
+                    .define("dashboardThrottleRows", "");
+
+            dashboardStartStopRow = builder
+                    .comment("Live Controller row number (1–40) that acts as the engine start/stop.",
+                             "Screen turns on with a toggled power on that row.",
+                             "When off, the screen shows -- OFF --.",
+                             "Leave blank to always treat the dashboard as running. Default: \"\".")
+                    .translation("config.universalkeyboard.dashboard.dashboardStartStopRow")
+                    .define("dashboardStartStopRow", "");
 
             builder.pop();
 

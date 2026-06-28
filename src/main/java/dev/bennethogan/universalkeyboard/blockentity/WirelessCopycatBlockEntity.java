@@ -223,7 +223,6 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity implements Pa
         super.onChunkUnloaded();
     }
 
-
     // Logic to rotate cardinal direction faces during schematic printing and disassembly (ideally)
     @Override
     public void transform(BlockEntity be, StructureTransform transform) {

@@ -41,7 +41,8 @@ public final class ControlWheelAnimator {
         BlockPos pos = LiveControlManager.isActive() ? LiveControlManager.getKeyboardPos() : null;
         Minecraft mc = Minecraft.getInstance();
         boolean isWheel = pos != null && mc.level != null
-                && mc.level.getBlockState(pos).getBlock() instanceof LinkedControlWheelBlock;
+                && (mc.level.getBlockState(pos).getBlock() instanceof LinkedControlWheelBlock
+                    || mc.level.getBlockState(pos).getBlock() instanceof dev.bennethogan.universalkeyboard.block.DashboardBlock);
 
         if (isWheel) {
             refreshRowSets();

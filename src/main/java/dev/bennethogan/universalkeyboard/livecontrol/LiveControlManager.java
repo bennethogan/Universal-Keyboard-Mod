@@ -57,6 +57,9 @@ public class LiveControlManager {
 
     private static int actionBarTick = 0;
 
+    // index of most recently activated RPM binding (-1 for none yet)
+    private static int lastRpmBindingIdx = -1;
+
     // ── Activation ───────────────────────────────────────────────────────────
 
     public static void activate(BlockPos pos, List<LiveControlBinding> binds,
@@ -162,6 +165,7 @@ public class LiveControlManager {
         hldVarOn.clear();
         tglPendingPeak.clear();
         tglLockedMag.clear();
+        lastRpmBindingIdx = -1;
         if (Minecraft.getInstance().getConnection() != null) computeAndSend();
         toggledOn.clear();
         rsIncCounters.clear();
@@ -176,6 +180,24 @@ public class LiveControlManager {
 
     public static boolean isActive()       { return active; }
     public static BlockPos getKeyboardPos() { return keyboardPos; }
+
+
+    //active-key labels for the screen/dashboard animations
+    public static List<String> screenKeyLabels(int max) {
+        if (!active) return List.of();
+        java.util.LinkedHashSet<Integer> keys = new java.util.LinkedHashSet<>();
+        for (int idx : toggledOn)
+            if (idx >= 0 && idx < bindings.size()) keys.add(bindings.get(idx).keyCode);
+        keys.addAll(heldKeys);
+        keys.removeIf(k -> bindings.stream().noneMatch(b -> b.keyCode == k
+                && b.actionType != LiveControlBinding.ActionType.OVERDRIVE));
+        List<String> out = new ArrayList<>();
+        for (int key : keys) {
+            if (out.size() >= max) break;
+            out.add(keyDisplayName(key));
+        }
+        return out;
+    }
 
     // ── Control Wheel animation query ─────────────────────────────────────────
 
@@ -356,6 +378,7 @@ public class LiveControlManager {
                 LiveControlBinding b = bindings.get(i);
                 if (b.keyCode != keyCode || b.mode != Mode.INC
                         || b.actionType == LiveControlBinding.ActionType.VARIABLE) continue;
+                if (b.actionType == ActionType.RPM_CONTROL) lastRpmBindingIdx = i;
                 heldKeys.add(keyCode);
                 if (!incHoldTicks.containsKey(keyCode))
                     incHoldTicks.put(keyCode, 0);
@@ -394,6 +417,7 @@ public class LiveControlManager {
                 LiveControlBinding b = bindings.get(i);
                 if (b.keyCode != keyCode || b.mode == Mode.INC
                         || b.actionType == LiveControlBinding.ActionType.VARIABLE) continue;
+                if (b.actionType == ActionType.RPM_CONTROL) lastRpmBindingIdx = i;
                 if (b.mode == Mode.HLD) {
                     heldKeys.add(keyCode);
                 } else {
@@ -857,6 +881,36 @@ public class LiveControlManager {
         for (int idx : toggledOn)
             if (idx >= 0 && idx < bindings.size() && bindings.get(idx).keyCode == keyCode) return true;
         return false;
+    }
+
+    // Dashboard query API
+
+    public static boolean isRowActive(int bindingIdx) {
+        if (!active || bindingIdx < 0 || bindingIdx >= bindings.size()) return false;
+        return isBindingActive(bindingIdx);
+    }
+
+    public static int getLastRpmBindingIdx() { return lastRpmBindingIdx; }
+
+    public static int getRpmValue(int bindingIdx) {
+        if (!active || bindingIdx < 0 || bindingIdx >= bindings.size()) return 0;
+        LiveControlBinding b = bindings.get(bindingIdx);
+        if (b.actionType != ActionType.RPM_CONTROL) return 0;
+        if (b.mode == Mode.INC) {
+            Map<Integer, Integer> c = chIncCounters.get(b.actionType);
+            return Math.abs(c == null ? 0 : c.getOrDefault(b.channel, 0));
+        }
+        return isBindingActive(bindingIdx) ? Math.abs(b.rpmTarget) : 0;
+    }
+
+    public static int getRowSignalStrength(int bindingIdx) {
+        if (!active || bindingIdx < 0 || bindingIdx >= bindings.size()) return 0;
+        LiveControlBinding b = bindings.get(bindingIdx);
+        if (b.actionType != ActionType.REDSTONE) return 0;
+        if (b.mode == Mode.INC) {
+            return rsIncCounters.getOrDefault(rsKey(b.rsLinkIdx, b.rsSide), 0);
+        }
+        return isBindingActive(bindingIdx) ? b.signalStrength : 0;
     }
 
     private static String keyDisplayName(int keyCode) {

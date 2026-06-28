@@ -42,6 +42,11 @@ public class ModBlocks {
                     BlockBehaviour.Properties.of().strength(1.0f).sound(SoundType.STONE).noOcclusion()
             ));
 
+    public static final DeferredBlock<DashboardBlock> DASHBOARD =
+            BLOCKS.register("dashboard", () -> new DashboardBlock(
+                    BlockBehaviour.Properties.of().strength(1.0f).sound(SoundType.STONE).noOcclusion()
+            ));
+
     @Nullable public static DeferredBlock<WirelessCopycatBlock> WIRELESS_COPYCAT;
     @Nullable public static DeferredBlock<WirelessCopycatPanelBlock> WIRELESS_COPYCAT_PANEL;
     @Nullable public static DeferredBlock<WirelessCopycatStepBlock> WIRELESS_COPYCAT_STEP;
