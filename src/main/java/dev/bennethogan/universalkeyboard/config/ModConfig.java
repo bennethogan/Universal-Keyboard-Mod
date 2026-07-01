@@ -26,7 +26,7 @@ public class ModConfig {
 
         public final ModConfigSpec.IntValue keyboardRange;
         public final ModConfigSpec.IntValue copycatLocateDuration;
-        public final ModConfigSpec.BooleanValue favoriteLiveControlAutoStart;
+        public final ModConfigSpec.BooleanValue makeRecipeHarder;
 
         Common(ModConfigSpec.Builder builder) {
             builder.comment("Universal Keyboard Settings").push("keyboard");
@@ -46,13 +46,10 @@ public class ModConfig {
                     .translation("config.universalkeyboard.keyboard.copycatLocateDuration")
                     .defineInRange("copycatLocateDuration", 5, 1, 300);
 
-            favoriteLiveControlAutoStart = builder
-                    .comment("Mark this option 'true' to start Live Controls immediately when you right-click keyboard",
-                             "Live Controller menu must also be marked 'favorite'.",
-                             "Shift-click the keyboard to open the main menu instead",
-                             "Default: false.")
-                    .translation("config.universalkeyboard.keyboard.favoriteLiveControlAutoStart")
-                    .define("favoriteLiveControlAutoStart", false);
+            makeRecipeHarder = builder
+                    .comment("Requires Aeronautics. Default: false.")
+                    .translation("config.universalkeyboard.keyboard.makeRecipeHarder")
+                    .define("makeRecipeHarder", false);
 
             builder.pop();
         }
@@ -74,6 +71,8 @@ public class ModConfig {
         public final ModConfigSpec.ConfigValue<String> dashboardRpmRow;
         public final ModConfigSpec.ConfigValue<String> dashboardThrottleRows;
         public final ModConfigSpec.ConfigValue<String> dashboardStartStopRow;
+        public final ModConfigSpec.BooleanValue favoriteLiveControlAutoStart;
+        public final ModConfigSpec.ConfigValue<String> liveControlIgnoredKeys;
         public final ModConfigSpec.BooleanValue redstoneWildcardWarningDismissed;
         public final ModConfigSpec.BooleanValue enableKeyboardAnimations;
         public final ModConfigSpec.BooleanValue doubleExplosion;
@@ -232,6 +231,28 @@ public class ModConfig {
                              "Leave blank to always treat the dashboard as running. Default: \"\".")
                     .translation("config.universalkeyboard.dashboard.dashboardStartStopRow")
                     .define("dashboardStartStopRow", "");
+
+            builder.pop();
+
+            builder.comment("Universal Keyboard — Controls").push("controls");
+
+            favoriteLiveControlAutoStart = builder
+                    .comment("Mark this option 'true' to start Live Controls immediately when you right-click keyboard",
+                             "Live Controller menu must also be marked 'favorite'.",
+                             "Shift-click the keyboard to open the main menu instead",
+                             "Default: false.")
+                    .translation("config.universalkeyboard.keyboard.favoriteLiveControlAutoStart")
+                    .define("favoriteLiveControlAutoStart", false);
+
+            liveControlIgnoredKeys = builder
+                    .comment("Comma-separated keys that Live Control passes straight through to the game",
+                             "instead of capturing, so other mods such as a map still respond while Live",
+                             "Control is running. (F1–F12 and Esc are always free regardless of this setting.)",
+                             "Use simple names: letters \"M\", digits \"5\", or names like \"space\", \"tab\",",
+                             "\"left.shift\", \"semicolon\". Example: \"M, J, left.shift\".",
+                             "Leave blank for none (default).")
+                    .translation("config.universalkeyboard.controls.liveControlIgnoredKeys")
+                    .define("liveControlIgnoredKeys", "");
 
             builder.pop();
 

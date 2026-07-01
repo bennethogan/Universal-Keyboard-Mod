@@ -710,7 +710,8 @@ public class SequencerScreen extends Screen {
         list.add(Type.MATH);
         if (typeable) { list.add(Type.TYPE_VARIABLE); list.add(Type.TYPE_TEXT); }
         list.add(Type.SET_REDSTONE);
-        if (ccPresent) list.add(Type.SET_VALUE);
+        if (ccPresent || dev.bennethogan.universalkeyboard.compat.CreateValueHelper.isCreatePresent())
+            list.add(Type.SET_VALUE);
         if (net.neoforged.fml.ModList.get().isLoaded("create")) list.add(Type.DISPLAY);
         list.add(Type.REGRESS);
         list.add(Type.IF);

@@ -32,6 +32,7 @@ public class UniversalKeyboardMod {
         ModBlockEntities.BLOCK_ENTITIES.register(modEventBus);
         dev.bennethogan.universalkeyboard.menu.ModMenus.MENUS.register(modEventBus);
         ModCreativeTabs.CREATIVE_TABS.register(modEventBus);
+        dev.bennethogan.universalkeyboard.recipe.ModRecipeConditions.register(modEventBus);
 
         modContainer.registerConfig(Type.COMMON, ModConfig.COMMON_SPEC);
         modContainer.registerConfig(Type.CLIENT, ModConfig.CLIENT_SPEC);

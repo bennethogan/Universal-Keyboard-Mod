@@ -1,0 +1,18 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "create" },
+    { "type": "neoforge:mod_loaded", "modid": "simulated" },
+    { "type": "universalkeyboard:make_recipe_harder", "expected": true }
+  ],
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    { "item": "simulated:linked_typewriter" },
+    { "item": "simulated:redstone_accumulator" },
+    { "item": "minecraft:shulker_shell" },
+    { "item": "create:brass_ingot" }
+  ],
+  "result": {
+    "id": "universalkeyboard:universal_keyboard",
+    "count": 1
+  }
+}

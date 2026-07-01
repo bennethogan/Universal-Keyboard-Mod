@@ -20,6 +20,11 @@ public class RedstoneLinksScreen extends AbstractContainerScreen<RedstoneLinksMe
     private static final int FREQ2_TINT = 0x553333FF; // transparent blue (freq 2 / right slot)
 
     private NoticeDialog wildcardNotice;
+    private ConfirmDialog revertDialog;
+
+    // adding revert support to this screen I forgot before
+    private ItemStack[] openSnapshot;
+    private boolean     snapshotFrozen = false;
 
     public RedstoneLinksScreen(RedstoneLinksMenu menu, Inventory inv, Component title) {
         super(menu, inv, title);
@@ -35,6 +40,18 @@ public class RedstoneLinksScreen extends AbstractContainerScreen<RedstoneLinksMe
                 Component.translatable("gui.universalkeyboard.tooltip.wiki"),
                 b -> net.minecraft.client.Minecraft.getInstance().setScreen(new WikiScreen(this)),
                 leftPos + imageWidth - 8 - 16, topPos + 2, 16, 16));
+
+        revertDialog = new ConfirmDialog(font);
+        revertDialog.setParentBounds(leftPos, topPos, imageWidth, imageHeight);
+
+        addRenderableWidget(IconButton.make(ModIcons.REVERT,
+                Component.translatable("gui.universalkeyboard.tooltip.revert"),
+                b -> revertDialog.open(
+                        "gui.universalkeyboard.dialog.revert_title",
+                        "gui.universalkeyboard.dialog.revert_body",
+                        "gui.universalkeyboard.btn.yes_revert",
+                        this::revertToSnapshot),
+                leftPos + imageWidth - 8 - 16 - 4 - 16, topPos + 2, 16));
 
         wildcardNotice = new NoticeDialog(font);
         wildcardNotice.setParentBounds(leftPos, topPos, imageWidth, imageHeight);
@@ -60,12 +77,18 @@ public class RedstoneLinksScreen extends AbstractContainerScreen<RedstoneLinksMe
         if (wildcardNotice != null && wildcardNotice.isOpen()) {
             wildcardNotice.render(g, mx, my);
         }
+        if (revertDialog != null && revertDialog.isOpen()) {
+            revertDialog.render(g, mx, my);
+        }
     }
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
         if (wildcardNotice != null && wildcardNotice.isOpen()) {
             return wildcardNotice.mouseClicked(mx, my, button);
+        }
+        if (revertDialog != null && revertDialog.isOpen()) {
+            return revertDialog.mouseClicked(mx, my, button);
         }
         return super.mouseClicked(mx, my, button);
     }
@@ -136,9 +159,45 @@ public class RedstoneLinksScreen extends AbstractContainerScreen<RedstoneLinksMe
     }
 
     @Override
+    protected void containerTick() {
+        super.containerTick();
+        if (!snapshotFrozen) {
+            captureSnapshot();
+            if (snapshotHasContent()) snapshotFrozen = true;
+        }
+    }
+
+    private void captureSnapshot() {
+        ItemStack[] snap = new ItemStack[RedstoneLinksMenu.GHOST_COUNT];
+        for (int i = 0; i < snap.length && i < menu.slots.size(); i++)
+            snap[i] = menu.slots.get(i).getItem().copy();
+        openSnapshot = snap;
+    }
+
+    private boolean snapshotHasContent() {
+        if (openSnapshot == null) return false;
+        for (ItemStack s : openSnapshot)
+            if (s != null && !s.isEmpty()) return true;
+        return false;
+    }
+
+    private void revertToSnapshot() {
+        if (openSnapshot == null) return;
+        for (int i = 0; i < openSnapshot.length && i < menu.slots.size(); i++) {
+            ItemStack target  = openSnapshot[i] == null ? ItemStack.EMPTY : openSnapshot[i];
+            ItemStack current = menu.slots.get(i).getItem();
+            if (ItemStack.matches(current, target)) continue;
+            ItemStack toSet = target.isEmpty() ? ItemStack.EMPTY : target.copyWithCount(1);
+            menu.slots.get(i).set(toSet);                                   // client visual
+            ModPackets.sendWirelessGhostSet(menu.getKeyboardPos(), i, toSet); // push to server
+        }
+    }
+
+    @Override
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType type) {
         if (slot != null && slotId >= 0 && slotId < RedstoneLinksMenu.GHOST_COUNT
                 && (type == ClickType.PICKUP || type == ClickType.QUICK_MOVE)) {
+            snapshotFrozen = true;
             ItemStack carried = menu.getCarried();
             ItemStack toSet   = carried.isEmpty() ? ItemStack.EMPTY : carried.copyWithCount(1);
             slot.set(toSet); // immediate client-side visual update
@@ -158,6 +217,9 @@ public class RedstoneLinksScreen extends AbstractContainerScreen<RedstoneLinksMe
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (wildcardNotice != null && wildcardNotice.isOpen()) {
             return wildcardNotice.keyPressed(keyCode);
+        }
+        if (revertDialog != null && revertDialog.isOpen()) {
+            return revertDialog.keyPressed(keyCode);
         }
         if (MenuNav.handleTabBack(this, keyCode, menu.getKeyboardPos())) return true;
         return super.keyPressed(keyCode, scanCode, modifiers);

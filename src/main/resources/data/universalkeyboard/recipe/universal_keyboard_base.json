@@ -3,7 +3,8 @@
     {
       "type": "neoforge:not",
       "value": { "type": "neoforge:mod_loaded", "modid": "create" }
-    }
+    },
+    { "type": "universalkeyboard:make_recipe_harder", "expected": false }
   ],
   "type": "minecraft:crafting_shaped",
   "pattern": [

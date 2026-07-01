@@ -86,6 +86,10 @@ public class KeyboardInputHandler {
                 suppressMovementKey(event.getKey(), event.getScanCode());
                 return;
             }
+
+            // configurable passthrough keys to be ignored completely by live control, so something like a map can still be pulled up
+            // F1-F12 and Esc key was always like this, so you can add more now
+            if (isIgnoredKey(event.getKey())) return;
             if (event.getAction() == GLFW.GLFW_PRESS) {
                 KeyRipples.spawn(event.getKey());
                 PressedKeys.press(event.getKey());
@@ -215,6 +219,41 @@ public class KeyboardInputHandler {
     private static boolean isSafePassthroughKey(int keyCode) {
         return keyCode >= GLFW.GLFW_KEY_F1 && keyCode <= GLFW.GLFW_KEY_F12;
     }
+    // -----------------------------------------
+    // Configurable passthrough keys -----------------------
+    private static String cachedIgnoreCfg = null;
+    private static java.util.Set<Integer> ignoredKeys = java.util.Set.of();
+
+    private static boolean isIgnoredKey(int keyCode) {
+        String cfg = dev.bennethogan.universalkeyboard.config.ModConfig.CLIENT.liveControlIgnoredKeys.get();
+        if (!java.util.Objects.equals(cfg, cachedIgnoreCfg)) {   // reparse only when the string changes
+            cachedIgnoreCfg = cfg;
+            ignoredKeys = parseIgnoredKeys(cfg);
+        }
+        return ignoredKeys.contains(keyCode);
+    }
+
+    private static java.util.Set<Integer> parseIgnoredKeys(String cfg) {
+        java.util.Set<Integer> out = new java.util.HashSet<>();
+        if (cfg == null || cfg.isBlank()) return out;
+        for (String raw : cfg.split(",")) {
+            String t = raw.trim().toLowerCase(java.util.Locale.ROOT);
+            if (t.isEmpty()) continue;
+            String name = t.startsWith("key.keyboard.") ? t : "key.keyboard." + t;
+            try {
+                com.mojang.blaze3d.platform.InputConstants.Key k =
+                        com.mojang.blaze3d.platform.InputConstants.getKey(name);
+                // KEYSYM == physical keyboard key, whose value matches InputEvent.key
+                if (k != null && k.getValue() >= 0
+                        && k.getType() == com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM) {
+                    out.add(k.getValue());
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return out;
+    }
+    //-------------------------
 
     private static void suppressMovementKey(int keyCode, int scanCode) {
         for (var mapping : Minecraft.getInstance().options.keyMappings) {

@@ -7,7 +7,6 @@ import dev.bennethogan.universalkeyboard.compat.CreateValueHelper;
 import dev.bennethogan.universalkeyboard.compat.KeyboardMode;
 import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import dev.bennethogan.universalkeyboard.compat.SableCompat;
-import dev.bennethogan.universalkeyboard.config.ModConfig;
 import dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen;
 import dev.bennethogan.universalkeyboard.wireless.rs.WirelessRSNetwork;
 import net.minecraft.world.level.Level;
@@ -1383,7 +1382,7 @@ public class ModPackets {
             int[] rpmValues,
             int activeProfile,
             List<List<dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding>> allProfiles,
-            boolean autoStart
+            boolean favoriteShortcut
     ) implements CustomPacketPayload {
         public static final Type<OpenLiveControlScreenPacket> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "open_live_control_screen"));
@@ -1410,7 +1409,7 @@ public class ModPackets {
                         buf.writeInt(profile.size());
                         for (var b : profile) b.encode(buf);
                     }
-                    buf.writeBoolean(p.autoStart());
+                    buf.writeBoolean(p.favoriteShortcut());
                 },
                 buf -> {
                     BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
@@ -1441,8 +1440,8 @@ public class ModPackets {
                             profile.add(dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.decode(buf));
                         allProfs.add(profile);
                     }
-                    boolean autoStart = buf.readBoolean();
-                    return new OpenLiveControlScreenPacket(pos, binds, wc, ht, hvt, hr, lrs, wp, tp, vars, rpmVals, activeProf, allProfs, autoStart);
+                    boolean favoriteShortcut = buf.readBoolean();
+                    return new OpenLiveControlScreenPacket(pos, binds, wc, ht, hvt, hr, lrs, wp, tp, vars, rpmVals, activeProf, allProfs, favoriteShortcut);
                 });
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
 
@@ -1547,8 +1546,9 @@ public class ModPackets {
             ServerLevel level = sp.serverLevel();
             BlockEntity be = level.getBlockEntity(packet.pos());
             if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
-            if (!(level.getBlockState(packet.pos()).getBlock()
-                    instanceof dev.bennethogan.universalkeyboard.block.LinkedControlWheelBlock)) return;
+            net.minecraft.world.level.block.Block block = level.getBlockState(packet.pos()).getBlock();
+            if (!(block instanceof dev.bennethogan.universalkeyboard.block.LinkedControlWheelBlock)
+                    && !(block instanceof dev.bennethogan.universalkeyboard.block.DashboardBlock)) return;
             kb.setStoredWheelFraction(packet.fractionPct() / 100.0f);
             PacketDistributor.sendToPlayersTrackingChunk(level, new ChunkPos(packet.pos()),
                     new ControlWheelAnimateClientPacket(packet.pos(), packet.fractionPct()));
@@ -1591,8 +1591,9 @@ public class ModPackets {
         FavoriteScreen fav = kb.getFavoriteScreen();
         switch (fav) {
             case LIVE_CONTROL -> {
-                boolean autoStart = ModConfig.COMMON.favoriteLiveControlAutoStart.get();
-                openLiveControlForPlayer(sp, keyboardPos, kb, autoStart);
+                // Favorite shortcut: signal the client this is a quick-open and the client decides
+                // whether to actually auto-start from its own config preference
+                openLiveControlForPlayer(sp, keyboardPos, kb, true);
             }
             case SEQUENCER -> sendOpenSequencer(sp, keyboardPos, kb);
             case THRUSTER_CONTROL -> {
@@ -1650,7 +1651,7 @@ public class ModPackets {
     }
 
     public static void openLiveControlForPlayer(ServerPlayer sp, BlockPos keyboardPos,
-            LinkedKeyboardBlockEntity kb, boolean autoStart) {
+            LinkedKeyboardBlockEntity kb, boolean favoriteShortcut) {
         var level = sp.serverLevel();
         boolean hasThrusters = false, hasVector = false, hasRpm = false;
 
@@ -1687,7 +1688,7 @@ public class ModPackets {
                 keyboardPos, kb.getLiveControlBindings(),
                 wc, hasThrusters, hasVector, hasRpm, localRs, rsLinkPowers, thrusterPowers,
                 kb.getSequencerVars(), rpmValues,
-                kb.getActiveProfile(), kb.getAllProfileBindings(), autoStart));
+                kb.getActiveProfile(), kb.getAllProfileBindings(), favoriteShortcut));
         PacketDistributor.sendToPlayer(sp, new SyncFavoritePacket(keyboardPos, (byte) kb.getFavoriteScreen().ordinal()));
     }
 

@@ -951,6 +951,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity implements Transforma
                 CompoundTag c = new CompoundTag();
                 c.put("first",  e.getFirstStack().saveOptional(registries));
                 c.put("second", e.getSecondStack().saveOptional(registries));
+                c.putInt("power", e.getPower()); // persist latched output so it survives unload/reload
                 wl.add(c);
             }
             tag.put("wireless_entries", wl);
@@ -1089,6 +1090,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity implements Transforma
                 RsLinkEntry e = CreateRsLinkHelper.newEntry(worldPosition);
                 e.setFirstStack(ItemStack.parseOptional(registries, c.getCompound("first")));
                 e.setSecondStack(ItemStack.parseOptional(registries, c.getCompound("second")));
+                e.setPower(c.getInt("power")); // restore latched output (0 for pre-update saves)
                 rsLinkEntries.add(e);
             }
         }
@@ -1159,8 +1161,16 @@ public class LinkedKeyboardBlockEntity extends BlockEntity implements Transforma
     public void onLoad() {
         super.onLoad();
         if (level != null && !level.isClientSide && RsLinkPresence.isPresent()) {
-            for (RsLinkEntry e : rsLinkEntries)
+            //fix for toggled of incremented redstone outputs being lost on chunk reload
+            for (RsLinkEntry e : rsLinkEntries) {
                 CreateRsLinkHelper.ensureRegistered(level, e);
+                CreateRsLinkHelper.reassertPower(level, e);
+            }
+        }
+        if (level != null && !level.isClientSide) {
+            boolean anyLocalRs = false;
+            for (int p : redstoneOutputs) if (p != 0) { anyLocalRs = true; break; }
+            if (anyLocalRs) level.updateNeighborsAt(worldPosition, getBlockState().getBlock());
         }
         if (level != null && !level.isClientSide) {
             if (lastKnownPos == null && channelTargets.isEmpty()) {
@@ -1188,7 +1198,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity implements Transforma
     public void onChunkUnloaded() {
         if (RsLinkPresence.isPresent()) {
             for (RsLinkEntry e : rsLinkEntries)
-                CreateRsLinkHelper.removeFromNetwork(level, e);
+                CreateRsLinkHelper.removeFromNetworkKeepPower(level, e);
         }
         super.onChunkUnloaded();
     }

@@ -55,6 +55,7 @@ public class ModeSelectionScreen extends Screen {
 
     private ConfirmDialog confirmDialog;
     private DarkButton wikiBtn;
+    private IconButton revertBtn;
 
     // Typewriter import state
     private BlockPos twOfferPos    = null;
@@ -105,6 +106,13 @@ public class ModeSelectionScreen extends Screen {
                 b -> Minecraft.getInstance().setScreen(new WikiScreen(this)),
                 panelX + panelW - PAD - 16, panelY + (TITLE_H - 16) / 2 + 2, 16, 16);
         addRenderableWidget(wikiBtn);
+
+        revertBtn = IconButton.make(ModIcons.TRASH,
+                Component.translatable("gui.universalkeyboard.box.reset_data"),
+                b -> setPage(Page.RESET),
+                panelX + panelW - PAD - 16 - 4 - 16, panelY + (TITLE_H - 16) / 2 + 2, 16);
+        addRenderableWidget(revertBtn);
+        revertBtn.visible = (page == Page.SETUP);
     }
 
     private void setPage(Page p) {
@@ -147,6 +155,11 @@ public class ModeSelectionScreen extends Screen {
         if (wikiBtn != null) {
             wikiBtn.setX(panelX + panelW - PAD - 16);
             wikiBtn.setY(panelY + (TITLE_H - 16) / 2 + 2);
+        }
+        if (revertBtn != null) {
+            revertBtn.setX(panelX + panelW - PAD - 16 - 4 - 16);
+            revertBtn.setY(panelY + (TITLE_H - 16) / 2 + 2);
+            revertBtn.visible = (page == Page.SETUP);
         }
     }
 
@@ -246,12 +259,6 @@ public class ModeSelectionScreen extends Screen {
         mgr.item  = stackOf("universalkeyboard", "rainbow_keyboard");
         mgr.tooltip = List.of(Component.translatable("gui.universalkeyboard.box.peripheral_manager.desc"));
         mgr.onClick = this::openPeripheralManager;
-
-        // Reset Data
-        Box reset = add();
-        reset.kind = IconKind.TRASH;
-        reset.tooltip = List.of(Component.translatable("gui.universalkeyboard.box.reset_data"));
-        reset.onClick = () -> setPage(Page.RESET);
 
         // Calibrate Gamepad (gated by config) — pushed to the tile right of Reset Data
         Box cal = add();

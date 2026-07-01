@@ -81,4 +81,30 @@ public final class CreateRsLinkHelper {
             UniversalKeyboardMod.LOGGER.warn("Wireless removeFromNetwork failed: {}", t.toString());
         }
     }
+
+
+    public static void removeFromNetworkKeepPower(Level level, RsLinkEntry entry) {
+        if (!RsLinkPresence.isPresent() || level == null || level.isClientSide || entry == null) return;
+        if (!entry.isInNetwork()) return;
+        try {
+            Create.REDSTONE_LINK_NETWORK_HANDLER.removeFromNetwork(level, entry);
+            entry.setInNetwork(false);
+        } catch (Throwable t) {
+            UniversalKeyboardMod.LOGGER.warn("Wireless removeFromNetworkKeepPower failed: {}", t.toString());
+        }
+    }
+
+    public static void reassertPower(Level level, RsLinkEntry entry) {
+        if (!RsLinkPresence.isPresent() || level == null || level.isClientSide || entry == null) return;
+        if (!entry.hasFrequency() || entry.getPower() <= 0) return;
+        try {
+            if (!entry.isInNetwork()) {
+                Create.REDSTONE_LINK_NETWORK_HANDLER.addToNetwork(level, entry);
+                entry.setInNetwork(true);
+            }
+            Create.REDSTONE_LINK_NETWORK_HANDLER.updateNetworkOf(level, entry);
+        } catch (Throwable t) {
+            UniversalKeyboardMod.LOGGER.warn("Wireless reassertPower failed: {}", t.toString());
+        }
+    }
 }

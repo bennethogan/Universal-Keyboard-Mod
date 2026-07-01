@@ -142,8 +142,8 @@ public class ClientPacketHandlers {
 
     private static void handleOpenLiveControlScreen(OpenLiveControlScreenPacket packet, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
-            if (packet.autoStart()) {
-                // Favorite shortcut with autoStart=true: activate live controls without opening UI.
+            if (packet.favoriteShortcut()
+                    && dev.bennethogan.universalkeyboard.config.ModConfig.CLIENT.favoriteLiveControlAutoStart.get()) {
                 LiveControlManager.activate(
                         packet.keyboardPos(), packet.bindings(),
                         packet.localRsOutputs(), packet.rsLinkPowers(), packet.thrusterPowers(),
