@@ -18,10 +18,14 @@ public final class PressedKeys {
     public static void clear()              { pressed.clear(); }
 
     public static boolean[] texelGrid() {
-        if (pressed.isEmpty()) return null;
+        return texelGrid(pressed);
+    }
+    
+    public static boolean[] texelGrid(Set<Integer> keys) {
+        if (keys.isEmpty()) return null;
         boolean[] g = new boolean[TOP_W * TOP_H];
         boolean any = false;
-        for (int key : pressed) {
+        for (int key : keys) {
             int[] t = KeyTexels.get(key);
             if (t == null) continue;
             int w = t.length > 2 ? t[2] : 1;

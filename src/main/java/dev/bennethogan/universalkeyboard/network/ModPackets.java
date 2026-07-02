@@ -406,6 +406,7 @@ public class ModPackets {
         registrar.playToServer(SaveLiveBindingsPacket.TYPE,         SaveLiveBindingsPacket.CODEC,         ModPackets::handleSaveLiveBindings);
         registrar.playToServer(LiveActionPacket.TYPE,               LiveActionPacket.CODEC,               ModPackets::handleLiveAction);
         registrar.playToServer(ControlWheelAnimatePacket.TYPE,      ControlWheelAnimatePacket.CODEC,      ModPackets::handleControlWheelAnimate);
+        registrar.playToServer(KeyAnimPacket.TYPE,                  KeyAnimPacket.CODEC,                  ModPackets::handleKeyAnim);
         registrar.optional().playToServer(RequestThrusterRefreshPacket.TYPE,   RequestThrusterRefreshPacket.CODEC,   ModPackets::handleRequestThrusterRefresh);
         registrar.optional().playToServer(OpenWirelessConfigPacket.TYPE,       OpenWirelessConfigPacket.CODEC,       ModPackets::handleOpenWirelessConfig);
         registrar.optional().playToServer(WirelessAddRemovePacket.TYPE,        WirelessAddRemovePacket.CODEC,        ModPackets::handleWirelessAddRemove);
@@ -416,6 +417,7 @@ public class ModPackets {
         registrar.optional().playToServer(SaveLinkFreqsPacket.TYPE,               SaveLinkFreqsPacket.STREAM_CODEC,               ModPackets::handleSaveLinkFreqs);
         registrar.optional().playToServer(RequestLinkFreqScreenPacket.TYPE,       RequestLinkFreqScreenPacket.STREAM_CODEC,       ModPackets::handleRequestLinkFreqScreen);
         registrar.playToServer(SetFavoritePacket.TYPE,              SetFavoritePacket.CODEC,              ModPackets::handleSetFavorite);
+        registrar.playToServer(SetKeyboardLockPacket.TYPE,          SetKeyboardLockPacket.CODEC,          ModPackets::handleSetKeyboardLock);
         registrar.playToServer(ApplyPositionMovePacket.TYPE,        ApplyPositionMovePacket.CODEC,        ModPackets::handleApplyPositionMove);
 
         // playToClient — the server must declare these channels so the handshake succeeds.
@@ -433,6 +435,7 @@ public class ModPackets {
             registrar.playToClient(ChannelChangedPacket.TYPE,          ChannelChangedPacket.CODEC,          (p, c) -> {});
             registrar.playToClient(OpenLiveControlScreenPacket.TYPE, OpenLiveControlScreenPacket.CODEC, (p, c) -> {});
             registrar.playToClient(ControlWheelAnimateClientPacket.TYPE, ControlWheelAnimateClientPacket.CODEC, (p, c) -> {});
+            registrar.playToClient(KeyAnimClientPacket.TYPE,             KeyAnimClientPacket.CODEC,             (p, c) -> {});
             registrar.playToClient(SyncFavoritePacket.TYPE,            SyncFavoritePacket.CODEC,            (p, c) -> {});
             registrar.playToClient(ShowPositionMovePacket.TYPE,         ShowPositionMovePacket.CODEC,         (p, c) -> {});
             registrar.optional().playToClient(OpenWirelessCopycatScreenPacket.TYPE, OpenWirelessCopycatScreenPacket.STREAM_CODEC, (p, c) -> {});
@@ -1555,12 +1558,71 @@ public class ModPackets {
         });
     }
 
+    // --- Keypress animation sync (so other players see each others' typing) ---------------------------
+
+    public record KeyAnimPacket(BlockPos pos, int key, boolean press) implements CustomPacketPayload {
+        public static final Type<KeyAnimPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "key_anim"));
+        public static final StreamCodec<FriendlyByteBuf, KeyAnimPacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC,  KeyAnimPacket::pos,
+                        ByteBufCodecs.VAR_INT,  KeyAnimPacket::key,
+                        ByteBufCodecs.BOOL,     KeyAnimPacket::press,
+                        KeyAnimPacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public record KeyAnimClientPacket(BlockPos pos, int key, boolean press) implements CustomPacketPayload {
+        public static final Type<KeyAnimClientPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "key_anim_client"));
+        public static final StreamCodec<FriendlyByteBuf, KeyAnimClientPacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC,  KeyAnimClientPacket::pos,
+                        ByteBufCodecs.VAR_INT,  KeyAnimClientPacket::key,
+                        ByteBufCodecs.BOOL,     KeyAnimClientPacket::press,
+                        KeyAnimClientPacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public static void sendKeyAnim(BlockPos keyboardPos, int key, boolean press) {
+        if (keyboardPos == null) return;
+        PacketDistributor.sendToServer(new KeyAnimPacket(keyboardPos, key, press));
+    }
+
+    private static void handleKeyAnim(KeyAnimPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            ServerLevel level = sp.serverLevel();
+            if (!sp.blockPosition().closerThan(packet.pos(), 64.0)) return;
+            if (!(level.getBlockEntity(packet.pos()) instanceof LinkedKeyboardBlockEntity)) return;
+            PacketDistributor.sendToPlayersTrackingChunk(level, new ChunkPos(packet.pos()),
+                    new KeyAnimClientPacket(packet.pos(), packet.key(), packet.press()));
+        });
+    }
+
     public static void sendOpenLiveControl(BlockPos keyboardPos) {
         PacketDistributor.sendToServer(new OpenLiveControlPacket(keyboardPos));
     }
 
     public static void sendSetFavorite(BlockPos keyboardPos, FavoriteScreen fav) {
         PacketDistributor.sendToServer(new SetFavoritePacket(keyboardPos, (byte) fav.ordinal()));
+    }
+
+    public static void sendSetKeyboardLock(BlockPos keyboardPos, boolean lock) {
+        PacketDistributor.sendToServer(new SetKeyboardLockPacket(keyboardPos, lock));
+    }
+
+    private static void handleSetKeyboardLock(SetKeyboardLockPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            if (!kb.isUsableBy(sp)) return;
+            kb.setLocked(packet.lock(), sp);
+            sp.displayClientMessage(net.minecraft.network.chat.Component.literal(packet.lock()
+                    ? "§e[Universal Keyboard] §fLocked to §e" + sp.getName().getString() + "§f."
+                    : "§a[Universal Keyboard] §fUnlocked — public use."), true);
+        });
     }
 
     private static void handleSetFavorite(SetFavoritePacket packet, IPayloadContext ctx) {
@@ -1885,6 +1947,16 @@ public class ModPackets {
     }
 
     // Client -> Server: set/clear the favorite screen for a keyboard
+    // Client -> Server: lock the keyboard to the sender (they become owner) or unlock it
+    public record SetKeyboardLockPacket(BlockPos keyboardPos, boolean lock) implements CustomPacketPayload {
+        public static final Type<SetKeyboardLockPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "set_keyboard_lock"));
+        public static final StreamCodec<FriendlyByteBuf, SetKeyboardLockPacket> CODEC = StreamCodec.of(
+                (buf, pkt) -> { BlockPos.STREAM_CODEC.encode(buf, pkt.keyboardPos()); buf.writeBoolean(pkt.lock()); },
+                buf -> new SetKeyboardLockPacket(BlockPos.STREAM_CODEC.decode(buf), buf.readBoolean()));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
     public record SetFavoritePacket(BlockPos keyboardPos, byte favorite) implements CustomPacketPayload {
         public static final Type<SetFavoritePacket> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "set_favorite"));

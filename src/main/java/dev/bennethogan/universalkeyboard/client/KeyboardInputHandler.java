@@ -93,8 +93,10 @@ public class KeyboardInputHandler {
             if (event.getAction() == GLFW.GLFW_PRESS) {
                 KeyRipples.spawn(event.getKey());
                 PressedKeys.press(event.getKey());
+                ModPackets.sendKeyAnim(LiveControlManager.getKeyboardPos(), event.getKey(), true);
             } else if (event.getAction() == GLFW.GLFW_RELEASE) {
                 PressedKeys.release(event.getKey());
+                ModPackets.sendKeyAnim(LiveControlManager.getKeyboardPos(), event.getKey(), false);
             }
             LiveControlManager.handleKey(event.getKey(), event.getAction());
             if (event.getAction() != GLFW.GLFW_RELEASE && !isSafePassthroughKey(event.getKey())) {
@@ -109,6 +111,7 @@ public class KeyboardInputHandler {
 
         if (action == GLFW.GLFW_RELEASE) {
             PressedKeys.release(key);
+            ModPackets.sendKeyAnim(KeyboardCaptureManager.getCapturedPos(), key, false);
             if (KeyboardCaptureManager.isCCCapturing())
                 KeyboardCaptureManager.forwardKeyUp(key);
             return;
@@ -119,6 +122,7 @@ public class KeyboardInputHandler {
         if (action == GLFW.GLFW_PRESS) {
             KeyRipples.spawn(key);
             PressedKeys.press(key);
+            ModPackets.sendKeyAnim(KeyboardCaptureManager.getCapturedPos(), key, true);
         }
 
         if (KeyboardCaptureManager.isCreateCapturing()) {

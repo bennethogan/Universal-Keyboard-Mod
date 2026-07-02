@@ -22,6 +22,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Rotation;
@@ -258,6 +259,11 @@ public class LinkedKeyboardBlockEntity extends BlockEntity implements Transforma
     // new flag that is set with schematic paste, so assembly directly afterwards rolls better into the relative position check
     private boolean pendingPositionDialog = false;
 
+    // Ownership lock: when locked, only the owner or server op can open/edit
+    private java.util.UUID ownerUUID = null;
+    private String  ownerName = "";
+    private boolean locked    = false;
+
     // Cached peripheral getter values for Create display source
     private final Map<String, String> cachedGetterValues = new LinkedHashMap<>();
     private String cachedPeripheralType = "";
@@ -406,6 +412,31 @@ public class LinkedKeyboardBlockEntity extends BlockEntity implements Transforma
         if (primary == null || level == null) return false;
         double range = ModConfig.COMMON.keyboardRange.get();
         return worldPosition.distSqr(primary) <= range * range;
+    }
+
+    // ------- Ownership lock -------
+
+    public boolean isLocked()      { return locked; }
+    public String  getOwnerName()  { return ownerName; }
+
+    public boolean isUsableBy(Player player) {
+        if (!locked || ownerUUID == null) return true;
+        if (ownerUUID.equals(player.getUUID())) return true;
+        return player.hasPermissions(2);
+    }
+
+    // right now Im just allowing the player who locks to be owner, but I'll improve that later
+    public void setLocked(boolean lock, Player player) {
+        this.locked = lock;
+        if (lock) {
+            this.ownerUUID = player.getUUID();
+            this.ownerName = player.getName().getString();
+        } else {
+            this.ownerUUID = null;
+            this.ownerName = "";
+        }
+        setChanged();
+        syncToClients();
     }
 
     public boolean needsPositionCheck() {
@@ -922,6 +953,12 @@ public class LinkedKeyboardBlockEntity extends BlockEntity implements Transforma
 
         tag.putInt("active_channel", activeChannel);
 
+        if (locked && ownerUUID != null) {
+            tag.putBoolean("owner_locked", true);
+            tag.putUUID("owner_uuid", ownerUUID);
+            tag.putString("owner_name", ownerName);
+        }
+
         for (Map.Entry<Integer, List<BlockPos>> entry : channelTargets.entrySet()) {
             List<BlockPos> list = entry.getValue();
             if (list.isEmpty()) continue;
@@ -1009,6 +1046,11 @@ public class LinkedKeyboardBlockEntity extends BlockEntity implements Transforma
 
         activeChannel = tag.contains("active_channel") ? tag.getInt("active_channel") : 1;
         activeChannel = Math.max(1, Math.min(MAX_CHANNELS, activeChannel));
+
+        locked = tag.getBoolean("owner_locked");
+        ownerUUID = locked && tag.hasUUID("owner_uuid") ? tag.getUUID("owner_uuid") : null;
+        ownerName = tag.getString("owner_name");
+        if (ownerUUID == null) locked = false;
 
         // Per-channel targets (new format)
         for (int ch = 1; ch <= MAX_CHANNELS; ch++) {

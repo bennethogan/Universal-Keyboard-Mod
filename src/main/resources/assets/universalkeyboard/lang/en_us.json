@@ -155,6 +155,8 @@
   "gui.universalkeyboard.tooltip.favorite": "★ Mark as Favorite — click keyboard to go straight here",
   "gui.universalkeyboard.tooltip.unfavorite": "★ Favorited — click again to remove. Shift+click keyboard for main menu",
   "gui.universalkeyboard.tooltip.wiki": "Help / Wiki",
+  "gui.universalkeyboard.tooltip.lock_unlocked": "Unlocked \u2014 anyone can use this keyboard. Lock it to claim ownership.",
+  "gui.universalkeyboard.tooltip.lock_locked": "Locked \u2014 only the owner (or server op) can use this keyboard. Click to unlock.",
   "gui.universalkeyboard.screen.wiki.title": "Universal Keyboard — Help",
   "gui.universalkeyboard.tooltip.prev_page": "Previous Page",
   "gui.universalkeyboard.tooltip.next_page": "Next Page",

@@ -171,6 +171,13 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
         if (!(level.getBlockEntity(pos) instanceof LinkedKeyboardBlockEntity be))
             return InteractionResult.CONSUME;
 
+        // Ownership lock so only owner (or server op) can open a locked keyboard's menus
+        if (!be.isUsableBy(player)) {
+            player.displayClientMessage(Component.literal(
+                    "§c[Universal Keyboard] §fLocked by §e" + be.getOwnerName() + "§f."), true);
+            return InteractionResult.CONSUME;
+        }
+
         // If the keyboard moved since it was last used, ask the player why before opening the menu
         if (be.needsPositionCheck()) {
             net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(sp,

@@ -114,6 +114,7 @@ public class UniversalKeyboardModClient {
         if (LiveControlManager.isActive()) LiveControlManager.deactivate();
         dev.bennethogan.universalkeyboard.client.gamepad.MouseLiveDriver.reset();
         dev.bennethogan.universalkeyboard.client.ControlWheelAnimator.reset();
+        dev.bennethogan.universalkeyboard.client.render.RemoteKeyAnim.clear();
         if (KeyboardCaptureManager.isCapturing()) {
             KeyboardCaptureManager.setCaptureMode(null, false);
         }

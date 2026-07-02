@@ -1,5 +1,6 @@
 package dev.bennethogan.universalkeyboard.client.screen;
 
+import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.universalkeyboard.compat.KeyboardMode;
 import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import dev.bennethogan.universalkeyboard.compat.SableCompat;
@@ -56,6 +57,7 @@ public class ModeSelectionScreen extends Screen {
     private ConfirmDialog confirmDialog;
     private DarkButton wikiBtn;
     private IconButton revertBtn;
+    private IconButton lockBtn;
 
     // Typewriter import state
     private BlockPos twOfferPos    = null;
@@ -113,6 +115,32 @@ public class ModeSelectionScreen extends Screen {
                 panelX + panelW - PAD - 16 - 4 - 16, panelY + (TITLE_H - 16) / 2 + 2, 16);
         addRenderableWidget(revertBtn);
         revertBtn.visible = (page == Page.SETUP);
+
+        boolean locked = isKeyboardLocked();
+        lockBtn = IconButton.make(locked ? ModIcons.LOCKED : ModIcons.UNLOCKED,
+                Component.translatable(locked
+                        ? "gui.universalkeyboard.tooltip.lock_locked"
+                        : "gui.universalkeyboard.tooltip.lock_unlocked"),
+                b -> toggleLock(),
+                panelX + panelW - PAD - 16 - 4 - 16, panelY + (TITLE_H - 16) / 2 + 2, 16);
+        addRenderableWidget(lockBtn);
+        lockBtn.visible = (page == Page.ROOT);
+    }
+
+    private boolean isKeyboardLocked() {
+        Minecraft mc = Minecraft.getInstance();
+        return mc.level != null
+                && mc.level.getBlockEntity(keyboardPos) instanceof LinkedKeyboardBlockEntity kb
+                && kb.isLocked();
+    }
+
+    private void toggleLock() {
+        boolean lock = !isKeyboardLocked();
+        ModPackets.sendSetKeyboardLock(keyboardPos, lock);
+        lockBtn.setIcon(lock ? ModIcons.LOCKED : ModIcons.UNLOCKED);
+        lockBtn.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable(lock
+                ? "gui.universalkeyboard.tooltip.lock_locked"
+                : "gui.universalkeyboard.tooltip.lock_unlocked")));
     }
 
     private void setPage(Page p) {
@@ -160,6 +188,11 @@ public class ModeSelectionScreen extends Screen {
             revertBtn.setX(panelX + panelW - PAD - 16 - 4 - 16);
             revertBtn.setY(panelY + (TITLE_H - 16) / 2 + 2);
             revertBtn.visible = (page == Page.SETUP);
+        }
+        if (lockBtn != null) {
+            lockBtn.setX(panelX + panelW - PAD - 16 - 4 - 16);
+            lockBtn.setY(panelY + (TITLE_H - 16) / 2 + 2);
+            lockBtn.visible = (page == Page.ROOT);
         }
     }
 

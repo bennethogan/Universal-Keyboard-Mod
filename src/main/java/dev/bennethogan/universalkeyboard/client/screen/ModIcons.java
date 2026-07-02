@@ -28,6 +28,8 @@ public class ModIcons {
     public static final ModIcons REVERT       = new ModIcons(4,  5);
     public static final ModIcons DICE         = new ModIcons(5, 12);
     public static final ModIcons LOCATE       = PLAY;
+    public static final ModIcons UNLOCKED     = new ModIcons(0, 10);
+    public static final ModIcons LOCKED       = new ModIcons(1, 10);
 
     private final int iconX;
     private final int iconY;

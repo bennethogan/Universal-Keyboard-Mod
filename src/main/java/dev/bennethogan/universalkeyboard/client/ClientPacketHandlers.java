@@ -36,10 +36,23 @@ public class ClientPacketHandlers {
         registrar.playToClient(ChannelChangedPacket.TYPE,          ChannelChangedPacket.CODEC,          ClientPacketHandlers::handleChannelChanged);
         registrar.playToClient(OpenLiveControlScreenPacket.TYPE, OpenLiveControlScreenPacket.CODEC, ClientPacketHandlers::handleOpenLiveControlScreen);
         registrar.playToClient(ModPackets.ControlWheelAnimateClientPacket.TYPE, ModPackets.ControlWheelAnimateClientPacket.CODEC, ClientPacketHandlers::handleControlWheelAnimate);
+        registrar.playToClient(ModPackets.KeyAnimClientPacket.TYPE,             ModPackets.KeyAnimClientPacket.CODEC,             ClientPacketHandlers::handleKeyAnim);
         registrar.playToClient(ModPackets.SyncFavoritePacket.TYPE, ModPackets.SyncFavoritePacket.CODEC, ClientPacketHandlers::handleSyncFavorite);
         registrar.optional().playToClient(ModPackets.OpenWirelessCopycatScreenPacket.TYPE, ModPackets.OpenWirelessCopycatScreenPacket.STREAM_CODEC, ClientPacketHandlers::handleOpenWirelessCopycatScreen);
         registrar.optional().playToClient(ModPackets.OpenLinkFreqScreenPacket.TYPE,        ModPackets.OpenLinkFreqScreenPacket.STREAM_CODEC,        ClientPacketHandlers::handleOpenLinkFreqScreen);
         registrar.playToClient(ModPackets.ShowPositionMovePacket.TYPE,                     ModPackets.ShowPositionMovePacket.CODEC,                     ClientPacketHandlers::handleShowPositionMove);
+    }
+
+    private static void handleKeyAnim(ModPackets.KeyAnimClientPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            net.minecraft.core.BlockPos myPos =
+                    LiveControlManager.isActive()          ? LiveControlManager.getKeyboardPos()
+                  : KeyboardCaptureManager.isCapturing()   ? KeyboardCaptureManager.getCapturedPos()
+                  : null;
+            if (packet.pos().equals(myPos)) return;
+            dev.bennethogan.universalkeyboard.client.render.RemoteKeyAnim.handle(
+                    packet.pos(), packet.key(), packet.press());
+        });
     }
 
     private static void handleKeyboardCapture(KeyboardCapturePacket packet, IPayloadContext ctx) {

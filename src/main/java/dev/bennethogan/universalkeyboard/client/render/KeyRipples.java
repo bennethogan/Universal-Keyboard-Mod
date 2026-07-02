@@ -9,8 +9,6 @@ import java.util.List;
 // an open source software for Logitech keyboard animation
 public final class KeyRipples {
 
-    private KeyRipples() {}
-
     //  tuning options that are non-configurable (for now)
     private static final float LIFE_TICKS = 8f;   // ring lives this many ticks
     private static final float MAX_RADIUS = 7f;   // texels traveled over a lifetime
@@ -21,15 +19,21 @@ public final class KeyRipples {
 
     private record Ripple(float cx, float cy, long spawnTick) {}
 
-    private static final List<Ripple> ripples = new ArrayList<>();
+    public static final KeyRipples LOCAL = new KeyRipples();
+
+    private final List<Ripple> ripples = new ArrayList<>();
 
     private static boolean doubleExplosion() {
         try { return dev.bennethogan.universalkeyboard.config.ModConfig.CLIENT.doubleExplosion.get(); }
         catch (Exception e) { return false; }
     }
 
-    // explosion!
+    // explosion! (static = local player's typing)
     public static void spawn(int glfwKey) {
+        LOCAL.spawnAt(glfwKey);
+    }
+
+    public void spawnAt(int glfwKey) {
         if (!KeyboardAnimations.animationsEnabled()) return;
         int[] t = KeyTexels.get(glfwKey);
         if (t == null) return;
@@ -51,14 +55,14 @@ public final class KeyRipples {
     }
 
     // for culling ripples
-    public static boolean any(double now) {
+    public boolean any(double now) {
         ripples.removeIf(r -> now - r.spawnTick > LIFE_TICKS);
         return !ripples.isEmpty();
     }
 
 
     // color blending with wave animation's RGB
-    public static int apply(int tx, int ty, int argb, double now) {
+    public int apply(int tx, int ty, int argb, double now) {
         float strength = 0f;
         for (Ripple r : ripples) {
             float age01 = (float) ((now - r.spawnTick) / LIFE_TICKS);

@@ -235,9 +235,12 @@ public final class KeyboardAnimations {
         if (state.getBlock() == ModBlocks.RAINBOW_KEYBOARD.get()) {
             renderRainbowMouseOverlay(be, wall, ox, oy, partialTick, poseStack, buffer);
             renderRainbowKeys(be, wall, typing, partialTick, poseStack, buffer, packedLight);
-        } else if (typing) {
-            // other variants: darken the texels under held keys (rainbow does this in its own pass)
-            renderPressedKeys(state.getBlock(), wall, poseStack, buffer, packedLight);
+        } else {
+            // other variants: darken the texels under held keys (rainbow does this in its own pass).
+            boolean[] held = typing ? PressedKeys.texelGrid()
+                                    : RemoteKeyAnim.texelGrid(be.getBlockPos());
+            if (held != null)
+                renderPressedKeys(state.getBlock(), wall, held, poseStack, buffer, packedLight);
         }
 
         poseStack.popPose();
@@ -344,9 +347,8 @@ public final class KeyboardAnimations {
         poseStack.popPose();
     }
 
-    private static void renderPressedKeys(Block block, boolean wall,
+    private static void renderPressedKeys(Block block, boolean wall, boolean[] held,
                                           PoseStack poseStack, MultiBufferSource buffer, int packedLight) {
-        boolean[] held = PressedKeys.texelGrid();
         if (held == null) return;
         String path = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(block).getPath();
         int[] grid = topGrid(path);
@@ -378,8 +380,9 @@ public final class KeyboardAnimations {
         int wholeShift = (int) Math.floor(shift);
         float frac = shift - wholeShift;
         double now = be.getLevel().getGameTime() + partialTick;
-        boolean doRipples = typing && KeyRipples.any(now);
-        boolean[] held = typing ? PressedKeys.texelGrid() : null;
+        KeyRipples ripples = typing ? KeyRipples.LOCAL : RemoteKeyAnim.ripples(be.getBlockPos());
+        boolean doRipples = ripples != null && ripples.any(now);
+        boolean[] held = typing ? PressedKeys.texelGrid() : RemoteKeyAnim.texelGrid(be.getBlockPos());
 
         VertexConsumer vc = buffer.getBuffer(RenderType.text(WHITE_TEX));
         Matrix4f pose = poseStack.last().pose();
@@ -402,7 +405,7 @@ public final class KeyboardAnimations {
                 int c0 = colors[Math.floorMod(i + wholeShift, n)];
                 int c1 = colors[Math.floorMod(i + wholeShift + 1, n)];
                 int col = lerpColor(c0, c1, frac);
-                if (doRipples) col = KeyRipples.apply(cols[i], ty, col, now);
+                if (doRipples) col = ripples.apply(cols[i], ty, col, now);
                 if (held != null && held[ty * TOP_W + cols[i]]) col = darken(col);
                 emitTexel(vc, pose, cols[i], ty, col, keyLight, wall);
             }
@@ -414,7 +417,7 @@ public final class KeyboardAnimations {
                 int c0 = cColors[Math.floorMod(i + clusterWhole, nc)];
                 int c1 = cColors[Math.floorMod(i + clusterWhole + 1, nc)];
                 int col = lerpColor(c0, c1, clusterFrac);
-                if (doRipples) col = KeyRipples.apply(cCols[i], ty, col, now);
+                if (doRipples) col = ripples.apply(cCols[i], ty, col, now);
                 if (held != null && held[ty * TOP_W + cCols[i]]) col = darken(col);
                 emitTexel(vc, pose, cCols[i], ty, col, keyLight, wall);
             }
