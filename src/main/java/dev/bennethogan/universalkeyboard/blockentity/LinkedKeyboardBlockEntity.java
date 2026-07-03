@@ -14,8 +14,6 @@ import dev.bennethogan.universalkeyboard.livecontrol.FavoriteScreen;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
 import dev.bennethogan.universalkeyboard.sequencer.SequencerStep;
-import com.simibubi.create.api.contraption.transformable.TransformableBlockEntity;
-import com.simibubi.create.content.contraptions.StructureTransform;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
@@ -41,7 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 
-public class LinkedKeyboardBlockEntity extends BlockEntity implements TransformableBlockEntity {
+public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     public static final int MAX_CHANNELS = 16;
 
@@ -1334,11 +1332,10 @@ public class LinkedKeyboardBlockEntity extends BlockEntity implements Transforma
         return null;
     }
 
-    @Override
-    public void transform(BlockEntity be, StructureTransform transform) {
-        Rotation rotation = transform.rotation;
+
+    protected void applyStructureRotation(Rotation rotation, Direction.Axis rotationAxis) {
         if (rotation == null || rotation == Rotation.NONE) return;
-        if (transform.rotationAxis != Direction.Axis.Y) return;
+        if (rotationAxis != Direction.Axis.Y) return;
         BlockPos base = (lastKnownPos != null && !lastKnownPos.equals(worldPosition))
                         ? lastKnownPos : worldPosition;
 

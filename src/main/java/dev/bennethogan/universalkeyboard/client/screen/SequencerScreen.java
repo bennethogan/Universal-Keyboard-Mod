@@ -1657,7 +1657,7 @@ public class SequencerScreen extends Screen {
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) parseOpInput(steps.get(si), str); });
 
             // DELAY
-            delayInput = makeBox(ctx, rowY, 80, "1.0",
+            delayInput = makeBox(ctx, rowY, 80, "1.0 / V1",
                     str -> { int si = scrollOffset + rowIdx; if (si < steps.size()) steps.get(si).delaySecondsStr = str; });
 
             // JUMP

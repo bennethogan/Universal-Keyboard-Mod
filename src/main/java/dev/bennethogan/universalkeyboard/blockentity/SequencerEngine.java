@@ -87,9 +87,8 @@ class SequencerEngine {
         switch (step.type) {
             case DELAY -> {
                 if (delayTicker <= 0) {
-                    float secs = 1.0f;
-                    try { secs = Float.parseFloat(step.delaySecondsStr); } catch (NumberFormatException ignored) {}
-                    delayTicker = Math.max(1, Math.round(secs * 20));
+                    double secs = resolveSource(step.delaySecondsStr, step.channel);
+                    delayTicker = Math.max(1, (int) Math.round(secs * 20));
                 }
                 if (--delayTicker <= 0) advance();
                 return true; // always yield on DELAY so it marks a real tick boundary
