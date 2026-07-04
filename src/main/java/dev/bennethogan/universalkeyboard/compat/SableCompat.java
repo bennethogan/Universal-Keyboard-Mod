@@ -164,9 +164,9 @@ public class SableCompat {
     }
 
     private static double pointVelocity(SubLevelAccess sla, Level level, BlockPos kbPos, int idx) {
-        Vector3d worldPos = toWorldPos(sla.logicalPose(), kbPos);
+        Vector3d localPos = new Vector3d(kbPos.getX() + 0.5, kbPos.getY() + 0.5, kbPos.getZ() + 0.5);
         Vector3d vel = new Vector3d();
-        companion().getVelocity(level, sla, worldPos, vel);
+        companion().getVelocity(level, sla, localPos, vel);
         return switch (idx) { case 0 -> vel.x; case 1 -> vel.y; default -> vel.z; };
     }
     

@@ -256,7 +256,7 @@ public final class DashboardScreenRenderer {
             if (!SableCompat.isPresent() || !SableCompat.isOnSublevel(level, pos)) return 0.0;
             double vx = SableCompat.getValue(level, pos, "velX");
             double vz = SableCompat.getValue(level, pos, "velZ");
-            return Math.sqrt(vx * vx + vz * vz) / 1000.0;
+            return Math.sqrt(vx * vx + vz * vz);
         } catch (Exception e) { return 0.0; }
     }
 
