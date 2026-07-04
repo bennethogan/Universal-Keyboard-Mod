@@ -16,7 +16,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 
 public final class DashboardScreenRenderer {
@@ -40,10 +39,13 @@ public final class DashboardScreenRenderer {
     private static final int   SCREEN_LIGHT = 0xF000F0;
 
     private static final int COLOR_OFF      = 0xFF334433;
+    private static final int COLOR_DISPLAY  = 0xFFCCE8FF;   // sequencer-written text
     private static final int COLOR_RPM      = 0xFFFF8844;
+
+    private static final int DISPLAY_WRAP_CHARS = 12;
+    private static final int DISPLAY_MAX_LINES  = 6;
     private static final int COLOR_SPEED    = 0xFF44FFFF;
-    private static final int COLOR_THROTTLE = 0xFFFFDD00;
-    private static final int COLOR_GEAR     = 0xFF66FF99;
+    private static final int COLOR_POS      = 0xFF88FF88;   // world X/Z position
     private static final int COLOR_STARTUP  = 0xFFFFFFFF;
 
     private static final long STARTUP_TICKS = 40L;  // 2 s at 20 TPS
@@ -141,6 +143,9 @@ public final class DashboardScreenRenderer {
 
     private static List<List<Line>> buildColumnsInner(Level level, BlockPos pos, long now) {
 
+        List<Line> custom = customDisplayLines(level, pos);
+        if (custom != null) return List.of(custom);
+
         int startStopRow = safeParseRow(safeGet(ModConfig.CLIENT.dashboardStartStopRow));
         boolean liveActive = LiveControlManager.isActive()
                 && pos.equals(LiveControlManager.getKeyboardPos());
@@ -167,21 +172,20 @@ public final class DashboardScreenRenderer {
 
         int    rpm      = startup ? 9999  : readRpm();
         double speed    = startup ? 999.9 : readSpeed(level, pos);
-        int    throttle = startup ? 15    : readThrottle();
-        String gear     = "N";   // placeholder — gear system not yet implemented
+        long   posX     = startup ? 8888L : Math.round(readWorldPos(level, pos, "posX"));
+        long   posZ     = startup ? 8888L : Math.round(readWorldPos(level, pos, "posZ"));
 
         int rpmColor  = startup ? COLOR_STARTUP : COLOR_RPM;
         int spdColor  = startup ? COLOR_STARTUP : COLOR_SPEED;
-        int thrColor  = startup ? COLOR_STARTUP : COLOR_THROTTLE;
-        int gearColor = startup ? COLOR_STARTUP : COLOR_GEAR;
+        int posColor  = startup ? COLOR_STARTUP : COLOR_POS;
 
         List<Line> left = new ArrayList<>(2);
         left.add(new Line(String.format("%4d RPM",   rpm),   rpmColor));
         left.add(new Line(String.format("%5.1f b/s", speed), spdColor));
 
         List<Line> right = new ArrayList<>(2);
-        right.add(new Line(String.format("THR %2d", throttle), thrColor));
-        right.add(new Line("GEAR " + gear,                     gearColor));
+        right.add(new Line("X " + posX, posColor));
+        right.add(new Line("Z " + posZ, posColor));
 
         return List.of(left, right);
     }
@@ -192,10 +196,49 @@ public final class DashboardScreenRenderer {
         left.add(new Line("  0.0 b/s", COLOR_SPEED));
 
         List<Line> right = new ArrayList<>(2);
-        right.add(new Line("THR  0",   COLOR_THROTTLE));
-        right.add(new Line("GEAR N",   COLOR_GEAR));
+        right.add(new Line("X --", COLOR_POS));
+        right.add(new Line("Z --", COLOR_POS));
 
         return List.of(left, right);
+    }
+
+
+    private static List<Line> customDisplayLines(Level level, BlockPos pos) {
+        net.minecraft.world.level.block.entity.BlockEntity be = level.getBlockEntity(pos);
+        if (!(be instanceof LinkedKeyboardBlockEntity kbd)) return null;
+        String[] lines = kbd.getDisplayLines();   // null unless at least one line was set
+        if (lines == null) return null;
+
+        List<Line> out = new ArrayList<>();
+        boolean hasContent = false;
+        for (String raw : lines) {
+            if (raw == null) continue;                       // never-written line -> skip
+            if (raw.isEmpty()) { out.add(new Line("", COLOR_DISPLAY)); }
+            else {
+                hasContent = true;
+                for (String w : wrap(raw, DISPLAY_WRAP_CHARS)) out.add(new Line(w, COLOR_DISPLAY));
+            }
+            if (out.size() >= DISPLAY_MAX_LINES) break;
+        }
+        if (!hasContent) return null;
+        if (out.size() > DISPLAY_MAX_LINES) out = out.subList(0, DISPLAY_MAX_LINES);
+        return out;
+    }
+
+    private static List<String> wrap(String s, int width) {
+        List<String> out = new ArrayList<>();
+        s = s.replace('\t', ' ').replace('\n', ' ');
+        int i = 0, n = s.length();
+        while (i < n) {
+            int end = Math.min(i + width, n);
+            if (end < n) {
+                int sp = s.lastIndexOf(' ', end);
+                if (sp > i) end = sp;                          // break at word boundary if possible
+            }
+            out.add(s.substring(i, end).trim());
+            i = (end < n && s.charAt(end) == ' ') ? end + 1 : end;
+        }
+        return out;
     }
 
 
@@ -217,14 +260,12 @@ public final class DashboardScreenRenderer {
         } catch (Exception e) { return 0.0; }
     }
 
-    private static int readThrottle() {
+    private static double readWorldPos(Level level, BlockPos pos, String getter) {
         try {
-            Set<Integer> rows = LiveControlManager.parseRowSet(
-                    safeGet(ModConfig.CLIENT.dashboardThrottleRows));
-            int max = 0;
-            for (int row : rows) max = Math.max(max, LiveControlManager.getRowSignalStrength(row));
-            return max;
-        } catch (Exception e) { return 0; }
+            if (SableCompat.isPresent() && SableCompat.isOnSublevel(level, pos))
+                return SableCompat.getValue(level, pos, getter);
+        } catch (Exception ignored) {}
+        return ("posX".equals(getter) ? pos.getX() : pos.getZ()) + 0.5;
     }
 
 

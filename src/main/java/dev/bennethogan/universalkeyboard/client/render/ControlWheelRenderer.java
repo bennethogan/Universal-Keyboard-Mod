@@ -133,7 +133,7 @@ public class ControlWheelRenderer implements BlockEntityRenderer<LinkedKeyboardB
         };
     }
 
-    private static int yFloor(Direction facing) {
+    static int yFloor(Direction facing) {
         return switch (facing) {
             case EAST  -> 90;
             case SOUTH -> 180;
@@ -142,7 +142,7 @@ public class ControlWheelRenderer implements BlockEntityRenderer<LinkedKeyboardB
         };
     }
 
-    private static int yWall(Direction facing) {
+    static int yWall(Direction facing) {
         return switch (facing) {
             case NORTH -> 180;
             case EAST  -> 270;

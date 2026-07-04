@@ -32,6 +32,8 @@ public class LiveControlManager {
 
     private static final Set<Integer>          heldKeys       = new HashSet<>();
     private static final Set<Integer>          toggledOn      = new HashSet<>();
+    private static BlockPos                    lastTogglePos        = null;
+    private static final Set<Integer>          rememberedToggleKeys = new HashSet<>();
     private static final Map<Long, Integer>    rsIncCounters  = new HashMap<>();
     private static final Map<Integer, Integer> thrIncCounters = new HashMap<>();
     private static final Map<Integer, Integer> varIncCounters = new HashMap<>();
@@ -65,6 +67,7 @@ public class LiveControlManager {
     public static void activate(BlockPos pos, List<LiveControlBinding> binds,
                                 int[] localRsOutputs, int[] rsLinkPowers, int[] thrusterPowers,
                                 double[] varValues, int[] rpmValues) {
+        if (active && pos.equals(keyboardPos)) rememberTogglesNow();
         active      = true;
         keyboardPos = pos;
         bindings    = new ArrayList<>(binds);
@@ -146,6 +149,25 @@ public class LiveControlManager {
                     toggledOn.add(i);
             }
         }
+
+        if (pos.equals(lastTogglePos)) {
+            for (int i = 0; i < bindings.size(); i++) {
+                LiveControlBinding b = bindings.get(i);
+                if (b.mode == Mode.TGL && b.actionType != ActionType.VARIABLE
+                        && rememberedToggleKeys.contains(b.keyCode))
+                    toggledOn.add(i);
+            }
+        }
+    }
+
+    private static void rememberTogglesNow() {
+        lastTogglePos = keyboardPos;
+        rememberedToggleKeys.clear();
+        for (int idx : toggledOn) {
+            if (idx < 0 || idx >= bindings.size()) continue;
+            LiveControlBinding b = bindings.get(idx);
+            if (b.actionType != ActionType.VARIABLE) rememberedToggleKeys.add(b.keyCode);
+        }
     }
 
     public static void deactivate() {
@@ -167,6 +189,7 @@ public class LiveControlManager {
         tglLockedMag.clear();
         lastRpmBindingIdx = -1;
         if (Minecraft.getInstance().getConnection() != null) computeAndSend();
+        rememberTogglesNow();   // so re-opening keyboard restores toggles
         toggledOn.clear();
         rsIncCounters.clear();
         thrIncCounters.clear();

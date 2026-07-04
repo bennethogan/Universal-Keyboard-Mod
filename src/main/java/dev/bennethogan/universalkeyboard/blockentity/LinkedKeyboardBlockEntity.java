@@ -260,7 +260,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     // Ownership lock: when locked, only the owner or server op can open/edit
     private java.util.UUID ownerUUID = null;
     private String  ownerName = "";
-    private boolean locked    = false;
+    private boolean locked    = true;
 
     // Cached peripheral getter values for Create display source
     private final Map<String, String> cachedGetterValues = new LinkedHashMap<>();
@@ -416,6 +416,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     public boolean isLocked()      { return locked; }
     public String  getOwnerName()  { return ownerName; }
+    public boolean isOwned()       { return ownerUUID != null; }
 
     public boolean isUsableBy(Player player) {
         if (!locked || ownerUUID == null) return true;
@@ -423,7 +424,16 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         return player.hasPermissions(2);
     }
 
-    // right now Im just allowing the player who locks to be owner, but I'll improve that later
+    public boolean claimIfUnowned(Player player) {
+        if (locked && ownerUUID == null) {
+            ownerUUID = player.getUUID();
+            ownerName = player.getName().getString();
+            setChanged();
+            syncToClients();
+            return true;
+        }
+        return false;
+    }
     public void setLocked(boolean lock, Player player) {
         this.locked = lock;
         if (lock) {
@@ -761,8 +771,11 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     public void setDisplayLine(int idx, String text) {
         if (idx < 0 || idx >= MAX_DISPLAY_LINES) return;
-        displayLines[idx] = text == null ? "" : text;
+        String v = text == null ? "" : text;
+        if (v.equals(displayLines[idx])) return;   // no change -> skip (avoids per-tick sync spam)
+        displayLines[idx] = v;
         setChanged();
+        syncToClients();                           // so the dashboard renderer (client) can show it
     }
 
     // get display lines from the sequencer, null if not set yet
@@ -951,8 +964,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
         tag.putInt("active_channel", activeChannel);
 
-        if (locked && ownerUUID != null) {
-            tag.putBoolean("owner_locked", true);
+        tag.putBoolean("owner_locked", locked);
+        if (ownerUUID != null) {
             tag.putUUID("owner_uuid", ownerUUID);
             tag.putString("owner_name", ownerName);
         }
@@ -1045,10 +1058,14 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         activeChannel = tag.contains("active_channel") ? tag.getInt("active_channel") : 1;
         activeChannel = Math.max(1, Math.min(MAX_CHANNELS, activeChannel));
 
-        locked = tag.getBoolean("owner_locked");
-        ownerUUID = locked && tag.hasUUID("owner_uuid") ? tag.getUUID("owner_uuid") : null;
-        ownerName = tag.getString("owner_name");
-        if (ownerUUID == null) locked = false;
+        locked = tag.contains("owner_locked") ? tag.getBoolean("owner_locked") : false;
+        if (tag.hasUUID("owner_uuid")) {
+            ownerUUID = tag.getUUID("owner_uuid");
+            ownerName = tag.getString("owner_name");
+        } else {
+            ownerUUID = null;
+            ownerName = "";
+        }
 
         // Per-channel targets (new format)
         for (int ch = 1; ch <= MAX_CHANNELS; ch++) {
@@ -1331,7 +1348,6 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         }
         return null;
     }
-
 
     protected void applyStructureRotation(Rotation rotation, Direction.Axis rotationAxis) {
         if (rotation == null || rotation == Rotation.NONE) return;

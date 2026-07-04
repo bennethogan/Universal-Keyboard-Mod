@@ -172,6 +172,10 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
             return InteractionResult.CONSUME;
 
         // Ownership lock so only owner (or server op) can open a locked keyboard's menus
+        if (be.claimIfUnowned(player)) {
+            player.displayClientMessage(Component.literal(
+                    "§a[Universal Keyboard] §fYou now own this keyboard §7(locked to you)§f."), true);
+        }
         if (!be.isUsableBy(player)) {
             player.displayClientMessage(Component.literal(
                     "§c[Universal Keyboard] §fLocked by §e" + be.getOwnerName() + "§f."), true);

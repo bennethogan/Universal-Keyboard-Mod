@@ -122,7 +122,7 @@ public class ModeSelectionScreen extends Screen {
                         ? "gui.universalkeyboard.tooltip.lock_locked"
                         : "gui.universalkeyboard.tooltip.lock_unlocked"),
                 b -> toggleLock(),
-                panelX + panelW - PAD - 16 - 4 - 16, panelY + (TITLE_H - 16) / 2 + 2, 16);
+                panelX + PAD, panelY + (TITLE_H - 16) / 2 + 2, 16);
         addRenderableWidget(lockBtn);
         lockBtn.visible = (page == Page.ROOT);
     }
@@ -190,7 +190,7 @@ public class ModeSelectionScreen extends Screen {
             revertBtn.visible = (page == Page.SETUP);
         }
         if (lockBtn != null) {
-            lockBtn.setX(panelX + panelW - PAD - 16 - 4 - 16);
+            lockBtn.setX(panelX + PAD);
             lockBtn.setY(panelY + (TITLE_H - 16) / 2 + 2);
             lockBtn.visible = (page == Page.ROOT);
         }
