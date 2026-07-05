@@ -89,7 +89,7 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity implements Pa
     }
 
     public void checkPreviewExpiry(ServerLevel sl) {
-        if (previewFace < 0) return;
+        if (previewFace == -1) return;
         if (sl.getGameTime() >= previewExpiry) {
             clearPreview();
         }
@@ -101,9 +101,9 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity implements Pa
         if (level != null && !level.isClientSide) notifyUpdate();
     }
 
-    // Render-time fall back to help test button now get stuck
+    // Render-time fall back to help test button not get stuck
     private boolean previewExpired() {
-        return previewFace >= 0 && level != null && level.getGameTime() >= previewExpiry;
+        return previewFace != -1 && level != null && level.getGameTime() >= previewExpiry;
     }
 
     public void setConfig(String[] newFreqs, boolean[] newEnabled) {
@@ -155,8 +155,10 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity implements Pa
     @Override
     public void lazyTick() {
         super.lazyTick();
-        if (level != null && !level.isClientSide)
+        if (level != null && !level.isClientSide) {
+            if (level instanceof ServerLevel sl) checkPreviewExpiry(sl);
             updateShipMass(level, worldPosition, getBlockState());
+        }
     }
 
     @Override
