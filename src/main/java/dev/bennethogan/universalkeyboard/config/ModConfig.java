@@ -68,9 +68,9 @@ public class ModConfig {
         public final ModConfigSpec.ConfigValue<List<? extends Double>> stickCalibration;
         public final ModConfigSpec.ConfigValue<String> controlWheelLeftRows;
         public final ModConfigSpec.ConfigValue<String> controlWheelRightRows;
-        public final ModConfigSpec.ConfigValue<String> dashboardRpmRow;
-        public final ModConfigSpec.ConfigValue<String> dashboardThrottleRows;
-        public final ModConfigSpec.ConfigValue<String> dashboardStartStopRow;
+        public final ModConfigSpec.BooleanValue        screenEnabled;
+        public final ModConfigSpec.ConfigValue<String> screenVisualizedRows;
+        public final ModConfigSpec.ConfigValue<String> vistaCameraToggleRow;
         public final ModConfigSpec.BooleanValue favoriteLiveControlAutoStart;
         public final ModConfigSpec.ConfigValue<String> liveControlIgnoredKeys;
         public final ModConfigSpec.BooleanValue redstoneWildcardWarningDismissed;
@@ -207,30 +207,32 @@ public class ModConfig {
 
             builder.pop();
 
-            builder.comment("Universal Keyboard — Dashboard Display").push("dashboard");
+            builder.comment("Universal Keyboard — Screens (dashboard + control wheel)").push("screens");
 
-            dashboardRpmRow = builder
-                    .comment("Live Controller row number (1–40) used as the default RPM source on the dashboard.",
-                             "Shows the an RPM binding's current value for that row.",
-                             "If a different RPM row key was pressed more recently, that row is shown instead.",
-                             "Leave blank to always show the most recently pressed RPM row. Default: \"\".")
-                    .translation("config.universalkeyboard.dashboard.dashboardRpmRow")
-                    .define("dashboardRpmRow", "");
+            screenEnabled = builder
+                    .comment("Master on/off for the dashboard and control-wheel screens.",
+                             "Set to false to leave them blank. Default: true.")
+                    .translation("config.universalkeyboard.screens.screenEnabled")
+                    .define("screenEnabled", true);
 
-            dashboardThrottleRows = builder
-                    .comment("Comma-separated Live Controller row numbers (1–40) for the dashboard throttle indicator.",
-                             "Reads the REDSTONE signal (0–15) from bindings on these rows; shows the highest.",
-                             "Leave blank to hide the throttle display. Default: \"\".")
-                    .translation("config.universalkeyboard.dashboard.dashboardThrottleRows")
-                    .define("dashboardThrottleRows", "");
+            screenVisualizedRows = builder
+                    .comment("Comma-separated Live Controller row numbers (1–40) to visualize on the screens.",
+                             "Each row is shown according to its binding type:",
+                             "  RPM row      -> \"#### RPM\"",
+                             "  Redstone row -> \"RS: N\"   (signal strength 0–15)",
+                             "  Thruster row -> \"Thr: N\"  (thrust 0–15)",
+                             "With more than one row, the display switches between the recently used one",
+                             "Leave blank to show nothing. Default: \"\".")
+                    .translation("config.universalkeyboard.screens.screenVisualizedRows")
+                    .define("screenVisualizedRows", "");
 
-            dashboardStartStopRow = builder
-                    .comment("Live Controller row number (1–40) that acts as the engine start/stop.",
-                             "Screen turns on with a toggled power on that row.",
-                             "When off, the screen shows -- OFF --.",
-                             "Leave blank to always treat the dashboard as running. Default: \"\".")
-                    .translation("config.universalkeyboard.dashboard.dashboardStartStopRow")
-                    .define("dashboardStartStopRow", "");
+            vistaCameraToggleRow = builder
+                    .comment("Live Controller row number (1–40) whose key toggles the Vista camera",
+                             "feed on the dashboard / control-wheel screens. Pressing that row's key",
+                             "flips the feed on/off, regardless of what the row otherwise does.",
+                             "Requires Vista mod. Leave blank to disable. Default: \"\".")
+                    .translation("config.universalkeyboard.screens.vistaCameraToggleRow")
+                    .define("vistaCameraToggleRow", "");
 
             builder.pop();
 

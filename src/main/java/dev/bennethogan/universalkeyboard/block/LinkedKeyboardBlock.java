@@ -219,11 +219,30 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
         return InteractionResult.CONSUME;
     }
 
-    // Right-click with a dye to change the keyboard's skin while preserving all data.
+    // Right-click with a Vista cassette to load it into the keyboard's screen (swaps out any
+    // existing one); right-click with a dye to change the keyboard's skin.
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level,
                                               BlockPos pos, Player player, InteractionHand hand,
                                               BlockHitResult hit) {
+        if (dev.bennethogan.universalkeyboard.compat.VistaItems.isCassette(stack)) {
+            if (level.isClientSide) return ItemInteractionResult.SUCCESS;
+            if (!(level.getBlockEntity(pos) instanceof LinkedKeyboardBlockEntity be))
+                return ItemInteractionResult.CONSUME;
+            if (!be.isUsableBy(player)) {
+                player.displayClientMessage(Component.literal(
+                        "§c[Universal Keyboard] §fLocked by §e" + be.getOwnerName() + "§f."), true);
+                return ItemInteractionResult.CONSUME;
+            }
+            ItemStack old = be.getCassette();
+            be.setCassette(stack.copyWithCount(1));
+            if (!player.isCreative()) stack.shrink(1);
+            if (!old.isEmpty() && !player.addItem(old)) player.drop(old, false);
+            player.displayClientMessage(Component.literal(
+                    "§a[Universal Keyboard] §fCassette loaded."), true);
+            return ItemInteractionResult.SUCCESS;
+        }
+
         if (!(stack.getItem() instanceof DyeItem dyeItem))
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
 

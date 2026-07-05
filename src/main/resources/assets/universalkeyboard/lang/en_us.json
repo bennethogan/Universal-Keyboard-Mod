@@ -31,6 +31,7 @@
   "gui.universalkeyboard.box.peripheral_manager": "Peripheral Manager",
   "gui.universalkeyboard.box.peripheral_manager.desc": "View every linked peripheral by channel. Click a row to expand its details.",
   "gui.universalkeyboard.peripheral_manager.empty": "§7No linked peripherals",
+  "gui.universalkeyboard.peripheral_manager.cassette": "§eCassette loaded",
   "gui.universalkeyboard.peripheral_manager.unloaded": "Unloaded Block",
   "gui.universalkeyboard.peripheral_manager.pos": "Position: %s",
   "gui.universalkeyboard.peripheral_manager.conn": "Connection: %s",

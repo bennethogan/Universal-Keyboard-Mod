@@ -769,6 +769,18 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     // Written by sequencer's DISPLAY line; null if never set, "" if set blank
     private final String[] displayLines = new String[MAX_DISPLAY_LINES];
 
+    // slot for Vista mod's cassette, so that
+    // its feed can be shown on the dashboard / control-wheel screen.
+    private ItemStack cassette = ItemStack.EMPTY;
+
+    public ItemStack getCassette() { return cassette; }
+
+    public void setCassette(ItemStack stack) {
+        cassette = stack == null ? ItemStack.EMPTY : stack;
+        setChanged();
+        syncToClients();
+    }
+
     public void setDisplayLine(int idx, String text) {
         if (idx < 0 || idx >= MAX_DISPLAY_LINES) return;
         String v = text == null ? "" : text;
@@ -1039,6 +1051,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         }
         if (!dl.isEmpty()) tag.put("display_lines", dl);
 
+        if (!cassette.isEmpty()) tag.put("vista_cassette", cassette.save(registries));
+
         if (lastKnownPos != null) {
             CompoundTag lkp = new CompoundTag();
             lkp.putInt("x", lastKnownPos.getX());
@@ -1188,6 +1202,9 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                 if (idx >= 0 && idx < MAX_DISPLAY_LINES) displayLines[idx] = c.getString("t");
             }
         }
+        cassette = tag.contains("vista_cassette")
+                ? ItemStack.parseOptional(registries, tag.getCompound("vista_cassette")) : ItemStack.EMPTY;
+
         favoriteScreen = tag.contains("favorite_screen")
                 ? FavoriteScreen.fromByte(tag.getByte("favorite_screen")) : FavoriteScreen.NONE;
 

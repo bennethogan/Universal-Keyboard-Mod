@@ -4,6 +4,9 @@ import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.universalkeyboard.compat.CreateValueHelper;
 import dev.bennethogan.universalkeyboard.compat.MonitorHelper;
 import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
+import dev.bennethogan.universalkeyboard.compat.VistaCompat;
+import dev.bennethogan.universalkeyboard.network.ModPackets;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -53,6 +56,13 @@ public class PeripheralManagerScreen extends Screen {
     private int expanded = -1; // index into entries, or -1
     private int scrollY  = 0;
 
+    // Vista cassette bottom bar
+    private boolean hasCassette;
+    private String  cassetteInfo;
+    private int     cassetteStripY;
+    private int     cassetteStripH;
+    private boolean locallyEjected = false;
+
     private record Entry(int channel, int indexInChannel, BlockPos pos) {
         String tag() { return "C" + channel + "N" + indexInChannel; }
     }
@@ -80,7 +90,50 @@ public class PeripheralManagerScreen extends Screen {
                 b -> onClose(),
                 panelX + PAD, panelY + PANEL_H - PAD - BTN_H, BTN_H));
 
+        // Vista cassette bottom bar
+        hasCassette = false;
+        cassetteInfo = null;
+        Minecraft mc = Minecraft.getInstance();
+        if (!locallyEjected && mc.level != null
+                && mc.level.getBlockEntity(keyboardPos) instanceof LinkedKeyboardBlockEntity kb) {
+            ItemStack cass = kb.getCassette();
+            if (!cass.isEmpty()) {
+                hasCassette  = true;
+                cassetteInfo = VistaCompat.describeCassette(cass);
+            }
+        }
+        if (hasCassette) {
+            cassetteStripH = font.lineHeight * 2 + 10;
+            listBottom    -= cassetteStripH;
+            cassetteStripY = listBottom + 4;
+            int ejectW = 46;
+            addRenderableWidget(DarkButton.make(Component.literal("Eject"),
+                    Component.literal("Remove the cassette and return it to you"),
+                    b -> doEject(),
+                    panelX + PANEL_W - PAD - ejectW, cassetteStripY + (cassetteStripH - BTN_H) / 2,
+                    ejectW, BTN_H));
+        }
+
         rebuildEntries();
+    }
+
+    private void doEject() {
+        ModPackets.sendEjectCassette(keyboardPos);
+        locallyEjected = true;
+        rebuildWidgets();
+    }
+
+    private void drawCassetteStrip(GuiGraphics g) {
+        if (!hasCassette) return;
+        int sx = panelX + PAD;
+        int sw = PANEL_W - PAD * 2;
+        g.fill(sx, cassetteStripY, sx + sw, cassetteStripY + cassetteStripH, 0xFF1B1B22);
+        drawBorder(g, sx, cassetteStripY, sw, cassetteStripH, 0xFF3A3A4A);
+        g.drawString(font, I18n.get("gui.universalkeyboard.peripheral_manager.cassette"),
+                sx + 4, cassetteStripY + 4, COL_TAG, false);
+        String info = cassetteInfo != null ? cassetteInfo : "Linked camera";
+        g.drawString(font, trimToWidth(info, sw - 8 - 50),
+                sx + 4, cassetteStripY + 4 + font.lineHeight, COL_DETAIL, false);
     }
 
     private void rebuildEntries() {
@@ -192,6 +245,7 @@ public class PeripheralManagerScreen extends Screen {
         if (entries.isEmpty()) {
             g.drawCenteredString(font, I18n.get("gui.universalkeyboard.peripheral_manager.empty"),
                     panelX + PANEL_W / 2, listTop + viewportH() / 2 - 4, 0xFF888888);
+            drawCassetteStrip(g);
             for (var r : this.renderables) r.render(g, mx, my, pt);
             return;
         }
@@ -216,6 +270,7 @@ public class PeripheralManagerScreen extends Screen {
             g.drawString(font, arrows, panelX + PANEL_W - PAD - 14, listBottom + 2, 0xFF666666, false);
         }
 
+        drawCassetteStrip(g);
         for (var r : this.renderables) r.render(g, mx, my, pt);
     }
 

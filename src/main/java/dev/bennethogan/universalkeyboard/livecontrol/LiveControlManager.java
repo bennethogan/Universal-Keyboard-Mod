@@ -62,6 +62,13 @@ public class LiveControlManager {
     // index of most recently activated RPM binding (-1 for none yet)
     private static int lastRpmBindingIdx = -1;
 
+    //most recently clicked row, for screen display
+    private static long chooseSeq = 0;
+    private static final Map<Integer, Long> rowChosenAt = new HashMap<>();
+
+    // Keyboards whose Vista camera feed is toggled on
+    private static final Set<BlockPos> camerasOn = new HashSet<>();
+
     // ── Activation ───────────────────────────────────────────────────────────
 
     public static void activate(BlockPos pos, List<LiveControlBinding> binds,
@@ -188,6 +195,7 @@ public class LiveControlManager {
         tglPendingPeak.clear();
         tglLockedMag.clear();
         lastRpmBindingIdx = -1;
+        rowChosenAt.clear();
         if (Minecraft.getInstance().getConnection() != null) computeAndSend();
         rememberTogglesNow();   // so re-opening keyboard restores toggles
         toggledOn.clear();
@@ -396,12 +404,15 @@ public class LiveControlManager {
 
         handleVariableKey(keyCode, glfw_action);
 
+        if (glfw_action == GLFW.GLFW_PRESS) maybeToggleVistaCamera(keyCode);
+
         if (glfw_action == GLFW.GLFW_PRESS) {
             for (int i = 0; i < bindings.size(); i++) {
                 LiveControlBinding b = bindings.get(i);
                 if (b.keyCode != keyCode || b.mode != Mode.INC
                         || b.actionType == LiveControlBinding.ActionType.VARIABLE) continue;
                 if (b.actionType == ActionType.RPM_CONTROL) lastRpmBindingIdx = i;
+                markRowChosen(i, b);
                 heldKeys.add(keyCode);
                 if (!incHoldTicks.containsKey(keyCode))
                     incHoldTicks.put(keyCode, 0);
@@ -441,6 +452,7 @@ public class LiveControlManager {
                 if (b.keyCode != keyCode || b.mode == Mode.INC
                         || b.actionType == LiveControlBinding.ActionType.VARIABLE) continue;
                 if (b.actionType == ActionType.RPM_CONTROL) lastRpmBindingIdx = i;
+                markRowChosen(i, b);
                 if (b.mode == Mode.HLD) {
                     heldKeys.add(keyCode);
                 } else {
@@ -934,6 +946,56 @@ public class LiveControlManager {
             return rsIncCounters.getOrDefault(rsKey(b.rsLinkIdx, b.rsSide), 0);
         }
         return isBindingActive(bindingIdx) ? b.signalStrength : 0;
+    }
+
+    public static int getThrusterValue(int bindingIdx) {
+        if (!active || bindingIdx < 0 || bindingIdx >= bindings.size()) return 0;
+        LiveControlBinding b = bindings.get(bindingIdx);
+        if (b.actionType != ActionType.THRUSTER_POWER) return 0;
+        if (b.mode == Mode.INC) return thrIncCounters.getOrDefault(b.channel, 0);
+        return isBindingActive(bindingIdx) ? (int) Math.round(b.powerLevel * 15) : 0;
+    }
+
+    public static ActionType getRowActionType(int bindingIdx) {
+        if (bindingIdx < 0 || bindingIdx >= bindings.size()) return null;
+        return bindings.get(bindingIdx).actionType;
+    }
+
+    public static int mostRecentlyChosenAmong(int[] bindingIdxs) {
+        int best = -1;
+        long bestSeq = Long.MIN_VALUE;
+        for (int idx : bindingIdxs) {
+            Long s = rowChosenAt.get(idx);
+            if (s != null && s > bestSeq) { bestSeq = s; best = idx; }
+        }
+        return best;
+    }
+
+    public static boolean isVistaCameraOn(BlockPos pos) { return pos != null && camerasOn.contains(pos); }
+    
+    private static void maybeToggleVistaCamera(int keyCode) {
+        int row = vistaToggleRow();
+        if (row < 0 || row >= bindings.size() || keyboardPos == null) return;
+        if (bindings.get(row).keyCode == keyCode) {
+            BlockPos p = keyboardPos.immutable();
+            if (!camerasOn.remove(p)) camerasOn.add(p);
+        }
+    }
+
+    private static int vistaToggleRow() {
+        try {
+            String s = ModConfig.CLIENT.vistaCameraToggleRow.get();
+            if (s == null || s.isBlank()) return -1;
+            int n = Integer.parseInt(s.trim());
+            return (n >= 1 && n <= 40) ? n - 1 : -1;
+        } catch (Exception e) { return -1; }
+    }
+
+    private static void markRowChosen(int idx, LiveControlBinding b) {
+        if (b.actionType == ActionType.RPM_CONTROL
+                || b.actionType == ActionType.REDSTONE
+                || b.actionType == ActionType.THRUSTER_POWER)
+            rowChosenAt.put(idx, ++chooseSeq);
     }
 
     private static String keyDisplayName(int keyCode) {

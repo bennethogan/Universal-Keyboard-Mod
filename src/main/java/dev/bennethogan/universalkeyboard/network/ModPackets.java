@@ -85,6 +85,16 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
+    public record EjectCassettePacket(BlockPos keyboardPos) implements CustomPacketPayload {
+        public static final Type<EjectCassettePacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "eject_cassette"));
+        public static final StreamCodec<FriendlyByteBuf, EjectCassettePacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, EjectCassettePacket::keyboardPos,
+                        EjectCassettePacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
     public record StartCreateCapturePacket(
             BlockPos keyboardPos, int currentValue, int minValue, int maxValue
     ) implements CustomPacketPayload {
@@ -418,6 +428,7 @@ public class ModPackets {
         registrar.optional().playToServer(RequestLinkFreqScreenPacket.TYPE,       RequestLinkFreqScreenPacket.STREAM_CODEC,       ModPackets::handleRequestLinkFreqScreen);
         registrar.playToServer(SetFavoritePacket.TYPE,              SetFavoritePacket.CODEC,              ModPackets::handleSetFavorite);
         registrar.playToServer(SetKeyboardLockPacket.TYPE,          SetKeyboardLockPacket.CODEC,          ModPackets::handleSetKeyboardLock);
+        registrar.optional().playToServer(EjectCassettePacket.TYPE,  EjectCassettePacket.CODEC,           ModPackets::handleEjectCassette);
         registrar.playToServer(ApplyPositionMovePacket.TYPE,        ApplyPositionMovePacket.CODEC,        ModPackets::handleApplyPositionMove);
 
         // playToClient — the server must declare these channels so the handshake succeeds.
@@ -708,6 +719,9 @@ public class ModPackets {
     }
     public static void sendKeyboardReleasePacket(BlockPos pos) {
         PacketDistributor.sendToServer(new KeyboardReleasePacket(pos));
+    }
+    public static void sendEjectCassette(BlockPos pos) {
+        PacketDistributor.sendToServer(new EjectCassettePacket(pos));
     }
     public static void sendSetActiveChannel(BlockPos keyboardPos, int channel) {
         PacketDistributor.sendToServer(new SetActiveChannelPacket(keyboardPos, channel));
@@ -1610,6 +1624,19 @@ public class ModPackets {
 
     public static void sendSetKeyboardLock(BlockPos keyboardPos, boolean lock) {
         PacketDistributor.sendToServer(new SetKeyboardLockPacket(keyboardPos, lock));
+    }
+
+    private static void handleEjectCassette(EjectCassettePacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            if (!kb.isUsableBy(sp)) return;
+            ItemStack c = kb.getCassette();
+            if (c.isEmpty()) return;
+            kb.setCassette(ItemStack.EMPTY);
+            if (!sp.getInventory().add(c)) sp.drop(c, false);
+        });
     }
 
     private static void handleSetKeyboardLock(SetKeyboardLockPacket packet, IPayloadContext ctx) {
