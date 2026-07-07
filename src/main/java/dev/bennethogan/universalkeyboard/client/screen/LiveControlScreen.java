@@ -79,7 +79,7 @@ public class LiveControlScreen extends Screen {
     private int exclOverlaySlot   = -1;
     private String exclInput      = "";
     private String cfgMultInput   = "";
-    private boolean cfgFocusMult  = true
+    private boolean cfgFocusMult  = true;
     private boolean mouseCaptureArmed = false;
     private double  lastMoveX = Double.NaN, lastMoveY;
     private int page = 0; // 0 = slots 0–19, 1 = slots 20–39

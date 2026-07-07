@@ -37,7 +37,7 @@ public final class DashboardRenderer {
             new org.joml.Vector3f(0.96593f, -0.25882f, 0f).normalize();
 
 
-    private static final float TILT_MAX_DEG = 14f;   // fully-active tilt
+    private static final float TILT_MAX_DEG = 12.5f;   // fully-active tilt
     private static final float TILT_TICKS   = 10f;     // ease duration each way (~0.5 s)
 
     private static final class Tilt { long startTick; float startAngle; float target; }
