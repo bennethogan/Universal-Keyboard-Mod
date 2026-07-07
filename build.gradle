@@ -78,6 +78,7 @@ processResources {
     filesMatching(['META-INF/neoforge.mods.toml']) {
         expand replaceProperties
     }
+
     def spanishLangDir = 'assets/universalkeyboard/lang'
     def esSource = file("src/main/resources/${spanishLangDir}/es_es.json")
     ['es_mx', 'es_ar', 'es_cl', 'es_uy', 'es_ve', 'es_ec'].each { locale ->
