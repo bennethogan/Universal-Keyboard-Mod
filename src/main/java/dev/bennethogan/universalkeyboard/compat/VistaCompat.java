@@ -47,6 +47,10 @@ public class VistaCompat {
     private static Object   noAnimState;
     private static java.lang.reflect.Constructor<?> vec2iCtor;
 
+    // Linked viewfinder as a feed source
+    private static Class<?> viewfinderClass;
+    private static Method   mGetBroadcastVideo;   // ViewFinderBlockEntity -> IVideoSource
+
     private static void init() {
         if (initialized) return;
         initialized = true;
@@ -77,10 +81,13 @@ public class VistaCompat {
             noAnimState        = animCls.getField("NO_ANIM").get(null);
             vec2iCtor          = vec2iCls.getConstructor(int.class, int.class);
 
+            viewfinderClass    = Class.forName("net.mehvahdjukaar.vista.common.view_finder.ViewFinderBlockEntity");
+            mGetBroadcastVideo = viewfinderClass.getMethod("getBroadcastVideo");
+
             present = true;
-            LOGGER.info("Vista (cameramod) detected — TV feed compat enabled.");
+            LOGGER.info("Vista detected, compat enabled.");
         } catch (Throwable t) {
-            LOGGER.info("Vista not present or renderer API changed — TV feed disabled. ({})", t.toString());
+            LOGGER.info("Vista not present or renderer API changed, compat disabled. ({})", t.toString());
         }
     }
 
@@ -145,33 +152,54 @@ public class VistaCompat {
         if (!present || cassette == null || cassette.isEmpty()) return false;
         try {
             Object videoSource = mCreateVideoSource.invoke(null, cassette);
-            if (videoSource == null || videoSource == emptyVideoSource) return false;
-
-            int base = 128;
-            int sx = w >= h ? base : Math.max(1, Math.round(base * w / h));
-            int sy = w >= h ? Math.max(1, Math.round(base * h / w)) : base;
-            Object screenSize = vec2iCtor.newInstance(sx, sy);
-
-            int ticks = Minecraft.getInstance().level != null
-                    ? (int) Minecraft.getInstance().level.getGameTime() : 0;
-
-            Object vc = mGetVideoFrameBuilder.invoke(videoSource,
-                    partialTick, buffer, true, screenSize, screenSize,
-                    ticks, false, noAnimState, noAnimState, false);
-            if (!(vc instanceof VertexConsumer consumer)) return false;
-
-            double texAspect  = sy <= 0 ? 1.0 : (double) sx / sy;
-            double quadAspect = h  <= 0 ? 1.0 : (double) w  / h;
-            float uInset = 0f, vInset = 0f;
-            if (quadAspect > texAspect) vInset = (float) ((1.0 - texAspect / quadAspect) / 2.0);
-            else                        uInset = (float) ((1.0 - quadAspect / texAspect) / 2.0);
-
-            emitFeedQuad(consumer, poseStack, w, h, light, uInset, vInset);
-            return true;
+            return drawVideoSource(videoSource, poseStack, buffer, partialTick, w, h, light);
         } catch (Throwable t) {
             LOGGER.warn("VistaCompat.tryDrawFeedFromItem failed: {}", t.toString());
             return false;
         }
+    }
+
+    // Draw a linked viewfinder's live feed directly
+    public static boolean tryDrawFeedFromViewfinder(BlockEntity viewfinderBe, PoseStack poseStack,
+                                                    MultiBufferSource buffer, float partialTick,
+                                                    float w, float h, int light) {
+        if (!present || viewfinderClass == null || !viewfinderClass.isInstance(viewfinderBe)) return false;
+        try {
+            Object videoSource = mGetBroadcastVideo.invoke(viewfinderBe);
+            return drawVideoSource(videoSource, poseStack, buffer, partialTick, w, h, light);
+        } catch (Throwable t) {
+            LOGGER.warn("VistaCompat.tryDrawFeedFromViewfinder failed: {}", t.toString());
+            return false;
+        }
+    }
+
+    // Request video source feed and draw quad
+    private static boolean drawVideoSource(Object videoSource, PoseStack poseStack,
+                                           MultiBufferSource buffer, float partialTick,
+                                           float w, float h, int light) throws Exception {
+        if (videoSource == null || videoSource == emptyVideoSource) return false;
+
+        int base = 128;
+        int sx = w >= h ? base : Math.max(1, Math.round(base * w / h));
+        int sy = w >= h ? Math.max(1, Math.round(base * h / w)) : base;
+        Object screenSize = vec2iCtor.newInstance(sx, sy);
+
+        int ticks = Minecraft.getInstance().level != null
+                ? (int) Minecraft.getInstance().level.getGameTime() : 0;
+
+        Object vc = mGetVideoFrameBuilder.invoke(videoSource,
+                partialTick, buffer, true, screenSize, screenSize,
+                ticks, false, noAnimState, noAnimState, false);
+        if (!(vc instanceof VertexConsumer consumer)) return false;
+
+        double texAspect  = sy <= 0 ? 1.0 : (double) sx / sy;
+        double quadAspect = h  <= 0 ? 1.0 : (double) w  / h;
+        float uInset = 0f, vInset = 0f;
+        if (quadAspect > texAspect) vInset = (float) ((1.0 - texAspect / quadAspect) / 2.0);
+        else                        uInset = (float) ((1.0 - quadAspect / texAspect) / 2.0);
+
+        emitFeedQuad(consumer, poseStack, w, h, light, uInset, vInset);
+        return true;
     }
 
     private static final Map<BlockPos, BlockPos> cachedTvPos  = new HashMap<>();

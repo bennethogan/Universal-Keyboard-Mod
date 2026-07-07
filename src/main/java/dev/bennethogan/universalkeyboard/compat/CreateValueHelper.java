@@ -104,6 +104,18 @@ public class CreateValueHelper {
         return createPresent;
     }
 
+    // check for availability for RPM mode
+    public static boolean isRpmScrollBlock(BlockEntity be) {
+        init();
+        if (!createPresent || be == null) return false;
+        net.minecraft.resources.ResourceLocation id =
+                net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(be.getBlockState().getBlock());
+        if (id == null || !"create".equals(id.getNamespace())) return false;
+        String path = id.getPath();
+        return ("creative_motor".equals(path) || "rotation_speed_controller".equals(path))
+                && hasScrollValue(be);
+    }
+
     private static Object getScrollBehaviour(BlockEntity be) {
         try { return getBehaviourMethod.invoke(be, scrollValueType); }
         catch (Exception e) { return null; }

@@ -307,6 +307,8 @@ public class ModeSelectionScreen extends Screen {
 
     private void buildOther() {
         addModeBox(KeyboardMode.THRUSTER_CONTROL);
+        addModeBox(KeyboardMode.VISTA_CAMERA);
+        addModeBox(KeyboardMode.GUN_CANNON);
         addModeBox(KeyboardMode.VALUE_PANEL);
         addModeBox(KeyboardMode.CC_PERIPHERAL);
         addModeBox(KeyboardMode.CC_COMPUTER);

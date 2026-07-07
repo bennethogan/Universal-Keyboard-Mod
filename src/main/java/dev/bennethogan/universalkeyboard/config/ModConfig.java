@@ -70,9 +70,10 @@ public class ModConfig {
         public final ModConfigSpec.ConfigValue<String> controlWheelRightRows;
         public final ModConfigSpec.BooleanValue        screenEnabled;
         public final ModConfigSpec.ConfigValue<String> screenVisualizedRows;
-        public final ModConfigSpec.ConfigValue<String> vistaCameraToggleRow;
+        public final ModConfigSpec.BooleanValue        vistaCameraOnly;
         public final ModConfigSpec.BooleanValue favoriteLiveControlAutoStart;
         public final ModConfigSpec.ConfigValue<String> liveControlIgnoredKeys;
+        public final ModConfigSpec.ConfigValue<List<? extends Double>> overdriveRatios;
         public final ModConfigSpec.BooleanValue redstoneWildcardWarningDismissed;
         public final ModConfigSpec.BooleanValue enableKeyboardAnimations;
         public final ModConfigSpec.BooleanValue doubleExplosion;
@@ -226,13 +227,13 @@ public class ModConfig {
                     .translation("config.universalkeyboard.screens.screenVisualizedRows")
                     .define("screenVisualizedRows", "");
 
-            vistaCameraToggleRow = builder
-                    .comment("Live Controller row number (1–40) whose key toggles the Vista camera",
-                             "feed on the dashboard / control-wheel screens. Pressing that row's key",
-                             "flips the feed on/off, regardless of what the row otherwise does.",
-                             "Requires Vista mod. Leave blank to disable. Default: \"\".")
-                    .translation("config.universalkeyboard.screens.vistaCameraToggleRow")
-                    .define("vistaCameraToggleRow", "");
+            vistaCameraOnly = builder
+                    .comment("Vista (cameramod): show only camera feeds on the screens and ignore the",
+                             "text display (gauges / sequencer DISPLAY) completely. When true, a linked",
+                             "camera starts shown automatically, and the CAM 'On/Off' control just cycles",
+                             "between linked cameras (there is no gauges state). Default: false.")
+                    .translation("config.universalkeyboard.screens.vistaCameraOnly")
+                    .define("vistaCameraOnly", false);
 
             builder.pop();
 
@@ -255,6 +256,17 @@ public class ModConfig {
                              "Leave blank for none (default).")
                     .translation("config.universalkeyboard.controls.liveControlIgnoredKeys")
                     .define("liveControlIgnoredKeys", "");
+
+            overdriveRatios = builder
+                    .comment("The list of Overdrive multipliers (gear ratios) the OD binding cycles through.",
+                             "Edit them here, or type a custom value in a binding's OD \"Cfg\" menu, and that value",
+                             "is added to this list so it persists and stays selectable. Range 0.1–100.",
+                             "Default: [1.5, 2.0, 3.0, 5.0, 10.0].")
+                    .translation("config.universalkeyboard.controls.overdriveRatios")
+                    .defineList("overdriveRatios",
+                            List.of(1.5, 2.0, 3.0, 5.0, 10.0),
+                            () -> 2.0,
+                            o -> o instanceof Double d && d >= 0.1 && d <= 100.0);
 
             builder.pop();
 

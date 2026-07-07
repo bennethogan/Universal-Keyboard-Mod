@@ -21,9 +21,9 @@ public final class ControlWheelScreenRenderer {
     private static final float FLOOR_Y0 = 9.8225f, FLOOR_Y1 = 14.2775f;
     private static final float FLOOR_FACE_Z = 11.647f;
 
-    private static final float WALL_X0 = 5.4f,  WALL_X1 = 10.6f;
-    private static final float WALL_Y0 = 10.0f, WALL_Y1 = 12.6f;
-    private static final float WALL_FACE_Z = -0.42f;
+    private static final float WALL_X0 = 3.654f, WALL_X1 = 12.079f;
+    private static final float WALL_Y0 = 9.801f, WALL_Y1 = 14.256f;
+    private static final float WALL_FACE_Z = 2.847f;
 
     private static final float EPS       = 0.002f;
     private static final float FEED_EPS  = 0.08f;
@@ -49,17 +49,16 @@ public final class ControlWheelScreenRenderer {
         float cy      = (y0 + y1) / 2f / 16f;
         float screenW = (x1 - x0) / 16f;
         float screenH = (y1 - y0) / 16f;
-        float outZ    = wall ? (faceZ - EPS) : (faceZ + EPS);
+        float outZ    = faceZ + EPS;
 
         if (VistaCompat.isPresent() && LiveControlManager.isVistaCameraOn(pos)) {
-            float feedZ = wall ? (faceZ - FEED_EPS) : (faceZ + FEED_EPS);
             poseStack.pushPose();
-            poseStack.translate(cx, cy, feedZ / 16f);
-            if (!wall) poseStack.mulPose(Axis.YP.rotationDegrees(180f));
-            net.minecraft.world.item.ItemStack cassette = be.getCassette();
-            boolean drew = !cassette.isEmpty()
-                    ? VistaCompat.tryDrawFeedFromItem(cassette, poseStack, buffer,
-                            partialTick, screenW / 2f, screenH / 2f, SCREEN_LIGHT)
+            poseStack.translate(cx, cy, (faceZ + FEED_EPS) / 16f);
+            poseStack.mulPose(Axis.YP.rotationDegrees(180f));
+            BlockPos camPos = LiveControlManager.getActiveViewfinderPos(pos);
+            boolean drew = camPos != null
+                    ? VistaCompat.tryDrawFeedFromViewfinder(level.getBlockEntity(camPos), poseStack,
+                            buffer, partialTick, screenW / 2f, screenH / 2f, SCREEN_LIGHT)
                     : VistaCompat.tryDrawFeed(level, pos, poseStack, buffer,
                             partialTick, screenW / 2f, screenH / 2f, SCREEN_LIGHT);
             poseStack.popPose();
@@ -79,7 +78,6 @@ public final class ControlWheelScreenRenderer {
 
         poseStack.pushPose();
         poseStack.translate(cx, cy, outZ / 16f);
-        if (wall) poseStack.mulPose(Axis.YP.rotationDegrees(180f));
         ScreenGauges.drawColumns(poseStack, columns, screenW, screenH,
                 MIN_SCALE, MAX_SCALE, COL_FILL, SCREEN_LIGHT);
         poseStack.popPose();

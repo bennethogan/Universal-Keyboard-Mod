@@ -85,13 +85,84 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    public record EjectCassettePacket(BlockPos keyboardPos) implements CustomPacketPayload {
-        public static final Type<EjectCassettePacket> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "eject_cassette"));
-        public static final StreamCodec<FriendlyByteBuf, EjectCassettePacket> CODEC =
+    public record CameraTogglePacket(BlockPos keyboardPos, boolean cameraOnly) implements CustomPacketPayload {
+        public static final Type<CameraTogglePacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "camera_toggle"));
+        public static final StreamCodec<FriendlyByteBuf, CameraTogglePacket> CODEC =
                 StreamCodec.composite(
-                        BlockPos.STREAM_CODEC, EjectCassettePacket::keyboardPos,
-                        EjectCassettePacket::new);
+                        BlockPos.STREAM_CODEC, CameraTogglePacket::keyboardPos,
+                        ByteBufCodecs.BOOL,    CameraTogglePacket::cameraOnly,
+                        CameraTogglePacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public record CameraNudgePacket(BlockPos cameraPos, double dYaw, double dPitch, int dZoom)
+            implements CustomPacketPayload {
+        public static final Type<CameraNudgePacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "camera_nudge"));
+        public static final StreamCodec<FriendlyByteBuf, CameraNudgePacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, CameraNudgePacket::cameraPos,
+                        ByteBufCodecs.DOUBLE,  CameraNudgePacket::dYaw,
+                        ByteBufCodecs.DOUBLE,  CameraNudgePacket::dPitch,
+                        ByteBufCodecs.INT,     CameraNudgePacket::dZoom,
+                        CameraNudgePacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public record UnlinkTargetPacket(BlockPos keyboardPos, int channel, BlockPos targetPos)
+            implements CustomPacketPayload {
+        public static final Type<UnlinkTargetPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "unlink_target"));
+        public static final StreamCodec<FriendlyByteBuf, UnlinkTargetPacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, UnlinkTargetPacket::keyboardPos,
+                        ByteBufCodecs.INT,     UnlinkTargetPacket::channel,
+                        BlockPos.STREAM_CODEC, UnlinkTargetPacket::targetPos,
+                        UnlinkTargetPacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // GUM mode aiming: user's ground target and fire power is shared so every linked cannon solved its own
+    // trajectory to this point
+    public record GunAimPacket(BlockPos keyboardPos, double tx, double ty, double tz, int power)
+            implements CustomPacketPayload {
+        public static final Type<GunAimPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "gun_aim"));
+        public static final StreamCodec<FriendlyByteBuf, GunAimPacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, GunAimPacket::keyboardPos,
+                        ByteBufCodecs.DOUBLE,  GunAimPacket::tx,
+                        ByteBufCodecs.DOUBLE,  GunAimPacket::ty,
+                        ByteBufCodecs.DOUBLE,  GunAimPacket::tz,
+                        ByteBufCodecs.INT,     GunAimPacket::power,
+                        GunAimPacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // GUN manual (MAN mode): move them all the same
+    public record GunManualPacket(BlockPos keyboardPos, double dYaw, double dPitch, int dPower)
+            implements CustomPacketPayload {
+        public static final Type<GunManualPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "gun_manual"));
+        public static final StreamCodec<FriendlyByteBuf, GunManualPacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, GunManualPacket::keyboardPos,
+                        ByteBufCodecs.DOUBLE,  GunManualPacket::dYaw,
+                        ByteBufCodecs.DOUBLE,  GunManualPacket::dPitch,
+                        ByteBufCodecs.INT,     GunManualPacket::dPower,
+                        GunManualPacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // GUN fire
+    public record GunFirePacket(BlockPos keyboardPos) implements CustomPacketPayload {
+        public static final Type<GunFirePacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "gun_fire"));
+        public static final StreamCodec<FriendlyByteBuf, GunFirePacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, GunFirePacket::keyboardPos,
+                        GunFirePacket::new);
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
@@ -428,12 +499,18 @@ public class ModPackets {
         registrar.optional().playToServer(RequestLinkFreqScreenPacket.TYPE,       RequestLinkFreqScreenPacket.STREAM_CODEC,       ModPackets::handleRequestLinkFreqScreen);
         registrar.playToServer(SetFavoritePacket.TYPE,              SetFavoritePacket.CODEC,              ModPackets::handleSetFavorite);
         registrar.playToServer(SetKeyboardLockPacket.TYPE,          SetKeyboardLockPacket.CODEC,          ModPackets::handleSetKeyboardLock);
-        registrar.optional().playToServer(EjectCassettePacket.TYPE,  EjectCassettePacket.CODEC,           ModPackets::handleEjectCassette);
+        registrar.optional().playToServer(UnlinkTargetPacket.TYPE,   UnlinkTargetPacket.CODEC,            ModPackets::handleUnlinkTarget);
+        registrar.optional().playToServer(CameraNudgePacket.TYPE,     CameraNudgePacket.CODEC,             ModPackets::handleCameraNudge);
+        registrar.optional().playToServer(CameraTogglePacket.TYPE,    CameraTogglePacket.CODEC,            ModPackets::handleCameraToggle);
+        registrar.optional().playToServer(GunAimPacket.TYPE,          GunAimPacket.CODEC,                  ModPackets::handleGunAim);
+        registrar.optional().playToServer(GunManualPacket.TYPE,       GunManualPacket.CODEC,               ModPackets::handleGunManual);
+        registrar.optional().playToServer(GunFirePacket.TYPE,         GunFirePacket.CODEC,                 ModPackets::handleGunFire);
         registrar.playToServer(ApplyPositionMovePacket.TYPE,        ApplyPositionMovePacket.CODEC,        ModPackets::handleApplyPositionMove);
 
         // playToClient — the server must declare these channels so the handshake succeeds.
         // Real handlers are registered by ClientPacketHandlers (client only); skip here on client
         // to avoid double-registration. No-op lambdas contain no client-only class references.
+        // Server has to declate this
         if (!net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
             registrar.playToClient(KeyboardCapturePacket.TYPE,     KeyboardCapturePacket.CODEC,     (p, c) -> {});
             registrar.playToClient(StartCreateCapturePacket.TYPE,  StartCreateCapturePacket.CODEC,  (p, c) -> {});
@@ -610,6 +687,8 @@ public class ModPackets {
                 sendOpenThrusterControl(sp, keyboardPos, state, keyboard.getActiveChannel(), snap);
             }
             case PERIPHERAL_SEQUENCER -> sendOpenSequencer(sp, keyboardPos, keyboard);
+            case VISTA_CAMERA -> openLiveControlForPlayer(sp, keyboardPos, keyboard, true);
+            case GUN_CANNON   -> openLiveControlForPlayer(sp, keyboardPos, keyboard, true);
         }
     }
 
@@ -720,8 +799,23 @@ public class ModPackets {
     public static void sendKeyboardReleasePacket(BlockPos pos) {
         PacketDistributor.sendToServer(new KeyboardReleasePacket(pos));
     }
-    public static void sendEjectCassette(BlockPos pos) {
-        PacketDistributor.sendToServer(new EjectCassettePacket(pos));
+    public static void sendUnlinkTarget(BlockPos keyboardPos, int channel, BlockPos targetPos) {
+        PacketDistributor.sendToServer(new UnlinkTargetPacket(keyboardPos, channel, targetPos));
+    }
+    public static void sendCameraNudge(BlockPos cameraPos, double dYaw, double dPitch, int dZoom) {
+        PacketDistributor.sendToServer(new CameraNudgePacket(cameraPos, dYaw, dPitch, dZoom));
+    }
+    public static void sendCameraToggle(BlockPos keyboardPos, boolean cameraOnly) {
+        PacketDistributor.sendToServer(new CameraTogglePacket(keyboardPos, cameraOnly));
+    }
+    public static void sendGunAim(BlockPos keyboardPos, net.minecraft.world.phys.Vec3 target, int power) {
+        PacketDistributor.sendToServer(new GunAimPacket(keyboardPos, target.x, target.y, target.z, power));
+    }
+    public static void sendGunManual(BlockPos keyboardPos, double dYaw, double dPitch, int dPower) {
+        PacketDistributor.sendToServer(new GunManualPacket(keyboardPos, dYaw, dPitch, dPower));
+    }
+    public static void sendGunFire(BlockPos keyboardPos) {
+        PacketDistributor.sendToServer(new GunFirePacket(keyboardPos));
     }
     public static void sendSetActiveChannel(BlockPos keyboardPos, int channel) {
         PacketDistributor.sendToServer(new SetActiveChannelPacket(keyboardPos, channel));
@@ -1626,16 +1720,110 @@ public class ModPackets {
         PacketDistributor.sendToServer(new SetKeyboardLockPacket(keyboardPos, lock));
     }
 
-    private static void handleEjectCassette(EjectCassettePacket packet, IPayloadContext ctx) {
+    private static void handleCameraToggle(CameraTogglePacket packet, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
             if (!(ctx.player() instanceof ServerPlayer sp)) return;
             BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
             if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
             if (!kb.isUsableBy(sp)) return;
-            ItemStack c = kb.getCassette();
-            if (c.isEmpty()) return;
-            kb.setCassette(ItemStack.EMPTY);
-            if (!sp.getInventory().add(c)) sp.drop(c, false);
+            var level = sp.serverLevel();
+            // deduped server-side count of linked viewfinders in sorted order
+            java.util.LinkedHashSet<BlockPos> vfs = new java.util.LinkedHashSet<>();
+            Map<Integer, List<BlockPos>> targets = kb.getAllChannelTargets();
+            for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS; ch++) {
+                List<BlockPos> list = targets.get(ch);
+                if (list == null) continue;
+                for (BlockPos tp : list)
+                    if (dev.bennethogan.universalkeyboard.compat.VistaCamera.isViewfinder(level, tp)) vfs.add(tp);
+            }
+            int n = vfs.size();
+            if (n <= 0) { kb.setActiveCameraIndex(-1); return; }
+            int idx = kb.getActiveCameraIndex();
+            if (packet.cameraOnly()) {
+                idx = ((idx < 0 ? 0 : idx) + 1) % n;   // wrap, no off state
+            } else {
+                idx = idx + 1;
+                if (idx >= n) idx = -1;                 // off -> cam0 -> ... -> camN-1 -> off
+            }
+            kb.setActiveCameraIndex(idx);
+        });
+    }
+
+    private static void handleCameraNudge(CameraNudgePacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            var level = sp.serverLevel();
+            BlockPos cam = packet.cameraPos();
+            if (!dev.bennethogan.universalkeyboard.compat.VistaCamera.isViewfinder(level, cam)) return;
+            dev.bennethogan.universalkeyboard.compat.VistaCamera.nudgeAim(level, cam, packet.dYaw(), packet.dPitch());
+            dev.bennethogan.universalkeyboard.compat.VistaCamera.nudgeZoom(level, cam, packet.dZoom());
+        });
+    }
+
+    // Server-side list of cannons linked to a keyboard, deduped, in channel order
+    private static List<BlockPos> linkedCannonsServer(net.minecraft.server.level.ServerLevel level,
+                                                      LinkedKeyboardBlockEntity kb) {
+        java.util.LinkedHashSet<BlockPos> out = new java.util.LinkedHashSet<>();
+        Map<Integer, List<BlockPos>> targets = kb.getAllChannelTargets();
+        for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS; ch++) {
+            List<BlockPos> list = targets.get(ch);
+            if (list == null) continue;
+            for (BlockPos tp : list)
+                if (dev.bennethogan.universalkeyboard.compat.CannonControl.isCannon(level, tp)) out.add(tp);
+        }
+        return new ArrayList<>(out);
+    }
+
+    private static void handleGunAim(GunAimPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            if (!kb.isUsableBy(sp)) return;
+            var level = sp.serverLevel();
+            net.minecraft.world.phys.Vec3 target =
+                    new net.minecraft.world.phys.Vec3(packet.tx(), packet.ty(), packet.tz());
+            for (BlockPos cannon : linkedCannonsServer(level, kb))
+                dev.bennethogan.universalkeyboard.compat.CannonControl.aimAt(level, cannon, target, packet.power());
+        });
+    }
+
+    private static void handleGunManual(GunManualPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            if (!kb.isUsableBy(sp)) return;
+            var level = sp.serverLevel();
+            for (BlockPos cannon : linkedCannonsServer(level, kb)) {
+                if (packet.dYaw() != 0 || packet.dPitch() != 0)
+                    dev.bennethogan.universalkeyboard.compat.CannonControl.nudgeAim(level, cannon, packet.dYaw(), packet.dPitch());
+                if (packet.dPower() != 0)
+                    dev.bennethogan.universalkeyboard.compat.CannonControl.stepPower(level, cannon, packet.dPower());
+            }
+        });
+    }
+
+    private static void handleGunFire(GunFirePacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            if (!kb.isUsableBy(sp)) return;
+            var level = sp.serverLevel();
+            for (BlockPos cannon : linkedCannonsServer(level, kb))
+                dev.bennethogan.universalkeyboard.compat.CannonControl.fire(level, cannon, sp);
+        });
+    }
+
+    private static void handleUnlinkTarget(UnlinkTargetPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            if (!kb.isUsableBy(sp)) return;
+            ItemStack cass = kb.unlinkTarget(packet.channel(), packet.targetPos());
+            if (!cass.isEmpty() && !sp.getInventory().add(cass)) sp.drop(cass, false);
         });
     }
 
@@ -1749,18 +1937,30 @@ public class ModPackets {
         for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS; ch++) {
             for (BlockPos tp : kb.getLinkedTargetPositions(ch)) {
                 Object p = PeripheralHelper.getPeripheral(level, tp);
-                if (p == null) continue;
-                String type = PeripheralHelper.getPeripheralType(p);
-                if (PeripheralHelper.isThrusterType(type)) {
-                    hasThrusters = true;
-                    if (type.contains("vector")) hasVector = true;
-                    if (thrusterPowers[ch] == 0)
-                        thrusterPowers[ch] = PeripheralHelper.getThrusterPower(level, tp);
-                }
-                if (PeripheralHelper.isRpmCapable(p)) {
-                    hasRpm = true;
-                    if (rpmValues[ch] == 0)
-                        rpmValues[ch] = PeripheralHelper.getRpmValue(level, tp);
+                if (p != null) {
+                    String type = PeripheralHelper.getPeripheralType(p);
+                    if (PeripheralHelper.isThrusterType(type)) {
+                        hasThrusters = true;
+                        if (type.contains("vector")) hasVector = true;
+                        if (thrusterPowers[ch] == 0)
+                            thrusterPowers[ch] = PeripheralHelper.getThrusterPower(level, tp);
+                    }
+                    if (PeripheralHelper.isRpmCapable(p)) {
+                        hasRpm = true;
+                        if (rpmValues[ch] == 0)
+                            rpmValues[ch] = PeripheralHelper.getRpmValue(level, tp);
+                    }
+                } else {
+                    // No CC peripheral but still allow RPM mode via the Create value panel on a creative
+                    // motor / rotation speed controller
+                    BlockEntity tbe = level.getBlockEntity(tp);
+                    if (CreateValueHelper.isRpmScrollBlock(tbe)) {
+                        hasRpm = true;
+                        if (rpmValues[ch] == 0) {
+                            int v = CreateValueHelper.getValue(tbe);
+                            if (v != Integer.MIN_VALUE) rpmValues[ch] = v;
+                        }
+                    }
                 }
             }
         }
@@ -1801,9 +2001,16 @@ public class ModPackets {
                 dev.bennethogan.universalkeyboard.livecontrol.ChannelMode cm =
                         dev.bennethogan.universalkeyboard.livecontrol.ChannelMode.byOpcode(a.type());
                 if (cm != null) {
+                    int value = (int) Math.round(a.v1());
                     for (BlockPos tp : kb.getLinkedTargetPositions(a.target())) {
                         Object p = PeripheralHelper.getPeripheral(level, tp);
-                        if (p != null) cm.server.apply(p, (int) Math.round(a.v1()));
+                        boolean applied = p != null && cm.server.apply(p, value);
+                        // Fallback: no CC RPM peripheral, set the Create scroll value on a
+                        // creative motor / rotation speed controller.
+                        if (!applied && cm.type == dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.ActionType.RPM_CONTROL) {
+                            BlockEntity tbe = level.getBlockEntity(tp);
+                            if (CreateValueHelper.isRpmScrollBlock(tbe)) CreateValueHelper.setValue(tbe, value);
+                        }
                     }
                     continue;
                 }

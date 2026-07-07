@@ -44,10 +44,10 @@ public final class DashboardScreenRenderer {
             poseStack.translate((FACE_X - FEED_EPS) / 16f, CENTER_Y / 16f, CENTER_Z / 16f);
             poseStack.mulPose(Axis.YP.rotationDegrees(FACE_YAW));
             poseStack.mulPose(Axis.YP.rotationDegrees(180f));   // feed faces -Z; flip to the viewer
-            net.minecraft.world.item.ItemStack cassette = be.getCassette();
-            boolean drew = !cassette.isEmpty()
-                    ? VistaCompat.tryDrawFeedFromItem(cassette, poseStack, buffer,
-                            partialTick, SCREEN_W / 16f / 2f, SCREEN_H / 16f / 2f, SCREEN_LIGHT)
+            BlockPos camPos = LiveControlManager.getActiveViewfinderPos(pos);
+            boolean drew = camPos != null
+                    ? VistaCompat.tryDrawFeedFromViewfinder(level.getBlockEntity(camPos), poseStack,
+                            buffer, partialTick, SCREEN_W / 16f / 2f, SCREEN_H / 16f / 2f, SCREEN_LIGHT)
                     : VistaCompat.tryDrawFeed(level, pos, poseStack, buffer,
                             partialTick, SCREEN_W / 16f / 2f, SCREEN_H / 16f / 2f, SCREEN_LIGHT);
             poseStack.popPose();

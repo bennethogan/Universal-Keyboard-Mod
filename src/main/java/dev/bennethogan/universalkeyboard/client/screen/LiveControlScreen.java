@@ -78,6 +78,8 @@ public class LiveControlScreen extends Screen {
     private int vectorOverlaySlot = -1;
     private int exclOverlaySlot   = -1;
     private String exclInput      = "";
+    private String cfgMultInput   = "";
+    private boolean cfgFocusMult  = true
     private boolean mouseCaptureArmed = false;
     private double  lastMoveX = Double.NaN, lastMoveY;
     private int page = 0; // 0 = slots 0–19, 1 = slots 20–39
@@ -173,6 +175,7 @@ public class LiveControlScreen extends Screen {
                 && a.overdriveMultiplier == b.overdriveMultiplier
                 && java.util.Objects.equals(a.odExcludes, b.odExcludes)
                 && a.rpmTarget == b.rpmTarget
+                && a.camDir == b.camDir
                 && a.inverted == b.inverted;
     }
 
@@ -202,6 +205,7 @@ public class LiveControlScreen extends Screen {
         b.overdriveMultiplier = src.overdriveMultiplier;
         b.odExcludes          = src.odExcludes;
         b.rpmTarget           = src.rpmTarget;
+        b.camDir              = src.camDir;
         b.inverted            = src.inverted;
         return b;
     }
@@ -390,6 +394,8 @@ public class LiveControlScreen extends Screen {
     }
     private static int modeBorder(boolean flagged) { return flagged ? 0xFF664444 : 0xFF446644; }
     private static String modeLabel(LiveControlBinding b) {
+        if (b.actionType == ActionType.GUN)
+            return b.mode == Mode.TGL ? "TGT" : "MAN";
         String base = switch (b.mode) {
             case HLD -> I18n.get("gui.universalkeyboard.label.mode_hld");
             case TGL -> I18n.get("gui.universalkeyboard.label.mode_tog");
@@ -424,6 +430,8 @@ public class LiveControlScreen extends Screen {
             case THRUSTER_VECTOR -> I18n.get("gui.universalkeyboard.label.action_vec");
             case VARIABLE        -> I18n.get("gui.universalkeyboard.label.action_var");
             case OVERDRIVE       -> I18n.get("gui.universalkeyboard.label.action_od");
+            case CAM             -> I18n.get("gui.universalkeyboard.label.action_cam");
+            case GUN             -> I18n.get("gui.universalkeyboard.label.action_gun");
             default              -> I18n.get(ChannelMode.byType(b.actionType).labelKey); // channel modes (RPM family)
         };
         boolean tHov = isIn(mx, my, tx, ry, TYPE_W, ROW_H);
@@ -443,8 +451,51 @@ public class LiveControlScreen extends Screen {
             case THRUSTER_VECTOR -> renderVecConfig(g, mx, my, b, idx, x, y);
             case VARIABLE        -> renderVarConfig(g, mx, my, b, x, y);
             case OVERDRIVE       -> renderOdConfig(g, mx, my, b, x, y);
+            case CAM, GUN        -> renderCamConfig(g, mx, my, b, x, y);
             default              -> renderChannelConfig(g, mx, my, b, x, y); // channel modes (RPM family)
         }
+    }
+
+    // Config for Vista CAM mode and Supplementaries' cannons GUN mode
+    private void renderCamConfig(GuiGraphics g, int mx, int my, LiveControlBinding b, int x, int y) {
+        boolean gun = b.actionType == ActionType.GUN;
+        boolean mHov = isIn(mx, my, x, y, 20, ROW_H);
+        g.fill(x, y, x + 20, y + ROW_H, modeBg(mHov, false));
+        drawBorder(g, x, y, 20, ROW_H, modeBorder(false));
+        g.drawCenteredString(font, modeLabel(b), x + 10, y + 4, 0xFFFFFF);
+        x += 22;
+
+        boolean vHov = isIn(mx, my, x, y, 66, ROW_H);
+        g.fill(x, y, x + 66, y + ROW_H, gun ? (vHov ? 0xFF402028 : 0xFF2A1518) : (vHov ? 0xFF203040 : 0xFF18202A));
+        drawBorder(g, x, y, 66, ROW_H, gun ? 0xFF884433 : 0xFF335588);
+        g.drawString(font, "§7◄", x + 2, y + 4, 0x999999, false);
+        String col = gun ? "§c" : "§b";
+        g.drawCenteredString(font, col + camDirText(b), x + 33, y + 4, 0xFFFFFF);
+        g.drawString(font, "§7►", x + 58, y + 4, 0x999999, false);
+    }
+
+    private static String camDirText(LiveControlBinding b) {
+        boolean gun = b.actionType == ActionType.GUN;
+        if (gun && b.mode == Mode.TGL) return b.camDir == LiveControlBinding.CamDir.TOGGLE ? "Engage" : "POV";
+        return switch (b.camDir) {
+            case UP -> "Up";
+            case DOWN -> "Down";
+            case LEFT -> "Left";
+            case RIGHT -> "Right";
+            case ZOOM_IN -> gun ? "Pow+" : "Zoom+";
+            case ZOOM_OUT -> gun ? "Pow-" : "Zoom-";
+            case TOGGLE -> gun ? "Fire" : "On/Off";
+        };
+    }
+
+    private static void cycleCamDir(LiveControlBinding b, int dir) {
+        if (b.actionType == ActionType.GUN && b.mode == Mode.TGL) {
+            b.camDir = (b.camDir == LiveControlBinding.CamDir.TOGGLE)
+                    ? LiveControlBinding.CamDir.ZOOM_IN : LiveControlBinding.CamDir.TOGGLE;
+            return;
+        }
+        LiveControlBinding.CamDir[] v = LiveControlBinding.CamDir.values();
+        b.camDir = v[((b.camDir.ordinal() + dir) % v.length + v.length) % v.length];
     }
 
     // OVERDRIVE config — [mode:20][gap:2][mult:40][gap:2][excl:26] = 90px
@@ -467,7 +518,7 @@ public class LiveControlScreen extends Screen {
         boolean eHov = isIn(mx, my, x, y, 26, ROW_H);
         g.fill(x, y, x + 26, y + ROW_H, eHov ? 0xFF302030 : (hasExcl ? 0xFF221222 : 0xFF1A1020));
         drawBorder(g, x, y, 26, ROW_H, hasExcl ? 0xFF884488 : 0xFF553355);
-        g.drawCenteredString(font, hasExcl ? "§dExcl" : "§8Excl", x + 13, y + 4, 0xFFFFFF);
+        g.drawCenteredString(font, hasExcl ? "§dCfg" : "§7Cfg", x + 13, y + 4, 0xFFFFFF);
     }
 
     private static String formatMultiplier(double m) {
@@ -665,9 +716,10 @@ public class LiveControlScreen extends Screen {
         g.drawCenteredString(font, I18n.get("gui.universalkeyboard.btn.ok"), okX + 18, okY + 2, 0xFFFFFF);
     }
 
-    // ── Excl overlay ─────────────────────────────────────────────────────────
+    // ── OD "Cfg" overlay (multiplier + excludes) ──────────────────────────────
     private static final int EXCL_OV_W = 220;
-    private static final int EXCL_OV_H = 78;
+    private static final int EXCL_OV_H = 104;
+    private static final int CFG_FLD_H = 13;
 
     private void renderExclOverlay(GuiGraphics g, int mx, int my) {
         int ox = width  / 2 - EXCL_OV_W / 2;
@@ -676,13 +728,23 @@ public class LiveControlScreen extends Screen {
         g.pose().translate(0, 0, 500);
         g.fill(ox, oy, ox + EXCL_OV_W, oy + EXCL_OV_H, 0xFF0D0A14);
         drawBorder(g, ox, oy, EXCL_OV_W, EXCL_OV_H, 0xFF884488);
-        g.drawCenteredString(font, "§dExclude Slots from OD", ox + EXCL_OV_W / 2, oy + 4, 0xFFFFFF);
-        g.drawCenteredString(font, "§8slot numbers, comma-separated", ox + EXCL_OV_W / 2, oy + 13, 0x888888);
+        g.drawCenteredString(font, "§dOverdrive Config", ox + EXCL_OV_W / 2, oy + 4, 0xFFFFFF);
 
-        int inX = ox + 8, inY = oy + 24, inW = EXCL_OV_W - 16, inH = 13;
-        g.fill(inX, inY, inX + inW, inY + inH, 0xFF111111);
-        drawBorder(g, inX, inY, inW, inH, 0xFF664466);
-        g.drawString(font, exclInput + "§7|", inX + 3, inY + 3, 0xFFFFFF, false);
+        int fX = ox + 8, fW = EXCL_OV_W - 16;
+
+        // Multiplier (gear ratio) field
+        g.drawString(font, "§7Multiplier (gear ratio):", fX, oy + 16, 0x999999, false);
+        int mY = oy + 26;
+        g.fill(fX, mY, fX + fW, mY + CFG_FLD_H, 0xFF111111);
+        drawBorder(g, fX, mY, fW, CFG_FLD_H, cfgFocusMult ? 0xFFAA66AA : 0xFF664466);
+        g.drawString(font, cfgMultInput + (cfgFocusMult ? "§7|" : ""), fX + 3, mY + 3, 0xFFFFFF, false);
+
+        // Exclude-slots field
+        g.drawString(font, "§7Exclude slots (comma-separated):", fX, oy + 44, 0x999999, false);
+        int eY = oy + 54;
+        g.fill(fX, eY, fX + fW, eY + CFG_FLD_H, 0xFF111111);
+        drawBorder(g, fX, eY, fW, CFG_FLD_H, cfgFocusMult ? 0xFF664466 : 0xFFAA66AA);
+        g.drawString(font, exclInput + (cfgFocusMult ? "" : "§7|"), fX + 3, eY + 3, 0xFFFFFF, false);
 
         int btnY = oy + EXCL_OV_H - 16, btnH = 13;
         boolean okH  = isIn(mx, my, ox + 16,            btnY, 72, btnH);
@@ -699,20 +761,39 @@ public class LiveControlScreen extends Screen {
     private void handleExclOverlayClick(int mx, int my) {
         int ox = width  / 2 - EXCL_OV_W / 2;
         int oy = height / 2 - EXCL_OV_H / 2;
+        int fX = ox + 8, fW = EXCL_OV_W - 16;
+        if (isIn(mx, my, fX, oy + 26, fW, CFG_FLD_H)) { cfgFocusMult = true;  return; }
+        if (isIn(mx, my, fX, oy + 54, fW, CFG_FLD_H)) { cfgFocusMult = false; return; }
         int btnY = oy + EXCL_OV_H - 16, btnH = 13;
-        if (isIn(mx, my, ox + 16, btnY, 72, btnH)) {
-            commitExclInput();
-        } else {
-            exclOverlaySlot = -1;
-            exclInput = "";
-        }
+        if (isIn(mx, my, ox + 16, btnY, 72, btnH)) { commitExclInput(); return; }
+        if (isIn(mx, my, ox + EXCL_OV_W - 88, btnY, 72, btnH)) { closeCfgOverlay(); return; }
+        if (!isIn(mx, my, ox, oy, EXCL_OV_W, EXCL_OV_H)) closeCfgOverlay();
     }
 
     private void commitExclInput() {
-        if (exclOverlaySlot >= 0 && exclOverlaySlot < bindings.size())
-            bindings.get(exclOverlaySlot).odExcludes = normalizeExclInput(exclInput);
+        if (exclOverlaySlot >= 0 && exclOverlaySlot < bindings.size()) {
+            LiveControlBinding b = bindings.get(exclOverlaySlot);
+            b.odExcludes          = normalizeExclInput(exclInput);
+            double m = parseMultiplier(cfgMultInput, b.overdriveMultiplier);
+            b.overdriveMultiplier = m;
+            registerOverdriveRatio(m);
+        }
+        closeCfgOverlay();
+    }
+
+    private void closeCfgOverlay() {
         exclOverlaySlot = -1;
         exclInput = "";
+        cfgMultInput = "";
+    }
+
+    private static double parseMultiplier(String s, double fallback) {
+        try { return Math.max(0.1, Math.min(100.0, Double.parseDouble(s.trim()))); }
+        catch (Exception e) { return fallback; }
+    }
+
+    private static String multToInput(double m) {
+        return (m == (int) m) ? String.valueOf((int) m) : String.valueOf(m);
     }
 
     private String normalizeExclInput(String raw) {
@@ -806,7 +887,8 @@ public class LiveControlScreen extends Screen {
             b.actionType = nextAvailableType(b.actionType, dir);
             // VEC and OD don't support INC — reset to HLD
             if (b.mode == Mode.INC
-                    && (b.actionType == ActionType.THRUSTER_VECTOR || b.actionType == ActionType.OVERDRIVE))
+                    && (b.actionType == ActionType.THRUSTER_VECTOR || b.actionType == ActionType.OVERDRIVE
+                        || b.actionType == ActionType.CAM || b.actionType == ActionType.GUN))
                 b.mode = Mode.HLD;
             // VARIABLE doesn't support inversion
             if (b.inverted && !canInvert(b.actionType)) b.inverted = false;
@@ -900,8 +982,15 @@ public class LiveControlScreen extends Screen {
                     focusedSlot = -1;
                     exclOverlaySlot = idx;
                     exclInput = b.odExcludes == null ? "" : b.odExcludes;
+                    cfgMultInput = multToInput(b.overdriveMultiplier);
+                    cfgFocusMult = true;
                     return true;
                 }
+            }
+            case CAM, GUN -> {
+                if (isIn(mx, my, x, y, 20, ROW_H)) { cycleModeOrInvert(b, right); return true; }
+                x += 22;
+                if (isIn(mx, my, x, y, 66, ROW_H)) { cycleCamDir(b, right ? -1 : 1); return true; }
             }
             default -> { // channel modes (RPM family) — [ch:40][mode:20][value:28]
                 ChannelMode m = ChannelMode.byType(b.actionType);
@@ -927,10 +1016,36 @@ public class LiveControlScreen extends Screen {
     }
 
     private static double cycleOverdrive(double current, int dir) {
-        double[] vals = LiveControlBinding.OVERDRIVE_VALUES;
+        double[] vals = overdriveRatios();
+        if (vals.length == 0) return current;
         int idx = 0;
         for (int i = 0; i < vals.length; i++) if (vals[i] == current) { idx = i; break; }
         return vals[((idx + dir) % vals.length + vals.length) % vals.length];
+    }
+
+    // Configured overdrive gear ratios
+    private static double[] overdriveRatios() {
+        try {
+            List<? extends Double> list = ModConfig.CLIENT.overdriveRatios.get();
+            if (list != null && !list.isEmpty()) {
+                double[] out = new double[list.size()];
+                for (int i = 0; i < out.length; i++) out[i] = list.get(i);
+                java.util.Arrays.sort(out);
+                return out;
+            }
+        } catch (Exception ignored) {}
+        return LiveControlBinding.OVERDRIVE_VALUES.clone();
+    }
+
+    private static void registerOverdriveRatio(double v) {
+        try {
+            java.util.TreeSet<Double> set = new java.util.TreeSet<>();
+            List<? extends Double> cur = ModConfig.CLIENT.overdriveRatios.get();
+            if (cur != null) for (Double d : cur) if (d != null) set.add(d);
+            if (!set.add(v)) return;   // already present
+            ModConfig.CLIENT.overdriveRatios.set(new java.util.ArrayList<>(set));
+            ModConfig.CLIENT.overdriveRatios.save();
+        } catch (Exception ignored) {}
     }
 
     // ── Scroll wheel ──────────────────────────────────────────────────────────
@@ -972,7 +1087,8 @@ public class LiveControlScreen extends Screen {
         if (isIn(mx, my, tx, ry, TYPE_W, ROW_H)) {
             b.actionType = nextAvailableType(b.actionType, dir);
             if (b.mode == Mode.INC
-                    && (b.actionType == ActionType.THRUSTER_VECTOR || b.actionType == ActionType.OVERDRIVE))
+                    && (b.actionType == ActionType.THRUSTER_VECTOR || b.actionType == ActionType.OVERDRIVE
+                        || b.actionType == ActionType.CAM || b.actionType == ActionType.GUN))
                 b.mode = Mode.HLD;
             if (b.inverted && !canInvert(b.actionType)) b.inverted = false;
             return;
@@ -1022,6 +1138,11 @@ public class LiveControlScreen extends Screen {
                 if (isIn(mx, my, x, y, 40, ROW_H))
                     b.overdriveMultiplier = cycleOverdrive(b.overdriveMultiplier, dir);
             }
+            case CAM, GUN -> {
+                if (isIn(mx, my, x, y, 20, ROW_H)) { cycleModeScroll(b, dir); return; }
+                x += 22;
+                if (isIn(mx, my, x, y, 66, ROW_H)) cycleCamDir(b, dir);
+            }
             default -> { // channel modes (RPM family)
                 ChannelMode m = ChannelMode.byType(b.actionType);
                 if (m == null) return;
@@ -1055,6 +1176,7 @@ public class LiveControlScreen extends Screen {
             case REDSTONE -> cycleSide(b, dir);
             case VARIABLE -> b.varIndex = ((b.varIndex + dir) % 16 + 16) % 16;
             case OVERDRIVE -> b.overdriveMultiplier = cycleOverdrive(b.overdriveMultiplier, dir);
+            case CAM, GUN -> cycleCamDir(b, dir);
             default -> stepChannel(b, dir);
         }
     }
@@ -1087,8 +1209,11 @@ public class LiveControlScreen extends Screen {
     @Override
     public boolean charTyped(char c, int modifiers) {
         if (exclOverlaySlot >= 0) {
-            if ((Character.isDigit(c) || c == ',' || c == ' ') && exclInput.length() < 100)
+            if (cfgFocusMult) {
+                if ((Character.isDigit(c) || c == '.') && cfgMultInput.length() < 8) cfgMultInput += c;
+            } else if ((Character.isDigit(c) || c == ',' || c == ' ') && exclInput.length() < 100) {
                 exclInput += c;
+            }
             return true;
         }
         return super.charTyped(c, modifiers);
@@ -1102,9 +1227,15 @@ public class LiveControlScreen extends Screen {
             if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 commitExclInput();
             } else if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-                exclOverlaySlot = -1; exclInput = "";
-            } else if (keyCode == GLFW.GLFW_KEY_BACKSPACE && !exclInput.isEmpty()) {
-                exclInput = exclInput.substring(0, exclInput.length() - 1);
+                closeCfgOverlay();
+            } else if (keyCode == GLFW.GLFW_KEY_TAB) {
+                cfgFocusMult = !cfgFocusMult;
+            } else if (keyCode == GLFW.GLFW_KEY_BACKSPACE) {
+                if (cfgFocusMult) {
+                    if (!cfgMultInput.isEmpty()) cfgMultInput = cfgMultInput.substring(0, cfgMultInput.length() - 1);
+                } else if (!exclInput.isEmpty()) {
+                    exclInput = exclInput.substring(0, exclInput.length() - 1);
+                }
             }
             return true;
         }
@@ -1171,7 +1302,7 @@ public class LiveControlScreen extends Screen {
 
     //variable mode cant invert, others might not be able to later
     private static boolean canInvert(ActionType t) {
-        return t != ActionType.VARIABLE;
+        return t != ActionType.VARIABLE && t != ActionType.CAM && t != ActionType.GUN;
     }
     private boolean isTypeAvailable(ActionType t) {
         return switch (t) {
@@ -1181,6 +1312,9 @@ public class LiveControlScreen extends Screen {
             case RPM_CONTROL     -> hasRpm;
             case VARIABLE        -> true;
             case OVERDRIVE       -> true;
+            case CAM             -> dev.bennethogan.universalkeyboard.compat.VistaCompat.isPresent()
+                    && LiveControlManager.hasLinkedViewfinder(keyboardPos);
+            case GUN             -> dev.bennethogan.universalkeyboard.compat.CannonControl.isPresent();
         };
     }
 
@@ -1196,7 +1330,8 @@ public class LiveControlScreen extends Screen {
 
     /** Cycle through modes. VEC and OD only support HLD and TGL (no INC). */
     private static Mode nextMode(ActionType type, Mode current, int dir) {
-        Mode[] available = (type == ActionType.THRUSTER_VECTOR || type == ActionType.OVERDRIVE)
+        Mode[] available = (type == ActionType.THRUSTER_VECTOR || type == ActionType.OVERDRIVE
+                || type == ActionType.CAM || type == ActionType.GUN)
                 ? new Mode[]{Mode.HLD, Mode.TGL}
                 : Mode.values();
         int idx = 0;

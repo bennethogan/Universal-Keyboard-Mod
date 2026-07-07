@@ -37,9 +37,8 @@ public final class ChannelMode {
         MAX
     }
 
-    /** Applies a resolved channel value to one linked peripheral on the server. */
     public interface ServerApplier {
-        void apply(Object peripheral, int value);
+        boolean apply(Object peripheral, int value);
     }
 
     public final ActionType type;
@@ -97,7 +96,10 @@ public final class ChannelMode {
         register(new ChannelMode(
                 ActionType.RPM_CONTROL, (byte) 6, -256, 256, IncMerge.SIGNED_YIELD,
                 b -> b.rpmTarget, (b, v) -> b.rpmTarget = v,
-                (p, v) -> { if (PeripheralHelper.isRpmCapable(p)) PeripheralHelper.callRpmSetter(p, v); },
+                (p, v) -> {
+                    if (PeripheralHelper.isRpmCapable(p)) { PeripheralHelper.callRpmSetter(p, v); return true; }
+                    return false;
+                },
                 "gui.universalkeyboard.label.action_rpm", 0xFF3355AA, "rpm"));
     }
 

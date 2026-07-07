@@ -234,12 +234,22 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
                         "§c[Universal Keyboard] §fLocked by §e" + be.getOwnerName() + "§f."), true);
                 return ItemInteractionResult.CONSUME;
             }
-            ItemStack old = be.getCassette();
-            be.setCassette(stack.copyWithCount(1));
+            BlockPos camPos = dev.bennethogan.universalkeyboard.compat.VistaCamera
+                    .getCassetteCameraPos(level, stack);
+            if (camPos == null) {
+                player.displayClientMessage(Component.literal(
+                        "§c[Universal Keyboard] §fThat cassette isn't linked to a camera."), true);
+                return ItemInteractionResult.CONSUME;
+            }
+            int ch = be.linkCamera(camPos, stack);
+            if (ch < 0) {
+                player.displayClientMessage(Component.literal(
+                        "§c[Universal Keyboard] §fNo free channel to link this camera."), true);
+                return ItemInteractionResult.CONSUME;
+            }
             if (!player.isCreative()) stack.shrink(1);
-            if (!old.isEmpty() && !player.addItem(old)) player.drop(old, false);
             player.displayClientMessage(Component.literal(
-                    "§a[Universal Keyboard] §fCassette loaded."), true);
+                    "§a[Universal Keyboard] §fCamera linked to Channel §e" + ch + "§f."), true);
             return ItemInteractionResult.SUCCESS;
         }
 

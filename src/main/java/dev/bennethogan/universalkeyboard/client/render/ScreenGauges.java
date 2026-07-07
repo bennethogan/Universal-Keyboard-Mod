@@ -64,6 +64,8 @@ public final class ScreenGauges {
     }
 
     private static List<List<Line>> buildInner(Level level, BlockPos pos) {
+        if (dev.bennethogan.universalkeyboard.livecontrol.LiveControlManager.cameraOnly()) return List.of();
+
         String[] disp   = displayLines(level, pos);   // sequencer DISPLAY lines, or null
         boolean  enabled = safeBool(ModConfig.CLIENT.screenEnabled);
 

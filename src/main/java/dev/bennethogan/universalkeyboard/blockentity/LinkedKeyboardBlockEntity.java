@@ -769,16 +769,45 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     // Written by sequencer's DISPLAY line; null if never set, "" if set blank
     private final String[] displayLines = new String[MAX_DISPLAY_LINES];
 
-    // slot for Vista mod's cassette, so that
-    // its feed can be shown on the dashboard / control-wheel screen.
-    private ItemStack cassette = ItemStack.EMPTY;
+    private final Map<BlockPos, ItemStack> cassetteByCamera = new HashMap<>();
+    private int activeCameraIndex = -1;
 
-    public ItemStack getCassette() { return cassette; }
+    public int getActiveCameraIndex() { return activeCameraIndex; }
 
-    public void setCassette(ItemStack stack) {
-        cassette = stack == null ? ItemStack.EMPTY : stack;
+    public void setActiveCameraIndex(int idx) {
+        if (idx == activeCameraIndex) return;
+        activeCameraIndex = idx;
         setChanged();
         syncToClients();
+    }
+
+    public int linkCamera(BlockPos cameraPos, ItemStack cassette) {
+        if (cameraPos == null) return -1;
+        cameraPos = cameraPos.immutable();
+        for (Map.Entry<Integer, List<BlockPos>> e : channelTargets.entrySet())
+            if (e.getValue().contains(cameraPos)) return e.getKey();  // already linked
+        int ch = -1;
+        for (int c = 1; c <= MAX_CHANNELS; c++) {
+            List<BlockPos> l = channelTargets.get(c);
+            if (l == null || l.isEmpty()) { ch = c; break; }
+        }
+        if (ch < 0) return -1;
+        channelTargets.computeIfAbsent(ch, k -> new ArrayList<>()).add(cameraPos);
+        if (cassette != null && !cassette.isEmpty()) cassetteByCamera.put(cameraPos, cassette.copyWithCount(1));
+        setChanged();
+        syncToClients();
+        return ch;
+    }
+
+    public ItemStack unlinkTarget(int channel, BlockPos pos) {
+        if (pos == null) return ItemStack.EMPTY;
+        pos = pos.immutable();
+        List<BlockPos> l = channelTargets.get(channel);
+        if (l != null) { l.remove(pos); if (l.isEmpty()) channelTargets.remove(channel); }
+        ItemStack cass = cassetteByCamera.remove(pos);
+        setChanged();
+        syncToClients();
+        return cass == null ? ItemStack.EMPTY : cass;
     }
 
     public void setDisplayLine(int idx, String text) {
@@ -1051,7 +1080,19 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         }
         if (!dl.isEmpty()) tag.put("display_lines", dl);
 
-        if (!cassette.isEmpty()) tag.put("vista_cassette", cassette.save(registries));
+        if (!cassetteByCamera.isEmpty()) {
+            ListTag cams = new ListTag();
+            for (Map.Entry<BlockPos, ItemStack> e : cassetteByCamera.entrySet()) {
+                if (e.getValue() == null || e.getValue().isEmpty()) continue;
+                CompoundTag c = new CompoundTag();
+                c.putLong("pos", e.getKey().asLong());
+                c.put("item", e.getValue().save(registries));
+                cams.add(c);
+            }
+            if (!cams.isEmpty()) tag.put("vista_cassettes", cams);
+        }
+
+        if (activeCameraIndex >= 0) tag.putInt("active_camera", activeCameraIndex);
 
         if (lastKnownPos != null) {
             CompoundTag lkp = new CompoundTag();
@@ -1202,8 +1243,16 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                 if (idx >= 0 && idx < MAX_DISPLAY_LINES) displayLines[idx] = c.getString("t");
             }
         }
-        cassette = tag.contains("vista_cassette")
-                ? ItemStack.parseOptional(registries, tag.getCompound("vista_cassette")) : ItemStack.EMPTY;
+        cassetteByCamera.clear();
+        if (tag.contains("vista_cassettes", Tag.TAG_LIST)) {
+            ListTag cams = tag.getList("vista_cassettes", Tag.TAG_COMPOUND);
+            for (int i = 0; i < cams.size(); i++) {
+                CompoundTag c = cams.getCompound(i);
+                ItemStack item = ItemStack.parseOptional(registries, c.getCompound("item"));
+                if (!item.isEmpty()) cassetteByCamera.put(BlockPos.of(c.getLong("pos")), item);
+            }
+        }
+        activeCameraIndex = tag.contains("active_camera") ? tag.getInt("active_camera") : -1;
 
         favoriteScreen = tag.contains("favorite_screen")
                 ? FavoriteScreen.fromByte(tag.getByte("favorite_screen")) : FavoriteScreen.NONE;

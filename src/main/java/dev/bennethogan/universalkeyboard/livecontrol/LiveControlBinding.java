@@ -16,7 +16,27 @@ public class LiveControlBinding {
         THRUSTER_VECTOR, // 2
         VARIABLE,        // 3 — sets a sequencer variable
         OVERDRIVE,       // 4 — multiplies output of other active bindings (RS/Thr/Var)
-        RPM_CONTROL      // 5 — sets motor RPM (electric_motor / rotation_speed_controller)
+        RPM_CONTROL,     // 5 — sets motor RPM (electric_motor / rotation_speed_controller)
+        CAM,             // 6 — Vista compat
+        GUN              // 7 — Supplementaries' cannon compat
+    }
+
+
+    // CAM/GUN mode selectable labels
+    public enum CamDir {
+        UP, DOWN, LEFT, RIGHT, ZOOM_IN, ZOOM_OUT, TOGGLE;
+
+        public String label() {
+            return switch (this) {
+                case UP -> "▲";
+                case DOWN -> "▼";
+                case LEFT -> "◄";
+                case RIGHT -> "►";
+                case ZOOM_IN -> "+";
+                case ZOOM_OUT -> "-";
+                case TOGGLE -> "⏻";
+            };
+        }
     }
 
     /** Activation mode for a binding. VEC does not support INC. */
@@ -74,8 +94,11 @@ public class LiveControlBinding {
     /** Comma-separated 1-based slot numbers excluded from this OD binding's effect. */
     public String odExcludes = "";
 
-    // RPM_CONTROL — -256 to 256
+    // RPM_CONTROL -256 to 256
     public int rpmTarget = 0;
+
+    // CAM
+    public CamDir camDir = CamDir.UP;
 
     // ── Serialization ────────────────────────────────────────────────────────
 
@@ -100,6 +123,7 @@ public class LiveControlBinding {
         tag.putDouble("overdriveMultiplier", overdriveMultiplier);
         tag.putString("odExcludes",          odExcludes == null ? "" : odExcludes);
         tag.putInt("rpmTarget", rpmTarget);
+        tag.putInt("camDir", camDir.ordinal());
     }
 
     public static LiveControlBinding fromTag(CompoundTag tag) {
@@ -146,8 +170,14 @@ public class LiveControlBinding {
         b.overdriveMultiplier = tag.contains("overdriveMultiplier") ? tag.getDouble("overdriveMultiplier") : 2.0;
         b.odExcludes          = tag.contains("odExcludes") ? tag.getString("odExcludes") : "";
         b.rpmTarget           = tag.contains("rpmTarget") ? Math.max(-256, Math.min(256, tag.getInt("rpmTarget"))) : 0;
+        b.camDir              = camDirFromOrdinal(tag.getInt("camDir"));
 
         return b;
+    }
+
+    private static CamDir camDirFromOrdinal(int ord) {
+        CamDir[] v = CamDir.values();
+        return (ord >= 0 && ord < v.length) ? v[ord] : CamDir.UP;
     }
 
     // ── Network encoding ─────────────────────────────────────────────────────
@@ -171,6 +201,7 @@ public class LiveControlBinding {
         buf.writeDouble(overdriveMultiplier);
         buf.writeUtf(odExcludes == null ? "" : odExcludes, 513);
         buf.writeShort(Math.max(-256, Math.min(256, rpmTarget)));
+        buf.writeByte(camDir.ordinal());
     }
 
     public static LiveControlBinding decode(FriendlyByteBuf buf) {
@@ -210,6 +241,7 @@ public class LiveControlBinding {
         b.overdriveMultiplier = buf.readDouble();
         b.odExcludes          = buf.readUtf(513);
         b.rpmTarget           = buf.isReadable(2) ? Math.max(-256, Math.min(256, (int) buf.readShort())) : 0;
+        b.camDir              = buf.isReadable() ? camDirFromOrdinal(buf.readByte() & 0xFF) : CamDir.UP;
 
         return b;
     }
