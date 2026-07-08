@@ -220,6 +220,8 @@ public class LiveControlManager {
         tgtCannons = new ArrayList<>();
         gunPowerAccum = 0.0;
         gunTgtWasFiring = false;
+        if (keyboardPos != null && Minecraft.getInstance().getConnection() != null)
+            ModPackets.sendGunRelease(keyboardPos);   // drop any cannon ownership leases
         if (Minecraft.getInstance().getConnection() != null) computeAndSend();
         rememberTogglesNow();   // so re-opening keyboard restores toggles
         toggledOn.clear();
@@ -539,6 +541,8 @@ public class LiveControlManager {
         tgtCannons = new ArrayList<>();
         gunTgtWasFiring = false;
         GunManeuver.stop();
+        if (keyboardPos != null && Minecraft.getInstance().getConnection() != null)
+            ModPackets.sendGunRelease(keyboardPos);   // free the cannons we were leasing
     }
 
 

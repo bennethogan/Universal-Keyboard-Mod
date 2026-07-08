@@ -166,6 +166,17 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
+    // GUN release
+    public record GunReleasePacket(BlockPos keyboardPos) implements CustomPacketPayload {
+        public static final Type<GunReleasePacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "gun_release"));
+        public static final StreamCodec<FriendlyByteBuf, GunReleasePacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, GunReleasePacket::keyboardPos,
+                        GunReleasePacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
     public record StartCreateCapturePacket(
             BlockPos keyboardPos, int currentValue, int minValue, int maxValue
     ) implements CustomPacketPayload {
@@ -505,6 +516,7 @@ public class ModPackets {
         registrar.optional().playToServer(GunAimPacket.TYPE,          GunAimPacket.CODEC,                  ModPackets::handleGunAim);
         registrar.optional().playToServer(GunManualPacket.TYPE,       GunManualPacket.CODEC,               ModPackets::handleGunManual);
         registrar.optional().playToServer(GunFirePacket.TYPE,         GunFirePacket.CODEC,                 ModPackets::handleGunFire);
+        registrar.optional().playToServer(GunReleasePacket.TYPE,      GunReleasePacket.CODEC,              ModPackets::handleGunRelease);
         registrar.playToServer(ApplyPositionMovePacket.TYPE,        ApplyPositionMovePacket.CODEC,        ModPackets::handleApplyPositionMove);
 
         // playToClient — the server must declare these channels so the handshake succeeds.
@@ -816,6 +828,9 @@ public class ModPackets {
     }
     public static void sendGunFire(BlockPos keyboardPos) {
         PacketDistributor.sendToServer(new GunFirePacket(keyboardPos));
+    }
+    public static void sendGunRelease(BlockPos keyboardPos) {
+        PacketDistributor.sendToServer(new GunReleasePacket(keyboardPos));
     }
     public static void sendSetActiveChannel(BlockPos keyboardPos, int channel) {
         PacketDistributor.sendToServer(new SetActiveChannelPacket(keyboardPos, channel));
@@ -1784,7 +1799,8 @@ public class ModPackets {
             net.minecraft.world.phys.Vec3 target =
                     new net.minecraft.world.phys.Vec3(packet.tx(), packet.ty(), packet.tz());
             for (BlockPos cannon : linkedCannonsServer(level, kb))
-                dev.bennethogan.universalkeyboard.compat.CannonControl.aimAt(level, cannon, target, packet.power());
+                if (dev.bennethogan.universalkeyboard.compat.CannonLeases.claim(level, cannon, sp))
+                    dev.bennethogan.universalkeyboard.compat.CannonControl.aimAt(level, cannon, target, packet.power());
         });
     }
 
@@ -1796,6 +1812,7 @@ public class ModPackets {
             if (!kb.isUsableBy(sp)) return;
             var level = sp.serverLevel();
             for (BlockPos cannon : linkedCannonsServer(level, kb)) {
+                if (!dev.bennethogan.universalkeyboard.compat.CannonLeases.claim(level, cannon, sp)) continue;
                 if (packet.dYaw() != 0 || packet.dPitch() != 0)
                     dev.bennethogan.universalkeyboard.compat.CannonControl.nudgeAim(level, cannon, packet.dYaw(), packet.dPitch());
                 if (packet.dPower() != 0)
@@ -1812,7 +1829,19 @@ public class ModPackets {
             if (!kb.isUsableBy(sp)) return;
             var level = sp.serverLevel();
             for (BlockPos cannon : linkedCannonsServer(level, kb))
-                dev.bennethogan.universalkeyboard.compat.CannonControl.fire(level, cannon, sp);
+                if (dev.bennethogan.universalkeyboard.compat.CannonLeases.claim(level, cannon, sp))
+                    dev.bennethogan.universalkeyboard.compat.CannonControl.fire(level, cannon, sp);
+        });
+    }
+
+    private static void handleGunRelease(GunReleasePacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            var level = sp.serverLevel();
+            dev.bennethogan.universalkeyboard.compat.CannonLeases.releaseAll(
+                    level, sp.getUUID(), linkedCannonsServer(level, kb));
         });
     }
 

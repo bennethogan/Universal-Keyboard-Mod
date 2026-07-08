@@ -29,6 +29,9 @@ public final class CannonControl {
     private static Method   mGetWorldOrientation;
     private static Method   mSetWorldOrientation;
     private static Method   mIsFiring;
+    private static Method   mGetCurrentUser;
+    private static Method   mSetCurrentUser;
+    private static Method   mCanBeUsedBy;
 
     private static Method   mComputeTrajectory;
     private static Method   mBallisticDrag;
@@ -52,6 +55,12 @@ public final class CannonControl {
             mReadyToFire   = cannonClass.getMethod("readyToFire");
             mIgnite        = cannonClass.getMethod("ignite", Entity.class);
             mSyncToClients = cannonClass.getMethod("syncToClients", boolean.class);
+
+            // Ownership
+            try { mGetCurrentUser = cannonClass.getMethod("getCurrentUser"); } catch (Throwable ignored) {}
+            try { mSetCurrentUser = cannonClass.getMethod("setCurrentUser", java.util.UUID.class); } catch (Throwable ignored) {}
+            for (Method m : cannonClass.getMethods())
+                if (m.getName().equals("canBeUsedBy") && m.getParameterCount() == 2) { mCanBeUsedBy = m; break; }
             try { maxPower = cannonClass.getField("MAX_POWER_LEVEL").getInt(null); } catch (Throwable ignored) {}
             present = true;
         } catch (Throwable t) {
@@ -190,5 +199,28 @@ public final class CannonControl {
         BlockEntity be = level.getBlockEntity(pos);
         if (!isCannon(be)) return false;
         try { return (boolean) mIsFiring.invoke(be); } catch (Throwable t) { return false; }
+    }
+
+    //ownership ----------------
+
+    public static java.util.UUID getCurrentUser(Level level, BlockPos pos) {
+        if (!isPresent() || level == null || mGetCurrentUser == null) return null;
+        BlockEntity be = level.getBlockEntity(pos);
+        if (!isCannon(be)) return null;
+        try { return (java.util.UUID) mGetCurrentUser.invoke(be); } catch (Throwable t) { return null; }
+    }
+
+    public static void setCurrentUser(Level level, BlockPos pos, java.util.UUID uuid) {
+        if (!isPresent() || level == null || mSetCurrentUser == null) return;
+        BlockEntity be = level.getBlockEntity(pos);
+        if (!isCannon(be)) return;
+        try { mSetCurrentUser.invoke(be, uuid); } catch (Throwable ignored) {}
+    }
+    // here if I need it, but I think its going to cause promixity range check issues too
+    public static boolean canBeUsedBy(Level level, BlockPos pos, Entity user) {
+        if (!isPresent() || level == null || mCanBeUsedBy == null) return true;
+        BlockEntity be = level.getBlockEntity(pos);
+        if (!isCannon(be)) return true;
+        try { return (boolean) mCanBeUsedBy.invoke(be, pos, user); } catch (Throwable t) { return true; }
     }
 }

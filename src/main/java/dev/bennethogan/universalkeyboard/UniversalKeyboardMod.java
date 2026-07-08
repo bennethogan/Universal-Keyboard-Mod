@@ -41,6 +41,12 @@ public class UniversalKeyboardMod {
         modEventBus.addListener(this::onRegisterCapabilities);
         modEventBus.addListener(this::commonSetup);
 
+        // cannon ownership leasing for GUN mode
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                dev.bennethogan.universalkeyboard.compat.CannonLeases::onServerTick);
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                dev.bennethogan.universalkeyboard.compat.CannonLeases::onPlayerLogout);
+
         try {
             Class.forName("com.simibubi.create.api.behaviour.display.DisplaySource");
             dev.bennethogan.universalkeyboard.compat.ModDisplaySources.init(modEventBus);

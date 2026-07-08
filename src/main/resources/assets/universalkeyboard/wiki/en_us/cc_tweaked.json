@@ -1,0 +1,36 @@
+{
+  "label": "CC Tweaked",
+  "entries": [
+    {"type": "heading", "text": "CC:Tweaked Peripheral API"},
+    {"type": "text", "body": "This is so much easier to read in markdown format. So I recommend reading it on my Github until I make this wiki able to do more formatting"},
+
+    {"type": "heading", "text": "Attaching"},
+    {"type": "text", "body": "local keyboard = peripheral.find(\"universal_keyboard\")"},
+
+    {"type": "heading", "text": "Events"},
+    {"type": "text", "body": "While a computer is attached, the controller pushes keyboard events (fired when someone types on the controller in-world):\n\nkey  ->  args: keyCode (number), held (boolean)  -  a key goes down\nkey_up  ->  args: keyCode (number)  -  a key is released\nchar  ->  args: character (string)  -  a character is typed"},
+    {"type": "text", "body": "while true do\n  local ev, a, b = os.pullEvent()\n  if ev == \"key\" then print(\"key down:\", a, \"held:\", b) end\nend"},
+
+    {"type": "heading", "text": "Method reference: Status"},
+    {"type": "text", "body": "isLinked()  ->  boolean\n   is the controller linked as a computer target\n\nisInRange()  ->  boolean\n   is its linked target in range\n\ngetRange()  ->  number\n   configured controller range\n\nunlink()\n   clears the controller's link"},
+
+    {"type": "heading", "text": "Controller data"},
+    {"type": "text", "body": "Values handed back to the computer.\n\ngetSablePose()  ->  table, or nil\n   Sable ship pose + motion, or nil if Sable isn't installed / the controller isn't on a sublevel\n\ngetSableValue(name)  ->  number\n   one Sable field by name; errors on an unknown name\n\ngetVariables()  ->  table (1-based array)\n   all sequencer variables V1...Vn\n\ngetVariable(i)  ->  number\n   one sequencer variable, V1 = 1; errors if out of range\n\nsetVariable(i, value)\n   set a sequencer variable, V1 = 1; requires the controller unlocked\n\ngetState()  ->  table\n   { linked, channel, sequencerRunning, locked, onSublevel }"},
+    {"type": "text", "body": "getSablePose() / getSableValue() field names:\n\nposX, posY, posZ - position (real-world coords of the sublevel)\nvelX, velY, velZ - linear velocity\nangVelX, angVelY, angVelZ - angular velocity (deg/s)\npitch, yaw, roll - orientation (degrees)\nshipSizeX, shipSizeY, shipSizeZ"},
+
+    {"type": "heading", "text": "Linked-peripheral passthrough"},
+    {"type": "text", "body": "Read and drive whatever the controller is linked to, by wireless channel #.\n\ngetLinked()  ->  table\n   { [channel] = type } for each linked CC peripheral\n\ngetMethods(ch)  ->  table\n   { name = kind }; kind is \"get\", \"call\", or an arg type (\"number\", \"int\", \"string\", \"true/false\")\n\nget(ch, method)  ->  number\n   read a numeric getter\n\nset(ch, method, value)\n   drive a numeric setter; requires unlocked\n\nsetString(ch, method, value)\n   drive a single-arg setter of any type, value given as text (parsed to the setter's type - string/enum/int/boolean/number); requires unlocked\n\ncall(ch, method)\n   invoke a no-arg command (e.g. \"stop\"); requires unlocked"},
+
+    {"type": "heading", "text": "Locking"},
+    {"type": "text", "body": "Controllers are locked by default when they are first placed down.\n\nReads are always allowed. Writes (set, setString, call, setVariable) require the controller to be unlocked -- if it's locked to an owner, you will see:\n   controller is locked to <owner>\n\nA computer has no player identity, so this keeps a computer from driving someone else's locked battery. Unlock the controller for public use by clicking the lock icon at the top left of the main menu of the controller."},
+
+    {"type": "heading", "text": "Examples"},
+    {"type": "text", "body": "Read Sable telemetry:\n\nlocal kb = peripheral.find(\"universal_keyboard\")\nlocal pose = kb.getSablePose()\nif pose then\n  print((\"yaw %.1f  alt %.1f  speed %.2f\"):format(\n    pose.yaw, pose.posY, math.sqrt(pose.velX^2 + pose.velY^2 + pose.velZ^2)))\nend"},
+    {"type": "text", "body": "Discover and drive a linked motor:\n\nlocal kb = peripheral.find(\"universal_keyboard\")\nfor ch, kind in pairs(kb.getLinked()) do\n  print(\"channel \" .. ch .. \": \" .. kind)   -- e.g. \"channel 1: electric_motor\"\nend\nfor name, kind in pairs(kb.getMethods(1)) do\n  print(name, kind)   -- e.g. getSpeed get   setSpeed int\nend\nprint(\"rpm:\", kb.get(1, \"getSpeed\"))\nkb.set(1, \"setSpeed\", 128)   -- errors if the controller is locked"},
+    {"type": "text", "body": "A simple heading-hold loop (Sable + a linked steering peripheral):\n\nlocal kb = peripheral.find(\"universal_keyboard\")\nlocal target = 90\nwhile true do\n  local pose = kb.getSablePose()\n  if pose then\n    local err = (target - pose.yaw + 180) % 360 - 180\n    kb.set(3, \"setYawInput\", math.max(-1, math.min(1, err / 45)))\n  end\n  sleep(0.1)\nend"},
+    {"type": "text", "body": "Non-numeric setter / command:\n\nkb.setString(3, \"setMode\", \"VECTOR\")   -- string/enum setter\nkb.call(3, \"stop\")                     -- no-arg command"},
+
+    {"type": "heading", "text": "Notes for scripters"},
+    {"type": "text", "body": "Return types: tables for structs (Sable pose, state, linked list), 1-based arrays for variable lists, numbers/booleans otherwise.\n\nErrors are raised as Lua errors (pcall them if you want to handle \"no peripheral on channel N\", \"controller is locked\", or a setter's own error message).\n\nThreading: every method runs on the server tick thread, so values are consistent with the game state at call time.\n\nScope of the passthrough: get/set cover numeric getters/setters; setString covers any single-arg setter; call covers no-arg commands. Methods with multiple or complex arguments aren't exposed, so use the target peripheral directly if you need those."}
+  ]
+}
