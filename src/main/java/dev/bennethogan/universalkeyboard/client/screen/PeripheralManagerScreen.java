@@ -55,6 +55,14 @@ public class PeripheralManagerScreen extends Screen {
     private int scrollY  = 0;
 
     private static final int EJECT_W = 44;   // vista cassette eject
+    private static final int EDIT_W  = 34;   // C#N# edit button
+    private static final int DEL_W   = 50;   // delete button
+
+    // Inline C#N# editor state (edits the expanded entry's channel/position)
+    private int    editingEntry = -1;   // index into entries being edited, or -1
+    private String editBuffer   = "";
+    private String editError     = null;
+    private int    deleteConfirmEntry = -1; // entry awaiting a second delete click, or -1
 
     private record Entry(int channel, int indexInChannel, BlockPos pos) {
         String tag() { return "C" + channel + "N" + indexInChannel; }
@@ -109,6 +117,8 @@ public class PeripheralManagerScreen extends Screen {
             }
         }
         if (expanded >= entries.size()) expanded = -1;
+        if (editingEntry >= entries.size()) { editingEntry = -1; editError = null; }
+        if (deleteConfirmEntry >= entries.size()) deleteConfirmEntry = -1;
     }
 
     // World info (read live each frame) -----
@@ -168,12 +178,12 @@ public class PeripheralManagerScreen extends Screen {
     }
 
     private int rowHeight(int i) {
-        return ROW_H + (i == expanded ? expandedExtra() : 0);
+        return ROW_H + (i == expanded ? expandedExtra(i) : 0);
     }
 
-    private int expandedExtra() {
-        // for now theres just 3 detail lines
-        return font.lineHeight * 3 + 8;
+    private int expandedExtra(int i) {
+        // 3 detail lines, plus a row for the edit button / inline C#N# editor
+        return font.lineHeight * 3 + 8 + 16;
     }
 
     private int totalContentHeight() {
@@ -285,6 +295,39 @@ public class PeripheralManagerScreen extends Screen {
                         I18n.get("gui.universalkeyboard.peripheral_manager.eject"),
                         ex + EJECT_W / 2, ey + 3, 0xFFDDAAAA);
             }
+
+            // C#N# edit control on its own row at the bottom of the expanded area
+            int edy = y + ROW_H + 2 + font.lineHeight * 3 + 4;
+            if (editingEntry == i) {
+                int fx = rowX + 10, fw = 50, fh = 14;
+                g.fill(fx, edy, fx + fw, edy + fh, 0xFF000000);
+                drawBorder(g, fx, edy, fw, fh, 0xFF6688CC);
+                g.drawString(font, editBuffer + "_", fx + 3, edy + 3, 0xFFFFFFFF, false);
+                String hint = editError != null ? ("§c" + editError)
+                        : I18n.get("gui.universalkeyboard.peripheral_manager.edit_hint");
+                g.drawString(font, hint, fx + fw + 6, edy + 3, 0xFFAAAAAA, false);
+            } else {
+                int bx = rowX + 10, bw = EDIT_W, bh = 14;
+                boolean bHov = mx >= bx && mx < bx + bw && my >= edy && my < edy + bh
+                        && my >= listTop && my < listBottom;
+                g.fill(bx, edy, bx + bw, edy + bh, bHov ? 0xFF334466 : 0xFF223344);
+                drawBorder(g, bx, edy, bw, bh, 0xFF5577AA);
+                g.drawCenteredString(font, I18n.get("gui.universalkeyboard.peripheral_manager.edit"),
+                        bx + bw / 2, edy + 3, 0xFFBBDDFF);
+
+                // Delete button
+                int dx = bx + bw + 4, dw = DEL_W;
+                boolean dHov = mx >= dx && mx < dx + dw && my >= edy && my < edy + bh
+                        && my >= listTop && my < listBottom;
+                boolean confirming = deleteConfirmEntry == i;
+                g.fill(dx, edy, dx + dw, edy + bh, confirming ? (dHov ? 0xFF773333 : 0xFF5A2222)
+                                                             : (dHov ? 0xFF442222 : 0xFF331A1A));
+                drawBorder(g, dx, edy, dw, bh, confirming ? 0xFFCC5555 : 0xFF885555);
+                g.drawCenteredString(font, I18n.get(confirming
+                                ? "gui.universalkeyboard.peripheral_manager.delete_confirm"
+                                : "gui.universalkeyboard.peripheral_manager.delete"),
+                        dx + dw / 2, edy + 3, confirming ? 0xFFFFAAAA : 0xFFDDAAAA);
+            }
         }
     }
 
@@ -315,8 +358,33 @@ public class PeripheralManagerScreen extends Screen {
                         return true;
                     }
                 }
+                // Edit / Delete buttons
+                if (i == expanded && editingEntry != i) {
+                    int edy = y + ROW_H + 2 + font.lineHeight * 3 + 4;
+                    int bx = rowX + 10, bw = EDIT_W, bh = 14;
+                    if (mx >= bx && mx < bx + bw && my >= edy && my < edy + bh) {
+                        editingEntry = i;
+                        editBuffer   = e.tag();
+                        editError    = null;
+                        deleteConfirmEntry = -1;
+                        return true;
+                    }
+                    int dx = bx + bw + 4, dw = DEL_W;
+                    if (mx >= dx && mx < dx + dw && my >= edy && my < edy + bh) {
+                        if (deleteConfirmEntry == i) {
+                            ModPackets.sendUnlinkTarget(keyboardPos, e.channel(), e.pos());
+                            deleteConfirmEntry = -1;
+                            expanded = -1;
+                        } else {
+                            deleteConfirmEntry = i;   // first click — arm confirm
+                        }
+                        return true;
+                    }
+                }
                 if (my >= y && my < y + ROW_H
                         && mx >= rowX && mx < panelX + PANEL_W - PAD) {
+                    if (editingEntry >= 0) { editingEntry = -1; editError = null; }
+                    deleteConfirmEntry = -1;   // collapsing/switching rows cancels a pending delete
                     expanded = (expanded == i) ? -1 : i;
                     return true;
                 }
@@ -336,9 +404,52 @@ public class PeripheralManagerScreen extends Screen {
     }
 
     @Override
+    public boolean charTyped(char c, int modifiers) {
+        if (editingEntry >= 0) {
+            if ((c == 'c' || c == 'C' || c == 'n' || c == 'N' || (c >= '0' && c <= '9'))
+                    && editBuffer.length() < 8) {
+                editBuffer += Character.toUpperCase(c);
+                editError = null;
+            }
+            return true;
+        }
+        return super.charTyped(c, modifiers);
+    }
+
+    @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (editingEntry >= 0) {
+            switch (keyCode) {
+                case GLFW.GLFW_KEY_ESCAPE -> { editingEntry = -1; editError = null; }
+                case GLFW.GLFW_KEY_BACKSPACE -> {
+                    if (!editBuffer.isEmpty()) editBuffer = editBuffer.substring(0, editBuffer.length() - 1);
+                    editError = null;
+                }
+                case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> commitEdit();
+                default -> { }
+            }
+            return true;
+        }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_TAB) { onClose(); return true; }
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    private void commitEdit() {
+        if (editingEntry < 0 || editingEntry >= entries.size()) { editingEntry = -1; return; }
+        Entry e = entries.get(editingEntry);
+        java.util.regex.Matcher m =
+                java.util.regex.Pattern.compile("^C(\\d+)N(\\d+)$").matcher(editBuffer.trim().toUpperCase());
+        if (!m.matches()) { editError = I18n.get("gui.universalkeyboard.peripheral_manager.edit_bad"); return; }
+        int toCh  = Integer.parseInt(m.group(1));
+        int toIdx = Integer.parseInt(m.group(2));
+        if (toCh < 1 || toCh > LinkedKeyboardBlockEntity.MAX_CHANNELS || toIdx < 1) {
+            editError = I18n.get("gui.universalkeyboard.peripheral_manager.edit_bad");
+            return;
+        }
+        ModPackets.sendMoveTarget(keyboardPos, e.pos(), e.channel(), toCh, toIdx);
+        editingEntry = -1;
+        editError = null;
+        expanded = -1;
     }
 
     @Override

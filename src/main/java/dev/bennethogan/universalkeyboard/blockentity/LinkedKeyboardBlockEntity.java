@@ -45,6 +45,8 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
 
     // Per-channel mesh targets: key = channel number (1–8), value = list of positions
     private final Map<Integer, List<BlockPos>> channelTargets = new HashMap<>();
+    // Per channel module names for Dashpanels only at the moment, additive and optional when PAN (panel) mode is used
+    private final Map<Integer, List<String>> channelModules = new HashMap<>();
     // Which channel is currently active (1–8)
     private int activeChannel = 1;
 
@@ -362,6 +364,31 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                 channelTargets.size(), total);
     }
 
+    // Point-linked dashpanels module names on a channel for PAN (panel) mode, empty if none
+    public List<String> getChannelModules(int channel) {
+        List<String> l = channelModules.get(channel);
+        return l == null ? List.of() : Collections.unmodifiableList(l);
+    }
+
+    // full point-linked module map, read only
+    public Map<Integer, List<String>> getAllChannelModules() {
+        return Collections.unmodifiableMap(channelModules);
+    }
+
+    // replace all point-linekd modules at once when item is placed
+    public void setAllChannelModules(Map<Integer, List<String>> allModules) {
+        channelModules.clear();
+        if (allModules != null) {
+            for (Map.Entry<Integer, List<String>> entry : allModules.entrySet()) {
+                if (entry.getKey() < 1 || entry.getKey() > MAX_CHANNELS) continue;
+                List<String> copy = new ArrayList<>();
+                for (String m : entry.getValue()) if (m != null && !m.isEmpty()) copy.add(m);
+                if (!copy.isEmpty()) channelModules.put(entry.getKey(), copy);
+            }
+        }
+        setChanged();
+    }
+
     public void unlink() {
         if (level != null && !level.isClientSide) {
             for (List<BlockPos> list : channelTargets.values())
@@ -369,11 +396,12 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                     PeripheralHelper.releaseThrusterControl(level, pos);
         }
         channelTargets.clear();
+        channelModules.clear();
         stopSequencer();
         setChanged();
     }
 
-    /** Wipes all stored data — links, sequencer, live bindings, wireless, RS outputs, scripts. */
+    // clear all data
     public void resetData() {
         if (level != null && !level.isClientSide) {
             for (List<BlockPos> list : channelTargets.values())
@@ -384,6 +412,7 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                     CreateRsLinkHelper.removeFromNetwork(level, e);
         }
         channelTargets.clear();
+        channelModules.clear();
         sequencerViewers.clear();
         stopSequencer();
         sequencerSteps.clear();
@@ -799,6 +828,78 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
         return ch;
     }
 
+    // ------ CHANNEL EDITING (linking stick and peripheral manager) --------------------
+
+
+
+    // Adds a target to the channel, used by linking stick. No type checking, so the caller has to validate
+    public void addChannelTarget(int channel, BlockPos pos) {
+        if (pos == null || channel < 1 || channel > MAX_CHANNELS) return;
+        pos = pos.immutable();
+        List<BlockPos> list = channelList(channel);
+        if (!list.contains(pos)) list.add(pos);
+        setChanged();
+        syncToClients();
+    }
+
+    // Adds a point-linked dashpanel module to a channel, by the linking stick
+    public void addChannelModule(int channel, String name) {
+        if (name == null || name.isEmpty() || channel < 1 || channel > MAX_CHANNELS) return;
+        List<String> list = channelModules.computeIfAbsent(channel, k -> new ArrayList<>());
+        if (!list.contains(name)) list.add(name);
+        setChanged();
+        syncToClients();
+    }
+
+    // remove point-linked dashpanels module
+    public void removeChannelModule(int channel, String name) {
+        List<String> list = channelModules.get(channel);
+        if (list == null) return;
+        list.remove(name);
+        if (list.isEmpty()) channelModules.remove(channel);
+        setChanged();
+        syncToClients();
+    }
+
+    // moves a linked peripheral from one channel and number, to another
+    public boolean moveTarget(BlockPos pos, int fromCh, int toCh, int newIndex) {
+        if (pos == null) return false;
+        pos = pos.immutable();
+        List<BlockPos> from = channelTargets.get(fromCh);
+        if (from == null || !from.contains(pos)) return false;
+        if (toCh < 1 || toCh > MAX_CHANNELS) return false;
+
+        // destination must be empty or hold the same block-entity type
+        List<BlockPos> to = channelTargets.get(toCh);
+        if (toCh != fromCh && to != null && !to.isEmpty() && level != null) {
+            BlockEntity a = level.getBlockEntity(pos);
+            BlockEntity b = level.getBlockEntity(to.get(0));
+            if (a == null || b == null || !a.getType().equals(b.getType())) return false;
+        }
+
+        from.remove(pos);
+
+        // carry point-linked panel modules along when the moved panel was the only one on its channel
+        if (level != null && dev.bennethogan.universalkeyboard.compat.PanelControl.isPanel(level, pos)) {
+            List<String> mods = channelModules.get(fromCh);
+            if (mods != null && !mods.isEmpty()
+                    && from.stream().noneMatch(p -> dev.bennethogan.universalkeyboard.compat.PanelControl.isPanel(level, p))) {
+                channelModules.remove(fromCh);
+                List<String> destMods = channelModules.computeIfAbsent(toCh, k -> new ArrayList<>());
+                for (String m : mods) if (!destMods.contains(m)) destMods.add(m);
+                if (destMods.isEmpty()) channelModules.remove(toCh);
+            }
+        }
+
+        if (from.isEmpty()) channelTargets.remove(fromCh);
+        List<BlockPos> dest = channelTargets.computeIfAbsent(toCh, k -> new ArrayList<>());
+        int idx = Math.max(0, Math.min(newIndex - 1, dest.size()));
+        dest.add(idx, pos);
+        setChanged();
+        syncToClients();
+        return true;
+    }
+
     public ItemStack unlinkTarget(int channel, BlockPos pos) {
         if (pos == null) return ItemStack.EMPTY;
         pos = pos.immutable();
@@ -1023,6 +1124,14 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
             tag.put("ch" + entry.getKey() + "_targets", listTag);
         }
 
+        for (Map.Entry<Integer, List<String>> entry : channelModules.entrySet()) {
+            List<String> mods = entry.getValue();
+            if (mods == null || mods.isEmpty()) continue;
+            ListTag ml = new ListTag();
+            for (String m : mods) ml.add(net.minecraft.nbt.StringTag.valueOf(m));
+            tag.put("ch" + entry.getKey() + "_modules", ml);
+        }
+
         tag.putBoolean("was_powered", wasPowered);
         tag.putString("autotype_script", autoTypeScript);
         tag.putInt("script_line_index", scriptLineIndex);
@@ -1134,6 +1243,20 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
                 }
                 if (!list.isEmpty()) channelTargets.put(ch, list);
             }
+        }
+
+        // Per-channel point-linked module names for PAN (dashpanels) mode
+        channelModules.clear();
+        for (int ch = 1; ch <= MAX_CHANNELS; ch++) {
+            String key = "ch" + ch + "_modules";
+            if (!tag.contains(key, Tag.TAG_LIST)) continue;
+            ListTag ml = tag.getList(key, Tag.TAG_STRING);
+            List<String> mods = new ArrayList<>();
+            for (int i = 0; i < ml.size(); i++) {
+                String m = ml.getString(i);
+                if (!m.isEmpty()) mods.add(m);
+            }
+            if (!mods.isEmpty()) channelModules.put(ch, mods);
         }
 
         // Relative-only data means a schematic was printed — convert offsets to absolute at this location.

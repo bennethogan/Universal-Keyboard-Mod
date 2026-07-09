@@ -176,6 +176,7 @@ public class LiveControlScreen extends Screen {
                 && java.util.Objects.equals(a.odExcludes, b.odExcludes)
                 && a.rpmTarget == b.rpmTarget
                 && a.camDir == b.camDir
+                && a.panModule == b.panModule
                 && a.inverted == b.inverted;
     }
 
@@ -206,6 +207,7 @@ public class LiveControlScreen extends Screen {
         b.odExcludes          = src.odExcludes;
         b.rpmTarget           = src.rpmTarget;
         b.camDir              = src.camDir;
+        b.panModule           = src.panModule;
         b.inverted            = src.inverted;
         return b;
     }
@@ -432,6 +434,7 @@ public class LiveControlScreen extends Screen {
             case OVERDRIVE       -> I18n.get("gui.universalkeyboard.label.action_od");
             case CAM             -> I18n.get("gui.universalkeyboard.label.action_cam");
             case GUN             -> I18n.get("gui.universalkeyboard.label.action_gun");
+            case PAN             -> I18n.get("gui.universalkeyboard.label.action_pan");
             default              -> I18n.get(ChannelMode.byType(b.actionType).labelKey); // channel modes (RPM family)
         };
         boolean tHov = isIn(mx, my, tx, ry, TYPE_W, ROW_H);
@@ -452,26 +455,35 @@ public class LiveControlScreen extends Screen {
             case VARIABLE        -> renderVarConfig(g, mx, my, b, x, y);
             case OVERDRIVE       -> renderOdConfig(g, mx, my, b, x, y);
             case CAM, GUN        -> renderCamConfig(g, mx, my, b, x, y);
+            case PAN             -> renderPanConfig(g, mx, my, b, x, y);
             default              -> renderChannelConfig(g, mx, my, b, x, y); // channel modes (RPM family)
         }
     }
 
     // Config for Vista CAM mode and Supplementaries' cannons GUN mode
+    // Layout: [channel:26][gap:2][mode:20][gap:2][dir:40]
     private void renderCamConfig(GuiGraphics g, int mx, int my, LiveControlBinding b, int x, int y) {
         boolean gun = b.actionType == ActionType.GUN;
+
+        boolean cHov = isIn(mx, my, x, y, 26, ROW_H);
+        g.fill(x, y, x + 26, y + ROW_H, cHov ? 0xFF252535 : 0xFF1A1A2A);
+        drawBorder(g, x, y, 26, ROW_H, 0xFF333355);
+        g.drawString(font, "§7◄", x + 1, y + 4, 0x999999, false);
+        g.drawCenteredString(font, "§fC" + b.channel, x + 13, y + 4, 0xFFFFFF);
+        g.drawString(font, "§7►", x + 19, y + 4, 0x999999, false);
+        x += 28;
+
         boolean mHov = isIn(mx, my, x, y, 20, ROW_H);
         g.fill(x, y, x + 20, y + ROW_H, modeBg(mHov, false));
         drawBorder(g, x, y, 20, ROW_H, modeBorder(false));
         g.drawCenteredString(font, modeLabel(b), x + 10, y + 4, 0xFFFFFF);
         x += 22;
 
-        boolean vHov = isIn(mx, my, x, y, 66, ROW_H);
-        g.fill(x, y, x + 66, y + ROW_H, gun ? (vHov ? 0xFF402028 : 0xFF2A1518) : (vHov ? 0xFF203040 : 0xFF18202A));
-        drawBorder(g, x, y, 66, ROW_H, gun ? 0xFF884433 : 0xFF335588);
-        g.drawString(font, "§7◄", x + 2, y + 4, 0x999999, false);
+        boolean vHov = isIn(mx, my, x, y, 40, ROW_H);
+        g.fill(x, y, x + 40, y + ROW_H, gun ? (vHov ? 0xFF402028 : 0xFF2A1518) : (vHov ? 0xFF203040 : 0xFF18202A));
+        drawBorder(g, x, y, 40, ROW_H, gun ? 0xFF884433 : 0xFF335588);
         String col = gun ? "§c" : "§b";
-        g.drawCenteredString(font, col + camDirText(b), x + 33, y + 4, 0xFFFFFF);
-        g.drawString(font, "§7►", x + 58, y + 4, 0x999999, false);
+        g.drawCenteredString(font, col + camDirText(b), x + 20, y + 4, 0xFFFFFF);
     }
 
     private static String camDirText(LiveControlBinding b) {
@@ -496,6 +508,83 @@ public class LiveControlScreen extends Screen {
         }
         LiveControlBinding.CamDir[] v = LiveControlBinding.CamDir.values();
         b.camDir = v[((b.camDir.ordinal() + dir) % v.length + v.length) % v.length];
+    }
+
+    // Config for Control Panels PAN mode.
+    // Layout: [channel:22][gap:2][mode:18][gap:2][module:18][gap:2][action:26]
+    //
+    // the module cell picks the target module on that panel by index number,
+    // and the action cell picks what the key does to it (on/off toggle or analog up/down for now)
+    private void renderPanConfig(GuiGraphics g, int mx, int my, LiveControlBinding b, int x, int y) {
+        boolean cHov = isIn(mx, my, x, y, 22, ROW_H);
+        g.fill(x, y, x + 22, y + ROW_H, cHov ? 0xFF252535 : 0xFF1A1A2A);
+        drawBorder(g, x, y, 22, ROW_H, 0xFF333355);
+        g.drawCenteredString(font, "§fC" + b.channel, x + 11, y + 4, 0xFFFFFF);
+        x += 24;
+
+        boolean mHov = isIn(mx, my, x, y, 18, ROW_H);
+        g.fill(x, y, x + 18, y + ROW_H, modeBg(mHov, false));
+        drawBorder(g, x, y, 18, ROW_H, modeBorder(false));
+        g.drawCenteredString(font, modeLabel(b), x + 9, y + 4, 0xFFFFFF);
+        x += 20;
+
+        boolean modHov = isIn(mx, my, x, y, 18, ROW_H);
+        g.fill(x, y, x + 18, y + ROW_H, modHov ? 0xFF252535 : 0xFF1A1A2A);
+        drawBorder(g, x, y, 18, ROW_H, 0xFF335555);
+        g.drawCenteredString(font, "§bM" + b.panModule, x + 9, y + 4, 0xFFFFFF);
+        x += 20;
+
+        boolean aHov = isIn(mx, my, x, y, 26, ROW_H);
+        g.fill(x, y, x + 26, y + ROW_H, aHov ? 0xFF204030 : 0xFF152A1D);
+        drawBorder(g, x, y, 26, ROW_H, 0xFF338855);
+        g.drawCenteredString(font, "§a" + panActionText(b), x + 13, y + 4, 0xFFFFFF);
+    }
+
+    // What the key does to the target module, On/Off flips it (switch/lever/momentary); Up/Down ramp
+    // an analog value (knob / lever / seven-segment), Encoded on camDir to reuse the enum for now
+    private static String panActionText(LiveControlBinding b) {
+        return switch (b.camDir) {
+            case UP, ZOOM_IN -> "Up";
+            case DOWN, ZOOM_OUT -> "Dn";
+            default -> "On/Off";
+        };
+    }
+
+    // PAN action cell cycles On/Off -> Up -> Down
+    private static void cyclePanAction(LiveControlBinding b, int dir) {
+        LiveControlBinding.CamDir[] v = {
+            LiveControlBinding.CamDir.TOGGLE,
+            LiveControlBinding.CamDir.UP,
+            LiveControlBinding.CamDir.DOWN
+        };
+        int cur = 0;
+        for (int i = 0; i < v.length; i++) if (v[i] == b.camDir) { cur = i; break; }
+        b.camDir = v[((cur + dir) % v.length + v.length) % v.length];
+    }
+
+
+    private void stepPanModule(LiveControlBinding b, int dir) {
+        int count = panModuleCount(b);
+        int max = Math.max(1, count);
+        b.panModule = ((b.panModule + dir) % max + max) % max;
+    }
+
+    private int panModuleCount(LiveControlBinding b) {
+        java.util.List<String> names = panelModuleNames(b);
+        return names == null ? 0 : names.size();
+    }
+
+    private java.util.List<String> panelModuleNames(LiveControlBinding b) {
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc.level == null) return null;
+        if (mc.level.getBlockEntity(keyboardPos)
+                instanceof dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity kb) {
+            java.util.List<String> linked = kb.getChannelModules(b.channel);
+            if (linked != null && !linked.isEmpty()) return linked;
+        }
+        net.minecraft.core.BlockPos panel = LiveControlManager.panelOnChannel(keyboardPos, b.channel);
+        if (panel == null) return null;
+        return dev.bennethogan.universalkeyboard.compat.PanelControl.drivableModuleNames(mc.level, panel);
     }
 
     // OVERDRIVE config — [mode:20][gap:2][mult:40][gap:2][excl:26] = 90px
@@ -888,7 +977,8 @@ public class LiveControlScreen extends Screen {
             // VEC and OD don't support INC — reset to HLD
             if (b.mode == Mode.INC
                     && (b.actionType == ActionType.THRUSTER_VECTOR || b.actionType == ActionType.OVERDRIVE
-                        || b.actionType == ActionType.CAM || b.actionType == ActionType.GUN))
+                        || b.actionType == ActionType.CAM || b.actionType == ActionType.GUN
+                        || b.actionType == ActionType.PAN))
                 b.mode = Mode.HLD;
             // VARIABLE doesn't support inversion
             if (b.inverted && !canInvert(b.actionType)) b.inverted = false;
@@ -988,9 +1078,20 @@ public class LiveControlScreen extends Screen {
                 }
             }
             case CAM, GUN -> {
+                if (isIn(mx, my, x, y, 26, ROW_H)) { stepChannel(b, mx < x + 13 ? -1 : 1); return true; }
+                x += 28;
                 if (isIn(mx, my, x, y, 20, ROW_H)) { cycleModeOrInvert(b, right); return true; }
                 x += 22;
-                if (isIn(mx, my, x, y, 66, ROW_H)) { cycleCamDir(b, right ? -1 : 1); return true; }
+                if (isIn(mx, my, x, y, 40, ROW_H)) { cycleCamDir(b, right ? -1 : 1); return true; }
+            }
+            case PAN -> { // [channel:22][mode:18][module:18][action:26]
+                if (isIn(mx, my, x, y, 22, ROW_H)) { stepChannel(b, mx < x + 11 ? -1 : 1); return true; }
+                x += 24;
+                if (isIn(mx, my, x, y, 18, ROW_H)) { cycleModeOrInvert(b, right); return true; }
+                x += 20;
+                if (isIn(mx, my, x, y, 18, ROW_H)) { stepPanModule(b, right ? -1 : 1); return true; }
+                x += 20;
+                if (isIn(mx, my, x, y, 26, ROW_H)) { cyclePanAction(b, right ? -1 : 1); return true; }
             }
             default -> { // channel modes (RPM family) — [ch:40][mode:20][value:28]
                 ChannelMode m = ChannelMode.byType(b.actionType);
@@ -1088,7 +1189,8 @@ public class LiveControlScreen extends Screen {
             b.actionType = nextAvailableType(b.actionType, dir);
             if (b.mode == Mode.INC
                     && (b.actionType == ActionType.THRUSTER_VECTOR || b.actionType == ActionType.OVERDRIVE
-                        || b.actionType == ActionType.CAM || b.actionType == ActionType.GUN))
+                        || b.actionType == ActionType.CAM || b.actionType == ActionType.GUN
+                        || b.actionType == ActionType.PAN))
                 b.mode = Mode.HLD;
             if (b.inverted && !canInvert(b.actionType)) b.inverted = false;
             return;
@@ -1139,9 +1241,20 @@ public class LiveControlScreen extends Screen {
                     b.overdriveMultiplier = cycleOverdrive(b.overdriveMultiplier, dir);
             }
             case CAM, GUN -> {
+                if (isIn(mx, my, x, y, 26, ROW_H)) { stepChannel(b, dir); return; }
+                x += 28;
                 if (isIn(mx, my, x, y, 20, ROW_H)) { cycleModeScroll(b, dir); return; }
                 x += 22;
-                if (isIn(mx, my, x, y, 66, ROW_H)) cycleCamDir(b, dir);
+                if (isIn(mx, my, x, y, 40, ROW_H)) cycleCamDir(b, dir);
+            }
+            case PAN -> {
+                if (isIn(mx, my, x, y, 22, ROW_H)) { stepChannel(b, dir); return; }
+                x += 24;
+                if (isIn(mx, my, x, y, 18, ROW_H)) { cycleModeScroll(b, dir); return; }
+                x += 20;
+                if (isIn(mx, my, x, y, 18, ROW_H)) { stepPanModule(b, dir); return; }
+                x += 20;
+                if (isIn(mx, my, x, y, 26, ROW_H)) cyclePanAction(b, dir);
             }
             default -> { // channel modes (RPM family)
                 ChannelMode m = ChannelMode.byType(b.actionType);
@@ -1177,6 +1290,7 @@ public class LiveControlScreen extends Screen {
             case VARIABLE -> b.varIndex = ((b.varIndex + dir) % 16 + 16) % 16;
             case OVERDRIVE -> b.overdriveMultiplier = cycleOverdrive(b.overdriveMultiplier, dir);
             case CAM, GUN -> cycleCamDir(b, dir);
+            case PAN -> cyclePanAction(b, dir);
             default -> stepChannel(b, dir);
         }
     }
@@ -1302,7 +1416,7 @@ public class LiveControlScreen extends Screen {
 
     //variable mode cant invert, others might not be able to later
     private static boolean canInvert(ActionType t) {
-        return t != ActionType.VARIABLE && t != ActionType.CAM && t != ActionType.GUN;
+        return t != ActionType.VARIABLE && t != ActionType.CAM && t != ActionType.GUN && t != ActionType.PAN;
     }
     private boolean isTypeAvailable(ActionType t) {
         return switch (t) {
@@ -1314,7 +1428,10 @@ public class LiveControlScreen extends Screen {
             case OVERDRIVE       -> true;
             case CAM             -> dev.bennethogan.universalkeyboard.compat.VistaCompat.isPresent()
                     && LiveControlManager.hasLinkedViewfinder(keyboardPos);
-            case GUN             -> dev.bennethogan.universalkeyboard.compat.CannonControl.isPresent();
+            case GUN             -> dev.bennethogan.universalkeyboard.compat.CannonControl.isPresent()
+                    && LiveControlManager.hasLinkedCannon(keyboardPos);
+            case PAN             -> dev.bennethogan.universalkeyboard.compat.PanelControl.isPresent()
+                    && LiveControlManager.hasLinkedPanel(keyboardPos);
         };
     }
 
@@ -1331,7 +1448,7 @@ public class LiveControlScreen extends Screen {
     /** Cycle through modes. VEC and OD only support HLD and TGL (no INC). */
     private static Mode nextMode(ActionType type, Mode current, int dir) {
         Mode[] available = (type == ActionType.THRUSTER_VECTOR || type == ActionType.OVERDRIVE
-                || type == ActionType.CAM || type == ActionType.GUN)
+                || type == ActionType.CAM || type == ActionType.GUN || type == ActionType.PAN)
                 ? new Mode[]{Mode.HLD, Mode.TGL}
                 : Mode.values();
         int idx = 0;

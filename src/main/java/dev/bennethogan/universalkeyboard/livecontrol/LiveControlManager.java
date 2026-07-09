@@ -61,6 +61,15 @@ public class LiveControlManager {
 
     private static int actionBarTick = 0;
 
+    // Gives certain warning messages a longer time before being overwritten by default hotbar message
+    private static String pendingWarning = null;
+    private static int    pendingWarningTicks = 0;
+
+    public static void showTimedWarning(String msg, int ticks) {
+        pendingWarning = msg;
+        pendingWarningTicks = Math.max(0, ticks);
+    }
+
     // index of most recently activated RPM binding (-1 for none yet)
     private static int lastRpmBindingIdx = -1;
 
@@ -69,7 +78,9 @@ public class LiveControlManager {
     private static final Map<Integer, Long> rowChosenAt = new HashMap<>();
 
     // ------- vista camera and supplementaries cannon controls -----
-    private static double camZoomAccum = 0.0;   // fractional zoom carry for CAM control
+    // Per-target fractional carry (keyed by camera pos / cannon channel), since a binding's channel
+    // now scopes which linked target it controls.
+    private static final Map<BlockPos, Double> camZoomAccum = new HashMap<>();
 
     // per tick rates
     private static final double CAM_AIM_DEG_PER_TICK = 1.0;   // ~20°/s at base
@@ -77,15 +88,25 @@ public class LiveControlManager {
 
 
     // two GUN sub-modes, MAN and TGT
-    private static double  gunPowerAccum   = 0.0;    // fractional MAN power-step carry
+    private static final Map<Integer, Double> gunPowerAccum = new HashMap<>(); // per-channel MAN power carry
     private static boolean gunTgtWasFiring = false;
     private static boolean  tgtEngaged  = false;
     private static int      tgtGrace    = 0;
     private static int      tgtPovIndex = 0;
+    private static int      tgtChannel  = 1;   // channel the current TGT session is engaged on
     private static List<BlockPos> tgtCannons = new ArrayList<>();
     private static final int GUN_TGT_GRACE_TICKS = 10;
     private static final double GUN_AIM_DEG_PER_TICK = 1.0;
     private static final double GUN_POWER_PER_TICK   = 0.1;
+
+    // Range limit on Supplementaries cannon until thats worked out
+    private static final double GUN_POV_RANGE_SQR = 7.5 * 7.5;
+
+
+    // Dashpanels (PAN). Per channel, per module analog value carry (0-15), and last value sent so packets arent oversent when not needed
+    private static final Map<Long, Double>  panValues   = new HashMap<>();
+    private static final Map<Long, Integer> panLastSent = new HashMap<>();
+    private static final double PAN_RAMP_PER_TICK = 0.5;   // ~15 over ~1.5s at base
     // ── Activation ───────────────────────────────────────────────────────────
 
     public static void activate(BlockPos pos, List<LiveControlBinding> binds,
@@ -218,10 +239,15 @@ public class LiveControlManager {
         tgtGrace = 0;
         tgtPovIndex = 0;
         tgtCannons = new ArrayList<>();
-        gunPowerAccum = 0.0;
+        gunPowerAccum.clear();
+        camZoomAccum.clear();
+        panValues.clear();
+        panLastSent.clear();
+        pendingWarning = null;
+        pendingWarningTicks = 0;
         gunTgtWasFiring = false;
         if (keyboardPos != null && Minecraft.getInstance().getConnection() != null)
-            ModPackets.sendGunRelease(keyboardPos);   // drop any cannon ownership leases
+            ModPackets.sendGunRelease(keyboardPos, 0);   // channel 0 = release every leased cannon
         if (Minecraft.getInstance().getConnection() != null) computeAndSend();
         rememberTogglesNow();   // so re-opening keyboard restores toggles
         toggledOn.clear();
@@ -360,7 +386,11 @@ public class LiveControlManager {
             tglPendingPeak.merge(i, mag, Math::max);
         }
 
-        if (!heldKeys.isEmpty() || !toggledOn.isEmpty()) {
+        if (pendingWarningTicks > 0 && pendingWarning != null) {
+            mc.player.displayClientMessage(Component.literal(pendingWarning), true);
+            pendingWarningTicks--;
+            actionBarTick = 0;
+        } else if (!heldKeys.isEmpty() || !toggledOn.isEmpty()) {
             mc.player.displayClientMessage(Component.literal(buildKeyDisplay()), true);
             actionBarTick = 0;
         } else if (++actionBarTick >= 20) {
@@ -421,14 +451,7 @@ public class LiveControlManager {
 
         tickCameraControl();
         tickGunControl();
-    }
-
-    private static BlockPos getControlViewfinderPos(BlockPos pos) {
-        if (pos == null) return null;
-        List<BlockPos> vfs = linkedViewfinders(pos);
-        if (vfs.isEmpty()) return null;
-        int idx = sharedCameraIndex(pos);
-        return (idx >= 0 && idx < vfs.size()) ? vfs.get(idx) : vfs.get(0);
+        tickPanControl();
     }
 
     private static int sharedCameraIndex(BlockPos pos) {
@@ -440,62 +463,134 @@ public class LiveControlManager {
     }
 
     private static void tickCameraControl() {
-        BlockPos camPos = getControlViewfinderPos(keyboardPos);
-        if (camPos == null) return;
-        double dYaw = 0, dPitch = 0, dZoom = 0;
+        if (keyboardPos == null) return;
+        Map<BlockPos, double[]> perCam = new HashMap<>();   // camPos -> {dYaw, dPitch, dZoom}
         for (int i = 0; i < bindings.size(); i++) {
             LiveControlBinding b = bindings.get(i);
             if (b.actionType != ActionType.CAM || !isBindingActive(i)) continue;
+            BlockPos camPos = viewfinderOnChannel(keyboardPos, b.channel);
+            if (camPos == null) continue;
             double od   = overdriveFactor(i);
             double aim  = CAM_AIM_DEG_PER_TICK * od * joystickMagnitude(b, i);
             double zoom = CAM_ZOOM_PER_TICK    * od * joystickMagnitude(b, i);
+            double[] a = perCam.computeIfAbsent(camPos, k -> new double[3]);
             switch (b.camDir) {
-                case UP       -> dPitch -= aim;
-                case DOWN     -> dPitch += aim;
-                case LEFT     -> dYaw   += aim;
-                case RIGHT    -> dYaw   -= aim;
-                case ZOOM_IN  -> dZoom  += zoom;
-                case ZOOM_OUT -> dZoom  -= zoom;
+                case UP       -> a[1] -= aim;
+                case DOWN     -> a[1] += aim;
+                case LEFT     -> a[0] += aim;
+                case RIGHT    -> a[0] -= aim;
+                case ZOOM_IN  -> a[2] += zoom;
+                case ZOOM_OUT -> a[2] -= zoom;
                 case TOGGLE   -> { }
             }
         }
-        camZoomAccum += dZoom;
-        int zoomStep = (int) camZoomAccum;   // whole levels this tick
-        camZoomAccum -= zoomStep;
-        if (dYaw != 0 || dPitch != 0 || zoomStep != 0)
-            ModPackets.sendCameraNudge(camPos, dYaw, dPitch, zoomStep);
+        for (Map.Entry<BlockPos, double[]> e : perCam.entrySet()) {
+            BlockPos camPos = e.getKey();
+            double[] a = e.getValue();
+            double z = camZoomAccum.merge(camPos, a[2], Double::sum);
+            int zoomStep = (int) z;
+            camZoomAccum.put(camPos, z - zoomStep);
+            if (a[0] != 0 || a[1] != 0 || zoomStep != 0)
+                ModPackets.sendCameraNudge(camPos, a[0], a[1], zoomStep);
+        }
+    }
+
+    private static BlockPos viewfinderOnChannel(BlockPos kbPos, int channel) {
+        net.minecraft.world.level.Level level = Minecraft.getInstance().level;
+        if (level == null || kbPos == null
+                || !(level.getBlockEntity(kbPos) instanceof LinkedKeyboardBlockEntity kb)) return null;
+        List<BlockPos> list = kb.getAllChannelTargets().get(channel);
+        if (list == null) return null;
+        for (BlockPos p : list)
+            if (dev.bennethogan.universalkeyboard.compat.VistaCamera.isViewfinder(level, p)) return p;
+        return null;
     }
 
     private static void tickGunControl() {
         if (keyboardPos == null) return;
-        List<BlockPos> cannons = linkedCannons(keyboardPos);
-        if (cannons.isEmpty()) { if (tgtEngaged) gunDisengage(); else if (GunManeuver.isActive()) GunManeuver.stop(); return; }
 
-        double dYaw = 0, dPitch = 0, dPow = 0;
+        Map<Integer, double[]> perCh = new HashMap<>();   // channel -> {dYaw, dPitch, dPow}
         for (int i = 0; i < bindings.size(); i++) {
             LiveControlBinding b = bindings.get(i);
             if (b.actionType != ActionType.GUN || b.mode != Mode.HLD || !isBindingActive(i)) continue;
             double od  = overdriveFactor(i);
             double aim = GUN_AIM_DEG_PER_TICK * od * joystickMagnitude(b, i);
             double pw  = GUN_POWER_PER_TICK   * od * joystickMagnitude(b, i);
+            double[] a = perCh.computeIfAbsent(b.channel, k -> new double[3]);
             switch (b.camDir) {
-                case UP       -> dPitch -= aim;
-                case DOWN     -> dPitch += aim;
-                case LEFT     -> dYaw   += aim;
-                case RIGHT    -> dYaw   -= aim;
-                case ZOOM_IN  -> dPow   += pw;   // "power +" for cannon
-                case ZOOM_OUT -> dPow   -= pw;   // "power -" for cannon
-                case TOGGLE   -> { }             // fire is on-press
+                case UP       -> a[1] -= aim;
+                case DOWN     -> a[1] += aim;
+                case LEFT     -> a[0] += aim;
+                case RIGHT    -> a[0] -= aim;
+                case ZOOM_IN  -> a[2] += pw;   // "power +" for cannon
+                case ZOOM_OUT -> a[2] -= pw;   // "power -" for cannon
+                case TOGGLE   -> { }           // fire is on-press
             }
         }
-        gunPowerAccum += dPow;
-        int powStep = (int) gunPowerAccum;
-        gunPowerAccum -= powStep;
-        if (dYaw != 0 || dPitch != 0 || powStep != 0)
-            ModPackets.sendGunManual(keyboardPos, dYaw, dPitch, powStep);
+        for (Map.Entry<Integer, double[]> e : perCh.entrySet()) {
+            int ch = e.getKey();
+            double[] a = e.getValue();
+            double pAcc = gunPowerAccum.merge(ch, a[2], Double::sum);
+            int powStep = (int) pAcc;
+            gunPowerAccum.put(ch, pAcc - powStep);
+            if (a[0] != 0 || a[1] != 0 || powStep != 0)
+                ModPackets.sendGunManual(keyboardPos, ch, a[0], a[1], powStep);
+        }
 
         tickGunTargeting();
     }
+
+    // Dashpanels (PAN mode) driver
+    private static void tickPanControl() {
+        if (keyboardPos == null || bindings.isEmpty()) return;
+
+        Map<Long, boolean[]> hasToggle = new HashMap<>();   // key -> {hasToggleBinding, toggleActive}
+        Map<Long, Double>    rampDelta = new HashMap<>();
+        Set<Long>            touched   = new java.util.HashSet<>();
+
+        for (int i = 0; i < bindings.size(); i++) {
+            LiveControlBinding b = bindings.get(i);
+            if (b.actionType != ActionType.PAN) continue;
+            long key = panKey(b.channel, b.panModule);
+            touched.add(key);
+            boolean activeNow = isBindingActive(i);
+            switch (b.camDir) {
+                case TOGGLE -> {
+                    boolean[] t = hasToggle.computeIfAbsent(key, k -> new boolean[2]);
+                    t[0] = true;
+                    if (activeNow) t[1] = true;
+                }
+                case UP, ZOOM_IN -> {
+                    if (activeNow) rampDelta.merge(key, PAN_RAMP_PER_TICK * overdriveFactor(i) * joystickMagnitude(b, i), Double::sum);
+                }
+                case DOWN, ZOOM_OUT -> {
+                    if (activeNow) rampDelta.merge(key, -PAN_RAMP_PER_TICK * overdriveFactor(i) * joystickMagnitude(b, i), Double::sum);
+                }
+                default -> { }
+            }
+        }
+
+        for (long key : touched) {
+            double cur = panValues.getOrDefault(key, (double) panLastSent.getOrDefault(key, 0));
+            Double delta = rampDelta.get(key);
+            if (delta != null && delta != 0) cur = Math.max(0.0, Math.min(15.0, cur + delta));
+            boolean[] t = hasToggle.get(key);
+            if (t != null && t[0]) cur = t[1] ? 15.0 : 0.0;   // on/off is absolute, wins over ramp
+            panValues.put(key, cur);
+
+            int iv = (int) Math.round(cur);
+            if (panLastSent.getOrDefault(key, -1) != iv) {
+                panLastSent.put(key, iv);
+                ModPackets.sendPanSet(keyboardPos, panChannelOf(key), panModuleOf(key), iv);
+            }
+        }
+    }
+
+    private static long panKey(int channel, int module) {
+        return ((long) (channel & 0xFFF) << 20) | (module & 0xFFFFF);
+    }
+    private static int panChannelOf(long key) { return (int) ((key >> 20) & 0xFFF); }
+    private static int panModuleOf(long key)  { return (int) (key & 0xFFFFF); }
 
     private static void tickGunTargeting() {
         if (!tgtEngaged) { gunTgtWasFiring = false; return; }
@@ -512,26 +607,40 @@ public class LiveControlManager {
         if (target != null) {
             int power = (primary != null && level != null)
                     ? dev.bennethogan.universalkeyboard.compat.CannonControl.getPowerLevel(level, primary) : 1;
-            // aim the other cannons
-            ModPackets.sendGunAim(keyboardPos, target, power);
+            // aim the rest of this channel's cannons at the same ground point
+            ModPackets.sendGunAim(keyboardPos, tgtChannel, target, power);
         }
         boolean firing = primary != null && level != null
                 && dev.bennethogan.universalkeyboard.compat.CannonControl.isFiring(level, primary);
-        if (firing && !gunTgtWasFiring) ModPackets.sendGunFire(keyboardPos);
+        if (firing && !gunTgtWasFiring) ModPackets.sendGunFire(keyboardPos, tgtChannel);
         gunTgtWasFiring = firing;
     }
 
-    // engage to start targeting mode. Might get rid of this and have engagement a given with Live Controls started
-    private static void gunEngageToggle() {
+    // engage to start targeting mode on a specific channel's cannons
+    private static void gunEngageToggle(int channel) {
         if (tgtEngaged) { gunDisengage(); return; }
-        List<BlockPos> cannons = linkedCannons(keyboardPos);
+        List<BlockPos> cannons = cannonsOnChannel(keyboardPos, channel);
         if (cannons.isEmpty()) return;
-        tgtCannons  = sortByDistanceToPlayer(cannons);
+        // Only the cannons we can actually POV into (within Supplementaries' maneuver range) become POV
+        // candidates. Every cannon on the channel still converges via the server aim packet.
+        List<BlockPos> pov = new ArrayList<>();
+        for (BlockPos c : sortByDistanceToPlayer(cannons)) if (withinPovRange(c)) pov.add(c);
+        if (pov.isEmpty()) {
+            showTimedWarning("§e[Keyboard] §fCannon must be within ~8 blocks, use MAN (manual) to aim remotely.", 100);
+            return;
+        }
+        tgtChannel  = channel;
+        tgtCannons  = pov;
         tgtEngaged  = true;
         tgtPovIndex = 0;
         tgtGrace    = GUN_TGT_GRACE_TICKS;
         gunTgtWasFiring = false;
         GunManeuver.start(Minecraft.getInstance().level, tgtCannons.get(0));
+    }
+
+    private static boolean withinPovRange(BlockPos cannon) {
+        net.minecraft.client.player.LocalPlayer p = Minecraft.getInstance().player;
+        return p != null && cannon.distToCenterSqr(p.position()) <= GUN_POV_RANGE_SQR;
     }
 
     private static void gunDisengage() {
@@ -542,21 +651,25 @@ public class LiveControlManager {
         gunTgtWasFiring = false;
         GunManeuver.stop();
         if (keyboardPos != null && Minecraft.getInstance().getConnection() != null)
-            ModPackets.sendGunRelease(keyboardPos);   // free the cannons we were leasing
+            ModPackets.sendGunRelease(keyboardPos, tgtChannel);   // free the cannons we were leasing
     }
 
 
-    // Toggle POV switch between player and all linked cannons
+
     private static void gunPovCycle() {
         if (!tgtEngaged || tgtCannons.isEmpty()) return;
-        tgtPovIndex = (tgtPovIndex + 1) % (tgtCannons.size() + 1);
         net.minecraft.world.level.Level level = Minecraft.getInstance().level;
         GunManeuver.stop();   // release the previous POV so start() re-targets
-        if (tgtPovIndex < tgtCannons.size()) {
-            GunManeuver.start(level, tgtCannons.get(tgtPovIndex));
-            tgtGrace = GUN_TGT_GRACE_TICKS;
+        int size = tgtCannons.size();
+        for (int i = 0; i < size + 1; i++) {
+            tgtPovIndex = (tgtPovIndex + 1) % (size + 1);
+            if (tgtPovIndex == size) return;   // player POV
+            if (withinPovRange(tgtCannons.get(tgtPovIndex))) {
+                GunManeuver.start(level, tgtCannons.get(tgtPovIndex));
+                tgtGrace = GUN_TGT_GRACE_TICKS;
+                return;
+            }
         }
-        // else is player POV
     }
 
     private static List<BlockPos> sortByDistanceToPlayer(List<BlockPos> cannons) {
@@ -569,22 +682,29 @@ public class LiveControlManager {
         return out;
     }
 
-    // which wireless channels have supplementaries cannons
-    private static List<BlockPos> linkedCannons(BlockPos kbPos) {
+    private static List<BlockPos> cannonsOnChannel(BlockPos kbPos, int channel) {
         net.minecraft.world.level.Level level = Minecraft.getInstance().level;
         if (level == null || kbPos == null
                 || !(level.getBlockEntity(kbPos) instanceof LinkedKeyboardBlockEntity kb))
             return List.of();
+        List<BlockPos> list = kb.getAllChannelTargets().get(channel);
+        if (list == null) return List.of();
         List<BlockPos> out = new ArrayList<>();
-        Map<Integer, List<BlockPos>> targets = kb.getAllChannelTargets();
-        for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS; ch++) {
-            List<BlockPos> list = targets.get(ch);
-            if (list == null) continue;
-            for (BlockPos p : list)
-                if (!out.contains(p) && dev.bennethogan.universalkeyboard.compat.CannonControl.isCannon(level, p))
-                    out.add(p);
-        }
+        for (BlockPos p : list)
+            if (!out.contains(p) && dev.bennethogan.universalkeyboard.compat.CannonControl.isCannon(level, p))
+                out.add(p);
         return out;
+    }
+
+    public static BlockPos panelOnChannel(BlockPos kbPos, int channel) {
+        net.minecraft.world.level.Level level = Minecraft.getInstance().level;
+        if (level == null || kbPos == null
+                || !(level.getBlockEntity(kbPos) instanceof LinkedKeyboardBlockEntity kb)) return null;
+        List<BlockPos> list = kb.getAllChannelTargets().get(channel);
+        if (list == null) return null;
+        for (BlockPos p : list)
+            if (dev.bennethogan.universalkeyboard.compat.PanelControl.isPanel(level, p)) return p;
+        return null;
     }
 
     // ── Key handling ─────────────────────────────────────────────────────────
@@ -1185,6 +1305,27 @@ public class LiveControlManager {
         return !linkedViewfinders(kbPos).isEmpty();
     }
 
+    public static boolean hasLinkedCannon(BlockPos kbPos) {
+        return anyLinkedTarget(kbPos, p ->
+                dev.bennethogan.universalkeyboard.compat.CannonControl.isCannon(Minecraft.getInstance().level, p));
+    }
+
+    public static boolean hasLinkedPanel(BlockPos kbPos) {
+        return anyLinkedTarget(kbPos, p ->
+                dev.bennethogan.universalkeyboard.compat.PanelControl.isPanel(Minecraft.getInstance().level, p));
+    }
+
+    private static boolean anyLinkedTarget(BlockPos kbPos, java.util.function.Predicate<BlockPos> test) {
+        net.minecraft.world.level.Level level = Minecraft.getInstance().level;
+        if (level == null || kbPos == null
+                || !(level.getBlockEntity(kbPos) instanceof LinkedKeyboardBlockEntity kb)) return false;
+        for (List<BlockPos> list : kb.getAllChannelTargets().values()) {
+            if (list == null) continue;
+            for (BlockPos p : list) if (test.test(p)) return true;
+        }
+        return false;
+    }
+
     private static List<BlockPos> linkedViewfinders(BlockPos kbPos) {
         net.minecraft.world.level.Level level = Minecraft.getInstance().level;
         if (level == null || kbPos == null
@@ -1217,10 +1358,10 @@ public class LiveControlManager {
         for (LiveControlBinding b : bindings) {
             if (b.actionType != ActionType.GUN || b.keyCode != keyCode) continue;
             if (b.mode == Mode.TGL) {
-                if (b.camDir == CamDir.TOGGLE) gunEngageToggle(); else gunPovCycle();
+                if (b.camDir == CamDir.TOGGLE) gunEngageToggle(b.channel); else gunPovCycle();
                 return;
             }
-            if (b.mode == Mode.HLD && b.camDir == CamDir.TOGGLE) { ModPackets.sendGunFire(keyboardPos); return; }
+            if (b.mode == Mode.HLD && b.camDir == CamDir.TOGGLE) { ModPackets.sendGunFire(keyboardPos, b.channel); return; }
         }
     }
 

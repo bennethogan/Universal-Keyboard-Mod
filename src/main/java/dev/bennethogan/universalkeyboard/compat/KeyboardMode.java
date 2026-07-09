@@ -16,6 +16,7 @@ public enum KeyboardMode {
     CC_COMPUTER(         "gui.universalkeyboard.mode.cc_computer.name",      "gui.universalkeyboard.mode.cc_computer.desc"),
     VISTA_CAMERA(        "gui.universalkeyboard.mode.vista_camera.name",     "gui.universalkeyboard.mode.vista_camera.desc"),
     GUN_CANNON(          "gui.universalkeyboard.mode.gun_cannon.name",       "gui.universalkeyboard.mode.gun_cannon.desc"),
+    PANEL_CONTROL(       "gui.universalkeyboard.mode.panel_control.name",    "gui.universalkeyboard.mode.panel_control.desc"),
     ;
 
     public final String displayName;
@@ -44,6 +45,7 @@ public enum KeyboardMode {
             case PERIPHERAL_SEQUENCER -> PeripheralHelper.hasPeripheral(level, pos) || isCCComputer(be);
             case VISTA_CAMERA         -> VistaCamera.isViewfinder(be);
             case GUN_CANNON           -> CannonControl.isCannon(be);
+            case PANEL_CONTROL        -> PanelControl.isPanel(be);
         };
     }
 
@@ -60,6 +62,7 @@ public enum KeyboardMode {
             case PERIPHERAL_SEQUENCER -> "gui.universalkeyboard.mode.sequencer.unavailable";
             case VISTA_CAMERA         -> "gui.universalkeyboard.mode.vista_camera.unavailable";
             case GUN_CANNON           -> "gui.universalkeyboard.mode.gun_cannon.unavailable";
+            case PANEL_CONTROL        -> "gui.universalkeyboard.mode.panel_control.unavailable";
         };
     }
 

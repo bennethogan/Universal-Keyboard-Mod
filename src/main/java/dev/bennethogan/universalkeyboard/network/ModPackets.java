@@ -123,15 +123,32 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
+    // Move a linked target to a new channel/position (Peripheral Manager C#N# edit).
+    public record MoveTargetPacket(BlockPos keyboardPos, BlockPos targetPos, int fromChannel,
+                                   int toChannel, int newIndex) implements CustomPacketPayload {
+        public static final Type<MoveTargetPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "move_target"));
+        public static final StreamCodec<FriendlyByteBuf, MoveTargetPacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, MoveTargetPacket::keyboardPos,
+                        BlockPos.STREAM_CODEC, MoveTargetPacket::targetPos,
+                        ByteBufCodecs.INT,     MoveTargetPacket::fromChannel,
+                        ByteBufCodecs.INT,     MoveTargetPacket::toChannel,
+                        ByteBufCodecs.INT,     MoveTargetPacket::newIndex,
+                        MoveTargetPacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
     // GUM mode aiming: user's ground target and fire power is shared so every linked cannon solved its own
     // trajectory to this point
-    public record GunAimPacket(BlockPos keyboardPos, double tx, double ty, double tz, int power)
+    public record GunAimPacket(BlockPos keyboardPos, int channel, double tx, double ty, double tz, int power)
             implements CustomPacketPayload {
         public static final Type<GunAimPacket> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "gun_aim"));
         public static final StreamCodec<FriendlyByteBuf, GunAimPacket> CODEC =
                 StreamCodec.composite(
                         BlockPos.STREAM_CODEC, GunAimPacket::keyboardPos,
+                        ByteBufCodecs.INT,     GunAimPacket::channel,
                         ByteBufCodecs.DOUBLE,  GunAimPacket::tx,
                         ByteBufCodecs.DOUBLE,  GunAimPacket::ty,
                         ByteBufCodecs.DOUBLE,  GunAimPacket::tz,
@@ -140,14 +157,15 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    // GUN manual (MAN mode): move them all the same
-    public record GunManualPacket(BlockPos keyboardPos, double dYaw, double dPitch, int dPower)
+    // GUN manual (MAN mode): move all cannons on the channel the same
+    public record GunManualPacket(BlockPos keyboardPos, int channel, double dYaw, double dPitch, int dPower)
             implements CustomPacketPayload {
         public static final Type<GunManualPacket> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "gun_manual"));
         public static final StreamCodec<FriendlyByteBuf, GunManualPacket> CODEC =
                 StreamCodec.composite(
                         BlockPos.STREAM_CODEC, GunManualPacket::keyboardPos,
+                        ByteBufCodecs.INT,     GunManualPacket::channel,
                         ByteBufCodecs.DOUBLE,  GunManualPacket::dYaw,
                         ByteBufCodecs.DOUBLE,  GunManualPacket::dPitch,
                         ByteBufCodecs.INT,     GunManualPacket::dPower,
@@ -155,25 +173,43 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    // GUN fire
-    public record GunFirePacket(BlockPos keyboardPos) implements CustomPacketPayload {
+    // GUN fire (cannons on the channel)
+    public record GunFirePacket(BlockPos keyboardPos, int channel) implements CustomPacketPayload {
         public static final Type<GunFirePacket> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "gun_fire"));
         public static final StreamCodec<FriendlyByteBuf, GunFirePacket> CODEC =
                 StreamCodec.composite(
                         BlockPos.STREAM_CODEC, GunFirePacket::keyboardPos,
+                        ByteBufCodecs.INT,     GunFirePacket::channel,
                         GunFirePacket::new);
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    // GUN release
-    public record GunReleasePacket(BlockPos keyboardPos) implements CustomPacketPayload {
+    // GUN release — drop leases on the channel's cannons (channel 0 = all of the keyboard's cannons)
+    public record GunReleasePacket(BlockPos keyboardPos, int channel) implements CustomPacketPayload {
         public static final Type<GunReleasePacket> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "gun_release"));
         public static final StreamCodec<FriendlyByteBuf, GunReleasePacket> CODEC =
                 StreamCodec.composite(
                         BlockPos.STREAM_CODEC, GunReleasePacket::keyboardPos,
+                        ByteBufCodecs.INT,     GunReleasePacket::channel,
                         GunReleasePacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // PAN — drive a Control Panels module: set the module at (moduleIndex) on the panel(s) linked on
+    // (channel) to (value) (0-15), server resolves the index to a module name per panel
+    public record PanSetPacket(BlockPos keyboardPos, int channel, int moduleIndex, int value)
+            implements CustomPacketPayload {
+        public static final Type<PanSetPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "pan_set"));
+        public static final StreamCodec<FriendlyByteBuf, PanSetPacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, PanSetPacket::keyboardPos,
+                        ByteBufCodecs.INT,     PanSetPacket::channel,
+                        ByteBufCodecs.INT,     PanSetPacket::moduleIndex,
+                        ByteBufCodecs.INT,     PanSetPacket::value,
+                        PanSetPacket::new);
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
@@ -511,11 +547,13 @@ public class ModPackets {
         registrar.playToServer(SetFavoritePacket.TYPE,              SetFavoritePacket.CODEC,              ModPackets::handleSetFavorite);
         registrar.playToServer(SetKeyboardLockPacket.TYPE,          SetKeyboardLockPacket.CODEC,          ModPackets::handleSetKeyboardLock);
         registrar.optional().playToServer(UnlinkTargetPacket.TYPE,   UnlinkTargetPacket.CODEC,            ModPackets::handleUnlinkTarget);
+        registrar.optional().playToServer(MoveTargetPacket.TYPE,     MoveTargetPacket.CODEC,              ModPackets::handleMoveTarget);
         registrar.optional().playToServer(CameraNudgePacket.TYPE,     CameraNudgePacket.CODEC,             ModPackets::handleCameraNudge);
         registrar.optional().playToServer(CameraTogglePacket.TYPE,    CameraTogglePacket.CODEC,            ModPackets::handleCameraToggle);
         registrar.optional().playToServer(GunAimPacket.TYPE,          GunAimPacket.CODEC,                  ModPackets::handleGunAim);
         registrar.optional().playToServer(GunManualPacket.TYPE,       GunManualPacket.CODEC,               ModPackets::handleGunManual);
         registrar.optional().playToServer(GunFirePacket.TYPE,         GunFirePacket.CODEC,                 ModPackets::handleGunFire);
+        registrar.optional().playToServer(PanSetPacket.TYPE,          PanSetPacket.CODEC,                  ModPackets::handlePanSet);
         registrar.optional().playToServer(GunReleasePacket.TYPE,      GunReleasePacket.CODEC,              ModPackets::handleGunRelease);
         registrar.playToServer(ApplyPositionMovePacket.TYPE,        ApplyPositionMovePacket.CODEC,        ModPackets::handleApplyPositionMove);
 
@@ -699,8 +737,9 @@ public class ModPackets {
                 sendOpenThrusterControl(sp, keyboardPos, state, keyboard.getActiveChannel(), snap);
             }
             case PERIPHERAL_SEQUENCER -> sendOpenSequencer(sp, keyboardPos, keyboard);
-            case VISTA_CAMERA -> openLiveControlForPlayer(sp, keyboardPos, keyboard, true);
-            case GUN_CANNON   -> openLiveControlForPlayer(sp, keyboardPos, keyboard, true);
+            case VISTA_CAMERA  -> openLiveControlForPlayer(sp, keyboardPos, keyboard, true);
+            case GUN_CANNON    -> openLiveControlForPlayer(sp, keyboardPos, keyboard, true);
+            case PANEL_CONTROL -> openLiveControlForPlayer(sp, keyboardPos, keyboard, true);
         }
     }
 
@@ -720,12 +759,16 @@ public class ModPackets {
     private static void handleSetLinkingChannel(SetLinkingChannelPacket packet, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
             if (!(ctx.player() instanceof ServerPlayer sp)) return;
-            // Update active_channel on the held keyboard item (main hand or off hand)
+            // Update active_channel on the held linking tool (keyboard item or linking stick)
             for (InteractionHand hand : InteractionHand.values()) {
                 ItemStack held = sp.getItemInHand(hand);
                 if (held.getItem() instanceof LinkedKeyboardItem) {
                     LinkedKeyboardItem.setActiveLinkingChannel(held, packet.channel());
-                    // Trigger inventory sync so client sees updated channel in tooltip
+                    sp.inventoryMenu.sendAllDataToRemote();
+                    return;
+                }
+                if (held.getItem() instanceof dev.bennethogan.universalkeyboard.item.LinkingStickItem) {
+                    dev.bennethogan.universalkeyboard.item.LinkingStickItem.setActiveChannel(held, packet.channel());
                     sp.inventoryMenu.sendAllDataToRemote();
                     return;
                 }
@@ -814,23 +857,29 @@ public class ModPackets {
     public static void sendUnlinkTarget(BlockPos keyboardPos, int channel, BlockPos targetPos) {
         PacketDistributor.sendToServer(new UnlinkTargetPacket(keyboardPos, channel, targetPos));
     }
+    public static void sendMoveTarget(BlockPos keyboardPos, BlockPos targetPos, int fromChannel, int toChannel, int newIndex) {
+        PacketDistributor.sendToServer(new MoveTargetPacket(keyboardPos, targetPos, fromChannel, toChannel, newIndex));
+    }
     public static void sendCameraNudge(BlockPos cameraPos, double dYaw, double dPitch, int dZoom) {
         PacketDistributor.sendToServer(new CameraNudgePacket(cameraPos, dYaw, dPitch, dZoom));
     }
     public static void sendCameraToggle(BlockPos keyboardPos, boolean cameraOnly) {
         PacketDistributor.sendToServer(new CameraTogglePacket(keyboardPos, cameraOnly));
     }
-    public static void sendGunAim(BlockPos keyboardPos, net.minecraft.world.phys.Vec3 target, int power) {
-        PacketDistributor.sendToServer(new GunAimPacket(keyboardPos, target.x, target.y, target.z, power));
+    public static void sendGunAim(BlockPos keyboardPos, int channel, net.minecraft.world.phys.Vec3 target, int power) {
+        PacketDistributor.sendToServer(new GunAimPacket(keyboardPos, channel, target.x, target.y, target.z, power));
     }
-    public static void sendGunManual(BlockPos keyboardPos, double dYaw, double dPitch, int dPower) {
-        PacketDistributor.sendToServer(new GunManualPacket(keyboardPos, dYaw, dPitch, dPower));
+    public static void sendGunManual(BlockPos keyboardPos, int channel, double dYaw, double dPitch, int dPower) {
+        PacketDistributor.sendToServer(new GunManualPacket(keyboardPos, channel, dYaw, dPitch, dPower));
     }
-    public static void sendGunFire(BlockPos keyboardPos) {
-        PacketDistributor.sendToServer(new GunFirePacket(keyboardPos));
+    public static void sendGunFire(BlockPos keyboardPos, int channel) {
+        PacketDistributor.sendToServer(new GunFirePacket(keyboardPos, channel));
     }
-    public static void sendGunRelease(BlockPos keyboardPos) {
-        PacketDistributor.sendToServer(new GunReleasePacket(keyboardPos));
+    public static void sendPanSet(BlockPos keyboardPos, int channel, int moduleIndex, int value) {
+        PacketDistributor.sendToServer(new PanSetPacket(keyboardPos, channel, moduleIndex, value));
+    }
+    public static void sendGunRelease(BlockPos keyboardPos, int channel) {
+        PacketDistributor.sendToServer(new GunReleasePacket(keyboardPos, channel));
     }
     public static void sendSetActiveChannel(BlockPos keyboardPos, int channel) {
         PacketDistributor.sendToServer(new SetActiveChannelPacket(keyboardPos, channel));
@@ -1775,12 +1824,14 @@ public class ModPackets {
         });
     }
 
-    // Server-side list of cannons linked to a keyboard, deduped, in channel order
-    private static List<BlockPos> linkedCannonsServer(net.minecraft.server.level.ServerLevel level,
-                                                      LinkedKeyboardBlockEntity kb) {
+    // Server-side cannons linked to a keyboard. channel <= 0 = every channel; else just that channel.
+    private static List<BlockPos> cannonsServer(net.minecraft.server.level.ServerLevel level,
+                                                LinkedKeyboardBlockEntity kb, int channel) {
         java.util.LinkedHashSet<BlockPos> out = new java.util.LinkedHashSet<>();
         Map<Integer, List<BlockPos>> targets = kb.getAllChannelTargets();
-        for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS; ch++) {
+        int from = channel > 0 ? channel : 1;
+        int to   = channel > 0 ? channel : LinkedKeyboardBlockEntity.MAX_CHANNELS;
+        for (int ch = from; ch <= to; ch++) {
             List<BlockPos> list = targets.get(ch);
             if (list == null) continue;
             for (BlockPos tp : list)
@@ -1798,7 +1849,7 @@ public class ModPackets {
             var level = sp.serverLevel();
             net.minecraft.world.phys.Vec3 target =
                     new net.minecraft.world.phys.Vec3(packet.tx(), packet.ty(), packet.tz());
-            for (BlockPos cannon : linkedCannonsServer(level, kb))
+            for (BlockPos cannon : cannonsServer(level, kb, packet.channel()))
                 if (dev.bennethogan.universalkeyboard.compat.CannonLeases.claim(level, cannon, sp))
                     dev.bennethogan.universalkeyboard.compat.CannonControl.aimAt(level, cannon, target, packet.power());
         });
@@ -1811,7 +1862,7 @@ public class ModPackets {
             if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
             if (!kb.isUsableBy(sp)) return;
             var level = sp.serverLevel();
-            for (BlockPos cannon : linkedCannonsServer(level, kb)) {
+            for (BlockPos cannon : cannonsServer(level, kb, packet.channel())) {
                 if (!dev.bennethogan.universalkeyboard.compat.CannonLeases.claim(level, cannon, sp)) continue;
                 if (packet.dYaw() != 0 || packet.dPitch() != 0)
                     dev.bennethogan.universalkeyboard.compat.CannonControl.nudgeAim(level, cannon, packet.dYaw(), packet.dPitch());
@@ -1828,7 +1879,7 @@ public class ModPackets {
             if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
             if (!kb.isUsableBy(sp)) return;
             var level = sp.serverLevel();
-            for (BlockPos cannon : linkedCannonsServer(level, kb))
+            for (BlockPos cannon : cannonsServer(level, kb, packet.channel()))
                 if (dev.bennethogan.universalkeyboard.compat.CannonLeases.claim(level, cannon, sp))
                     dev.bennethogan.universalkeyboard.compat.CannonControl.fire(level, cannon, sp);
         });
@@ -1841,7 +1892,50 @@ public class ModPackets {
             if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
             var level = sp.serverLevel();
             dev.bennethogan.universalkeyboard.compat.CannonLeases.releaseAll(
-                    level, sp.getUUID(), linkedCannonsServer(level, kb));
+                    level, sp.getUUID(), cannonsServer(level, kb, packet.channel()));
+        });
+    }
+
+    // Control Panels panels linked on a specific channel (channel 0 = all channels).
+    private static List<BlockPos> panelsServer(net.minecraft.server.level.ServerLevel level,
+                                               LinkedKeyboardBlockEntity kb, int channel) {
+        java.util.LinkedHashSet<BlockPos> out = new java.util.LinkedHashSet<>();
+        Map<Integer, List<BlockPos>> targets = kb.getAllChannelTargets();
+        int from = channel > 0 ? channel : 1;
+        int to   = channel > 0 ? channel : LinkedKeyboardBlockEntity.MAX_CHANNELS;
+        for (int ch = from; ch <= to; ch++) {
+            List<BlockPos> list = targets.get(ch);
+            if (list == null) continue;
+            for (BlockPos tp : list)
+                if (dev.bennethogan.universalkeyboard.compat.PanelControl.isPanel(level, tp)) out.add(tp);
+        }
+        return new ArrayList<>(out);
+    }
+
+    private static void handlePanSet(PanSetPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            if (!kb.isUsableBy(sp)) return;
+            var level = sp.serverLevel();
+            // Prefer modules point-linked onto this channel: the index maps into that list and the
+            // resolved module name is driven on every panel on the channel
+            List<String> linked = kb.getChannelModules(packet.channel());
+            if (linked != null && !linked.isEmpty()) {
+                if (packet.moduleIndex() < 0 || packet.moduleIndex() >= linked.size()) return;
+                String moduleName = linked.get(packet.moduleIndex());
+                for (BlockPos panel : panelsServer(level, kb, packet.channel()))
+                    dev.bennethogan.universalkeyboard.compat.PanelControl.setValue(level, panel, moduleName, packet.value());
+                return;
+            }
+            // Fallback
+            for (BlockPos panel : panelsServer(level, kb, packet.channel())) {
+                List<String> names = dev.bennethogan.universalkeyboard.compat.PanelControl.drivableModuleNames(level, panel);
+                if (names.isEmpty() || packet.moduleIndex() < 0 || packet.moduleIndex() >= names.size()) continue;
+                dev.bennethogan.universalkeyboard.compat.PanelControl.setValue(
+                        level, panel, names.get(packet.moduleIndex()), packet.value());
+            }
         });
     }
 
@@ -1853,6 +1947,19 @@ public class ModPackets {
             if (!kb.isUsableBy(sp)) return;
             ItemStack cass = kb.unlinkTarget(packet.channel(), packet.targetPos());
             if (!cass.isEmpty() && !sp.getInventory().add(cass)) sp.drop(cass, false);
+        });
+    }
+
+    private static void handleMoveTarget(MoveTargetPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            if (!kb.isUsableBy(sp)) return;
+            boolean ok = kb.moveTarget(packet.targetPos(), packet.fromChannel(), packet.toChannel(), packet.newIndex());
+            if (!ok) sp.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                    "§c[Universal Keyboard] §fCouldn't move — channel " + packet.toChannel()
+                    + " may hold a different block type."), true);
         });
     }
 

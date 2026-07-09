@@ -18,7 +18,8 @@ public class LiveControlBinding {
         OVERDRIVE,       // 4 — multiplies output of other active bindings (RS/Thr/Var)
         RPM_CONTROL,     // 5 — sets motor RPM (electric_motor / rotation_speed_controller)
         CAM,             // 6 — Vista compat
-        GUN              // 7 — Supplementaries' cannon compat
+        GUN,             // 7 — Supplementaries' cannon compat
+        PAN              // 8 — dashpanels compat
     }
 
 
@@ -100,6 +101,9 @@ public class LiveControlBinding {
     // CAM
     public CamDir camDir = CamDir.UP;
 
+    // PAN (dashpanels)
+    public int panModule = 0;
+
     // ── Serialization ────────────────────────────────────────────────────────
 
     public void saveToTag(CompoundTag tag) {
@@ -124,6 +128,7 @@ public class LiveControlBinding {
         tag.putString("odExcludes",          odExcludes == null ? "" : odExcludes);
         tag.putInt("rpmTarget", rpmTarget);
         tag.putInt("camDir", camDir.ordinal());
+        tag.putInt("panModule", panModule);
     }
 
     public static LiveControlBinding fromTag(CompoundTag tag) {
@@ -171,6 +176,7 @@ public class LiveControlBinding {
         b.odExcludes          = tag.contains("odExcludes") ? tag.getString("odExcludes") : "";
         b.rpmTarget           = tag.contains("rpmTarget") ? Math.max(-256, Math.min(256, tag.getInt("rpmTarget"))) : 0;
         b.camDir              = camDirFromOrdinal(tag.getInt("camDir"));
+        b.panModule           = Math.max(0, tag.getInt("panModule"));
 
         return b;
     }
@@ -202,6 +208,7 @@ public class LiveControlBinding {
         buf.writeUtf(odExcludes == null ? "" : odExcludes, 513);
         buf.writeShort(Math.max(-256, Math.min(256, rpmTarget)));
         buf.writeByte(camDir.ordinal());
+        buf.writeShort(Math.max(0, Math.min(4095, panModule)));
     }
 
     public static LiveControlBinding decode(FriendlyByteBuf buf) {
@@ -242,6 +249,7 @@ public class LiveControlBinding {
         b.odExcludes          = buf.readUtf(513);
         b.rpmTarget           = buf.isReadable(2) ? Math.max(-256, Math.min(256, (int) buf.readShort())) : 0;
         b.camDir              = buf.isReadable() ? camDirFromOrdinal(buf.readByte() & 0xFF) : CamDir.UP;
+        b.panModule           = buf.isReadable(2) ? (buf.readShort() & 0xFFFF) : 0;
 
         return b;
     }

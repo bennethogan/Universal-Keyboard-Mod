@@ -40,16 +40,30 @@ public class LinkingModeRenderer {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
 
-        ItemStack held = mc.player.getMainHandItem();
-        if (!(held.getItem() instanceof LinkedKeyboardItem)) {
-            held = mc.player.getOffhandItem();
-            if (!(held.getItem() instanceof LinkedKeyboardItem)) return;
-        }
-        if (!LinkedKeyboardItem.isLinkingMode(held)) return;
+        int activeChannel;
+        Map<Integer, List<BlockPos>> allTargets;
+        BlockPos controllerPos = null;   // linking stick: the selected controller, drawn green
 
-        int activeChannel = LinkedKeyboardItem.getActiveLinkingChannel(held);
-        Map<Integer, List<BlockPos>> allTargets = LinkedKeyboardItem.getAllChannelTargets(held);
-        if (allTargets.isEmpty()) return;
+        ItemStack held = mc.player.getMainHandItem();
+        ItemStack offhand = mc.player.getOffhandItem();
+        ItemStack stick = held.getItem() instanceof dev.bennethogan.universalkeyboard.item.LinkingStickItem ? held
+                : (offhand.getItem() instanceof dev.bennethogan.universalkeyboard.item.LinkingStickItem ? offhand : ItemStack.EMPTY);
+
+        if (!stick.isEmpty()) {
+            controllerPos = dev.bennethogan.universalkeyboard.item.LinkingStickItem.getTarget(stick);
+            if (controllerPos == null) return;
+            activeChannel = dev.bennethogan.universalkeyboard.item.LinkingStickItem.getActiveChannel(stick);
+            allTargets = (mc.level != null
+                    && mc.level.getBlockEntity(controllerPos) instanceof LinkedKeyboardBlockEntity kb)
+                    ? kb.getAllChannelTargets() : Map.of();
+        } else {
+            ItemStack kbd = held.getItem() instanceof LinkedKeyboardItem ? held
+                    : (offhand.getItem() instanceof LinkedKeyboardItem ? offhand : ItemStack.EMPTY);
+            if (kbd.isEmpty() || !LinkedKeyboardItem.isLinkingMode(kbd)) return;
+            activeChannel = LinkedKeyboardItem.getActiveLinkingChannel(kbd);
+            allTargets = LinkedKeyboardItem.getAllChannelTargets(kbd);
+            if (allTargets.isEmpty()) return;
+        }
 
         Camera camera = event.getCamera();
         PoseStack poseStack = event.getPoseStack();
@@ -92,6 +106,15 @@ public class LinkingModeRenderer {
                         box.maxX, box.maxY, box.maxZ,
                         r, g, b, alpha);
             }
+        }
+
+        // linking stick: draw the selected controller green
+        if (controllerPos != null) {
+            AABB kbBox = new AABB(controllerPos).inflate(0.02);
+            LevelRenderer.renderLineBox(poseStack, lineBuffer,
+                    kbBox.minX, kbBox.minY, kbBox.minZ,
+                    kbBox.maxX, kbBox.maxY, kbBox.maxZ,
+                    0.1f, 1.0f, 0.25f, 1.0f); // green
         }
 
         bufferSource.endBatch(RenderType.lines());

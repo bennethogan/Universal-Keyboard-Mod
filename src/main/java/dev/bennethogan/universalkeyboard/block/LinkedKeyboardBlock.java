@@ -219,12 +219,27 @@ public class LinkedKeyboardBlock extends BaseEntityBlock {
         return InteractionResult.CONSUME;
     }
 
-    // Right-click with a Vista cassette to load it into the keyboard's screen (swaps out any
-    // existing one); right-click with a dye to change the keyboard's skin.
+    // Item Interactions ---------------------
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level,
                                               BlockPos pos, Player player, InteractionHand hand,
                                               BlockHitResult hit) {
+
+        // Hold a stick, and right click the keyboard controller to get a "Linking Stick" in return
+        if (stack.is(net.minecraft.world.item.Items.STICK)) {
+            if (level.isClientSide) return ItemInteractionResult.SUCCESS;
+            if (!player.isCreative()) stack.shrink(1);
+            ItemStack linker = new ItemStack(
+                    dev.bennethogan.universalkeyboard.item.ModItems.LINKING_STICK.get());
+            if (!player.getInventory().add(linker)) player.drop(linker, false);
+            player.displayClientMessage(Component.literal(
+                    "§a[Universal Keyboard] §fHere's a §eLinking Stick§f — right-click me to select, then link targets."), true);
+            return ItemInteractionResult.SUCCESS;
+        }
+
+
+        // Right-click with a Vista cassette to load it into the keyboard's screen (swaps out any
+        // existing one); right-click with a dye to change the keyboard's skin.
         if (dev.bennethogan.universalkeyboard.compat.VistaItems.isCassette(stack)) {
             if (level.isClientSide) return ItemInteractionResult.SUCCESS;
             if (!(level.getBlockEntity(pos) instanceof LinkedKeyboardBlockEntity be))

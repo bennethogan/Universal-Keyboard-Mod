@@ -198,12 +198,36 @@ public class KeyboardInputHandler {
 
         // Case 2: scroll while holding a linked keyboard item in linking mode
         if (mc.player == null || mc.screen != null) return;
+
+        // Case 2b: shift+scroll while holding the linking stick to change the stick's active channel
+        ItemStack stick = mc.player.getMainHandItem();
+        if (!(stick.getItem() instanceof dev.bennethogan.universalkeyboard.item.LinkingStickItem)) {
+            stick = mc.player.getOffhandItem();
+        }
+        if (stick.getItem() instanceof dev.bennethogan.universalkeyboard.item.LinkingStickItem) {
+            if (!net.minecraft.client.gui.screens.Screen.hasShiftDown()) return;
+            double sy = event.getScrollDeltaY();
+            if (sy == 0) return;
+            int cur = dev.bennethogan.universalkeyboard.item.LinkingStickItem.getActiveChannel(stick);
+            int d = sy > 0 ? -1 : 1;
+            int nx = ((cur - 1 + d) % LinkedKeyboardBlockEntity.MAX_CHANNELS
+                    + LinkedKeyboardBlockEntity.MAX_CHANNELS) % LinkedKeyboardBlockEntity.MAX_CHANNELS + 1;
+            dev.bennethogan.universalkeyboard.item.LinkingStickItem.setActiveChannel(stick, nx);
+            ModPackets.sendSetLinkingChannel(nx);
+            mc.player.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                    "§a[Linking Stick] §fChannel §e" + nx), true);
+            event.setCanceled(true);
+            return;
+        }
+
         ItemStack held = mc.player.getMainHandItem();
         if (!(held.getItem() instanceof LinkedKeyboardItem)) {
             held = mc.player.getOffhandItem();
             if (!(held.getItem() instanceof LinkedKeyboardItem)) return;
         }
         if (!LinkedKeyboardItem.isLinkingMode(held)) return;
+
+        if (!net.minecraft.client.gui.screens.Screen.hasShiftDown()) return;
 
         double scrollY = event.getScrollDeltaY();
         if (scrollY == 0) return;

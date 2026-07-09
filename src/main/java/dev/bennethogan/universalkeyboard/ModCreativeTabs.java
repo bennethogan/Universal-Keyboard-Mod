@@ -27,6 +27,7 @@ public class ModCreativeTabs {
                         output.accept(ModItems.BI_KEYBOARD.get());
                         output.accept(ModItems.LINKED_CONTROLWHEEL.get());
                         output.accept(ModItems.DASHBOARD.get());
+                        output.accept(ModItems.LINKING_STICK.get());
                         if (ModItems.WIRELESS_COPYCAT       != null) output.accept(ModItems.WIRELESS_COPYCAT.get());
                         if (ModItems.WIRELESS_COPYCAT_PANEL != null) output.accept(ModItems.WIRELESS_COPYCAT_PANEL.get());
                         if (ModItems.WIRELESS_COPYCAT_STEP  != null) output.accept(ModItems.WIRELESS_COPYCAT_STEP.get());

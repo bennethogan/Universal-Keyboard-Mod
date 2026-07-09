@@ -5,6 +5,7 @@ import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.universalkeyboard.blockentity.WirelessCopycatBlockEntity;
 import dev.bennethogan.universalkeyboard.compat.CreateValueHelper;
 import dev.bennethogan.universalkeyboard.compat.KeyboardMode;
+import dev.bennethogan.universalkeyboard.compat.PanelControl;
 import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
@@ -61,7 +62,7 @@ public class LinkedKeyboardItem extends BlockItem {
                 int ch = getActiveLinkingChannel(stack);
                 player.displayClientMessage(Component.literal(
                         "§a[Universal Keyboard] §fLinking mode ON — Channel §e" + ch +
-                        "§f. Right-click targets to link/unlink. Scroll to change channel. Shift+right-click to finish."),
+                        "§f. Right-click targets to link/unlink. Shift+scroll to change channel. Shift+right-click to finish."),
                         true);
             } else {
                 int count = getAllChannelTargets(stack).values().stream().mapToInt(List::size).sum();
@@ -112,30 +113,53 @@ public class LinkedKeyboardItem extends BlockItem {
 
         // Regular right-click: act only on linkable blocks when in linking mode
         // Non-linkable blocks fall through to super.useOn() for placement
-        if (!level.isClientSide) {
-            BlockEntity be = level.getBlockEntity(pos);
-            if (!(be instanceof LinkedKeyboardBlockEntity)) {
-                List<KeyboardMode> modes = KeyboardMode.available(level, pos);
-                if (!modes.isEmpty()) {
-                    if (isLinkingMode(stack)) {
-                        int ch = getActiveLinkingChannel(stack);
-                        tryToggleBlock(level, pos, player, stack, ch);
-                    } else {
-                        player.displayClientMessage(Component.literal(
-                                "§7[Universal Keyboard] §fShift+right-click to enter linking mode."),
-                                true);
-                    }
-                    return InteractionResult.SUCCESS;
+        BlockEntity be = level.getBlockEntity(pos);
+        if (!(be instanceof LinkedKeyboardBlockEntity) && !KeyboardMode.available(level, pos).isEmpty()) {
+            if (!level.isClientSide) {
+                if (isLinkingMode(stack)) {
+                    int ch = getActiveLinkingChannel(stack);
+                    tryToggleBlock(level, pos, player, stack, ch);
+                } else {
+                    player.displayClientMessage(Component.literal(
+                            "§7[Universal Keyboard] §fShift+right-click to enter linking mode."),
+                            true);
                 }
             }
+            // Return success on both sides so it doesnt fall through to keyboard placement while the
+            // block's own interaction is suppressed (search for suppressInteractionWhileLinking)
+            return InteractionResult.SUCCESS;
         }
         // Placement fallback (both sides): lets BlockItem handle placing the keyboard
         return super.useOn(context);
     }
 
+    // suppress interaction behavior to improve linking behavior
+    public static void suppressInteractionWhileLinking(
+            net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock event) {
+        ItemStack stack = event.getItemStack();
+        // Linking stick suppresses everything
+        if (stack.getItem() instanceof LinkingStickItem) {
+            event.setUseBlock(net.neoforged.neoforge.common.util.TriState.FALSE);
+            return;
+        }
+        if (stack.getItem() instanceof LinkedKeyboardItem && isLinkingMode(stack)
+                && !event.getLevel().getBlockState(event.getPos()).is(((LinkedKeyboardItem) stack.getItem()).getBlock())) {
+            event.setUseBlock(net.neoforged.neoforge.common.util.TriState.FALSE);
+        }
+    }
+
     private void tryToggleBlock(Level level, BlockPos pos, Player player, ItemStack stack, int ch) {
         BlockEntity be = level.getBlockEntity(pos);
         if (be instanceof LinkedKeyboardBlockEntity) return;
+
+        // Trying to do per module linking on Dashpanels compat
+        if (PanelControl.isPanel(level, pos)) {
+            String mod = PanelControl.getSelectedModule(level, pos, player);
+            if (!mod.isEmpty()) {
+                tryTogglePanelModule(level, pos, player, stack, ch, mod, be);
+                return;
+            }
+        }
 
         List<KeyboardMode> modes = KeyboardMode.available(level, pos);
         if (modes.isEmpty()) {
@@ -178,9 +202,45 @@ public class LinkedKeyboardItem extends BlockItem {
         addLinkedTargetToChannel(stack, ch, pos);
         int total = getLinkedTargetsForChannel(stack, ch).size();
         String msg = total == 1
-                ? "§a[Keyboard] §fCh §e" + ch + "§f linked. Scroll to change channel."
+                ? "§a[Keyboard] §fCh §e" + ch + "§f linked. Shift+scroll to change channel."
                 : "§a[Keyboard] §fCh §e" + ch + "§f — §e" + total + " §fblocks.";
         player.displayClientMessage(Component.literal(msg), true);
+    }
+
+    // Dashpanels compat, trying to link to the individual modules themselves
+    private void tryTogglePanelModule(Level level, BlockPos pos, Player player, ItemStack stack,
+                                      int ch, String moduleName, BlockEntity be) {
+        List<String> mods = getChannelModules(stack, ch);
+        boolean alreadyLinked = mods.contains(moduleName);
+        if (!alreadyLinked && !PanelControl.isModuleDrivable(level, pos, moduleName)) {
+            player.displayClientMessage(Component.literal(
+                    "§c[Universal Keyboard] §fModule §b" + moduleName + "§f can't be operated by the keyboard."), true);
+            return;
+        }
+        if (alreadyLinked) {
+            removeChannelModule(stack, ch, moduleName);
+            if (getChannelModules(stack, ch).isEmpty())
+                removeLinkedTargetFromChannel(stack, ch, pos);
+            player.displayClientMessage(Component.literal(
+                    "§e[Universal Keyboard] §fUnlinked module §b" + moduleName + "§f from Channel §e" + ch), true);
+            return;
+        }
+
+        // enforce same-type channel rule when adding the panel to a channel that already has entries
+        List<BlockPos> channelList = getLinkedTargetsForChannel(stack, ch);
+        if (!channelList.contains(pos) && !channelList.isEmpty() && be != null) {
+            BlockEntity firstBe = level.getBlockEntity(channelList.get(0));
+            if (firstBe == null || !firstBe.getType().equals(be.getType())) {
+                player.displayClientMessage(Component.literal(
+                        "§c[Universal Keyboard] §fChannel " + ch + " can only hold blocks of the same type."), true);
+                return;
+            }
+        }
+        if (!channelList.contains(pos)) addLinkedTargetToChannel(stack, ch, pos);
+        addChannelModule(stack, ch, moduleName);
+        int total = getChannelModules(stack, ch).size();
+        player.displayClientMessage(Component.literal(
+                "§a[Keyboard] §fCh §e" + ch + "§f — module §b" + moduleName + "§f linked §7(" + total + " module(s))"), true);
     }
 
     // ----- Transfer to block entity on placement -----
@@ -193,8 +253,10 @@ public class LinkedKeyboardItem extends BlockItem {
         if (!level.isClientSide
                 && level.getBlockEntity(pos) instanceof LinkedKeyboardBlockEntity keyboard) {
             Map<Integer, List<BlockPos>> allTargets = getAllChannelTargets(stack);
+            Map<Integer, List<String>>   allModules = getAllChannelModules(stack);
             if (!allTargets.isEmpty()) {
                 keyboard.setAllChannelTargets(allTargets);
+                keyboard.setAllChannelModules(allModules);
                 clearAllLinkedTargets(stack);
                 setLinkingMode(stack, false);
                 int total = allTargets.values().stream().mapToInt(List::size).sum();
@@ -306,6 +368,8 @@ public class LinkedKeyboardItem extends BlockItem {
                     for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS; ch++) {
                         String key = "ch" + ch + "_targets";
                         if (beTag.contains(key)) tag.put(key, beTag.get(key).copy());
+                        String mKey = "ch" + ch + "_modules";
+                        if (beTag.contains(mKey)) tag.put(mKey, beTag.get(mKey).copy());
                     }
                     if (beTag.contains("active_channel") && !tag.contains("active_channel"))
                         tag.putInt("active_channel", beTag.getInt("active_channel"));
@@ -401,6 +465,60 @@ public class LinkedKeyboardItem extends BlockItem {
         return result;
     }
 
+    // ----- Per-channel point-linked panel modules (PAN) -----
+
+    private static String moduleKey(int ch) { return "ch" + ch + "_modules"; }
+
+    public static List<String> getChannelModules(ItemStack stack, int channel) {
+        CompoundTag tag = readTag(stack);
+        List<String> out = new ArrayList<>();
+        if (tag == null) return out;
+        String key = moduleKey(channel);
+        if (tag.contains(key, Tag.TAG_LIST)) {
+            ListTag list = tag.getList(key, Tag.TAG_STRING);
+            for (int i = 0; i < list.size(); i++) {
+                String m = list.getString(i);
+                if (!m.isEmpty()) out.add(m);
+            }
+        }
+        return out;
+    }
+
+    private static void addChannelModule(ItemStack stack, int channel, String name) {
+        if (name == null || name.isEmpty()) return;
+        CompoundTag tag = getOrCreateTag(stack);
+        String key = moduleKey(channel);
+        ListTag list = tag.contains(key, Tag.TAG_LIST) ? tag.getList(key, Tag.TAG_STRING) : new ListTag();
+        for (int i = 0; i < list.size(); i++) if (list.getString(i).equals(name)) return; // dedup
+        list.add(StringTag.valueOf(name));
+        tag.put(key, list);
+        writeTag(stack, tag);
+    }
+
+    private static void removeChannelModule(ItemStack stack, int channel, String name) {
+        CompoundTag tag = readTag(stack);
+        if (tag == null) return;
+        String key = moduleKey(channel);
+        if (!tag.contains(key, Tag.TAG_LIST)) return;
+        ListTag list = tag.getList(key, Tag.TAG_STRING);
+        for (int i = 0; i < list.size(); i++) {
+            if (list.getString(i).equals(name)) { list.remove(i); break; }
+        }
+        if (list.isEmpty()) tag.remove(key);
+        else tag.put(key, list);
+        if (tag.isEmpty()) stack.remove(DataComponents.CUSTOM_DATA);
+        else writeTag(stack, tag);
+    }
+
+    public static Map<Integer, List<String>> getAllChannelModules(ItemStack stack) {
+        Map<Integer, List<String>> result = new HashMap<>();
+        for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS; ch++) {
+            List<String> mods = getChannelModules(stack, ch);
+            if (!mods.isEmpty()) result.put(ch, mods);
+        }
+        return result;
+    }
+
     private static List<BlockPos> readChannel(CompoundTag tag, int ch) {
         String key = channelKey(ch);
         if (!tag.contains(key, Tag.TAG_LIST)) return List.of();
@@ -428,8 +546,10 @@ public class LinkedKeyboardItem extends BlockItem {
     private static void clearAllLinkedTargets(ItemStack stack) {
         CompoundTag tag = readTag(stack);
         if (tag == null) return;
-        for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS; ch++)
+        for (int ch = 1; ch <= LinkedKeyboardBlockEntity.MAX_CHANNELS; ch++) {
             tag.remove(channelKey(ch));
+            tag.remove(moduleKey(ch));
+        }
         tag.remove("mesh_targets");
         tag.remove("target_x"); tag.remove("target_y"); tag.remove("target_z");
         tag.remove("active_channel");

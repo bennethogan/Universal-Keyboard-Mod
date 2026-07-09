@@ -47,6 +47,10 @@ public class UniversalKeyboardMod {
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 dev.bennethogan.universalkeyboard.compat.CannonLeases::onPlayerLogout);
 
+        // Block right-click interactions while in linking mode
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                dev.bennethogan.universalkeyboard.item.LinkedKeyboardItem::suppressInteractionWhileLinking);
+
         try {
             Class.forName("com.simibubi.create.api.behaviour.display.DisplaySource");
             dev.bennethogan.universalkeyboard.compat.ModDisplaySources.init(modEventBus);

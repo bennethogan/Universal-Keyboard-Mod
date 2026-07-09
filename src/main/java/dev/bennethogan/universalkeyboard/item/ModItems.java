@@ -47,6 +47,10 @@ public class ModItems {
                     new LinkedKeyboardItem(ModBlocks.DASHBOARD.get(),
                             new Item.Properties().stacksTo(1).fireResistant()));
 
+    public static final DeferredItem<LinkingStickItem> LINKING_STICK =
+            ITEMS.register("linking_stick", () ->
+                    new LinkingStickItem(new Item.Properties().stacksTo(1)));
+
     @Nullable public static DeferredItem<net.minecraft.world.item.BlockItem> WIRELESS_COPYCAT;
     @Nullable public static DeferredItem<net.minecraft.world.item.BlockItem> WIRELESS_COPYCAT_PANEL;
     @Nullable public static DeferredItem<net.minecraft.world.item.BlockItem> WIRELESS_COPYCAT_STEP;
