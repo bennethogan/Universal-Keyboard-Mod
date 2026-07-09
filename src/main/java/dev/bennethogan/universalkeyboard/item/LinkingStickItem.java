@@ -189,7 +189,7 @@ public class LinkingStickItem extends Item {
                                 List<Component> tooltip, TooltipFlag flag) {
         BlockPos t = getTarget(stack);
         if (t == null) {
-            tooltip.add(Component.literal("§7Add/remote links on your controller."));
+            tooltip.add(Component.literal("§7Add/remove peripheral links to your controller."));
         } else {
             tooltip.add(Component.literal("§7Controller: §f" + posStr(t)));
             tooltip.add(Component.literal("§7Channel: §e" + getActiveChannel(stack) + " §8(shift+scroll to change)"));
