@@ -213,6 +213,23 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
+    // PAN Stick — drive a joystick module with x/y (-100 to 100) & trigger
+    public record PanStickPacket(BlockPos keyboardPos, int channel, int moduleIndex,
+                                 int x, int y, boolean trigger) implements CustomPacketPayload {
+        public static final Type<PanStickPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "pan_stick"));
+        public static final StreamCodec<FriendlyByteBuf, PanStickPacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC, PanStickPacket::keyboardPos,
+                        ByteBufCodecs.INT,     PanStickPacket::channel,
+                        ByteBufCodecs.INT,     PanStickPacket::moduleIndex,
+                        ByteBufCodecs.INT,     PanStickPacket::x,
+                        ByteBufCodecs.INT,     PanStickPacket::y,
+                        ByteBufCodecs.BOOL,    PanStickPacket::trigger,
+                        PanStickPacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
     public record StartCreateCapturePacket(
             BlockPos keyboardPos, int currentValue, int minValue, int maxValue
     ) implements CustomPacketPayload {
@@ -554,6 +571,7 @@ public class ModPackets {
         registrar.optional().playToServer(GunManualPacket.TYPE,       GunManualPacket.CODEC,               ModPackets::handleGunManual);
         registrar.optional().playToServer(GunFirePacket.TYPE,         GunFirePacket.CODEC,                 ModPackets::handleGunFire);
         registrar.optional().playToServer(PanSetPacket.TYPE,          PanSetPacket.CODEC,                  ModPackets::handlePanSet);
+        registrar.optional().playToServer(PanStickPacket.TYPE,       PanStickPacket.CODEC,                ModPackets::handlePanStick);
         registrar.optional().playToServer(GunReleasePacket.TYPE,      GunReleasePacket.CODEC,              ModPackets::handleGunRelease);
         registrar.playToServer(ApplyPositionMovePacket.TYPE,        ApplyPositionMovePacket.CODEC,        ModPackets::handleApplyPositionMove);
 
@@ -877,6 +895,9 @@ public class ModPackets {
     }
     public static void sendPanSet(BlockPos keyboardPos, int channel, int moduleIndex, int value) {
         PacketDistributor.sendToServer(new PanSetPacket(keyboardPos, channel, moduleIndex, value));
+    }
+    public static void sendPanStick(BlockPos keyboardPos, int channel, int moduleIndex, int x, int y, boolean trigger) {
+        PacketDistributor.sendToServer(new PanStickPacket(keyboardPos, channel, moduleIndex, x, y, trigger));
     }
     public static void sendGunRelease(BlockPos keyboardPos, int channel) {
         PacketDistributor.sendToServer(new GunReleasePacket(keyboardPos, channel));
@@ -1913,30 +1934,43 @@ public class ModPackets {
     }
 
     private static void handlePanSet(PanSetPacket packet, IPayloadContext ctx) {
-        ctx.enqueueWork(() -> {
-            if (!(ctx.player() instanceof ServerPlayer sp)) return;
-            BlockEntity be = sp.serverLevel().getBlockEntity(packet.keyboardPos());
-            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
-            if (!kb.isUsableBy(sp)) return;
-            var level = sp.serverLevel();
-            // Prefer modules point-linked onto this channel: the index maps into that list and the
-            // resolved module name is driven on every panel on the channel
-            List<String> linked = kb.getChannelModules(packet.channel());
-            if (linked != null && !linked.isEmpty()) {
-                if (packet.moduleIndex() < 0 || packet.moduleIndex() >= linked.size()) return;
-                String moduleName = linked.get(packet.moduleIndex());
-                for (BlockPos panel : panelsServer(level, kb, packet.channel()))
-                    dev.bennethogan.universalkeyboard.compat.PanelControl.setValue(level, panel, moduleName, packet.value());
-                return;
-            }
-            // Fallback
-            for (BlockPos panel : panelsServer(level, kb, packet.channel())) {
-                List<String> names = dev.bennethogan.universalkeyboard.compat.PanelControl.drivableModuleNames(level, panel);
-                if (names.isEmpty() || packet.moduleIndex() < 0 || packet.moduleIndex() >= names.size()) continue;
-                dev.bennethogan.universalkeyboard.compat.PanelControl.setValue(
-                        level, panel, names.get(packet.moduleIndex()), packet.value());
-            }
-        });
+        ctx.enqueueWork(() -> drivePanModule(ctx, packet.keyboardPos(), packet.channel(), packet.moduleIndex(),
+                (level, panel, name) -> dev.bennethogan.universalkeyboard.compat.PanelControl
+                        .setValue(level, panel, name, packet.value())));
+    }
+
+    private static void handlePanStick(PanStickPacket packet, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> drivePanModule(ctx, packet.keyboardPos(), packet.channel(), packet.moduleIndex(),
+                (level, panel, name) -> dev.bennethogan.universalkeyboard.compat.PanelControl
+                        .setJoystick(level, panel, name, packet.x(), packet.y(), packet.trigger())));
+    }
+
+    @FunctionalInterface
+    private interface PanModuleAction {
+        void drive(net.minecraft.server.level.ServerLevel level, BlockPos panel, String moduleName);
+    }
+
+    // shared dashpanels (PAN) mode resolution that maps the module index to a name and runs action on every panel on the channel
+    private static void drivePanModule(IPayloadContext ctx, BlockPos keyboardPos, int channel,
+                                       int moduleIndex, PanModuleAction action) {
+        if (!(ctx.player() instanceof ServerPlayer sp)) return;
+        BlockEntity be = sp.serverLevel().getBlockEntity(keyboardPos);
+        if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+        if (!kb.isUsableBy(sp)) return;
+        var level = sp.serverLevel();
+        List<String> linked = kb.getChannelModules(channel);
+        if (linked != null && !linked.isEmpty()) {
+            if (moduleIndex < 0 || moduleIndex >= linked.size()) return;
+            String moduleName = linked.get(moduleIndex);
+            for (BlockPos panel : panelsServer(level, kb, channel))
+                action.drive(level, panel, moduleName);
+            return;
+        }
+        for (BlockPos panel : panelsServer(level, kb, channel)) {
+            List<String> names = dev.bennethogan.universalkeyboard.compat.PanelControl.drivableModuleNames(level, panel);
+            if (names.isEmpty() || moduleIndex < 0 || moduleIndex >= names.size()) continue;
+            action.drive(level, panel, names.get(moduleIndex));
+        }
     }
 
     private static void handleUnlinkTarget(UnlinkTargetPacket packet, IPayloadContext ctx) {

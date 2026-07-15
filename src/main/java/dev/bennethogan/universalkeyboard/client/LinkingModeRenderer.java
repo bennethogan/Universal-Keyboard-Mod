@@ -42,6 +42,7 @@ public class LinkingModeRenderer {
 
         int activeChannel;
         Map<Integer, List<BlockPos>> allTargets;
+        Map<Integer, List<String>> allModules;   // point-linked panel modules, for the yellow outlines
         BlockPos controllerPos = null;   // linking stick: the selected controller, drawn green
 
         ItemStack held = mc.player.getMainHandItem();
@@ -53,15 +54,21 @@ public class LinkingModeRenderer {
             controllerPos = dev.bennethogan.universalkeyboard.item.LinkingStickItem.getTarget(stick);
             if (controllerPos == null) return;
             activeChannel = dev.bennethogan.universalkeyboard.item.LinkingStickItem.getActiveChannel(stick);
-            allTargets = (mc.level != null
-                    && mc.level.getBlockEntity(controllerPos) instanceof LinkedKeyboardBlockEntity kb)
-                    ? kb.getAllChannelTargets() : Map.of();
+            if (mc.level != null
+                    && mc.level.getBlockEntity(controllerPos) instanceof LinkedKeyboardBlockEntity kb) {
+                allTargets = kb.getAllChannelTargets();
+                allModules = kb.getAllChannelModules();
+            } else {
+                allTargets = Map.of();
+                allModules = Map.of();
+            }
         } else {
             ItemStack kbd = held.getItem() instanceof LinkedKeyboardItem ? held
                     : (offhand.getItem() instanceof LinkedKeyboardItem ? offhand : ItemStack.EMPTY);
             if (kbd.isEmpty() || !LinkedKeyboardItem.isLinkingMode(kbd)) return;
             activeChannel = LinkedKeyboardItem.getActiveLinkingChannel(kbd);
             allTargets = LinkedKeyboardItem.getAllChannelTargets(kbd);
+            allModules = LinkedKeyboardItem.getAllChannelModules(kbd);
             if (allTargets.isEmpty()) return;
         }
 
@@ -117,6 +124,9 @@ public class LinkingModeRenderer {
                     0.1f, 1.0f, 0.25f, 1.0f); // green
         }
 
+        // render per module bounding box outline with dashpanels compat
+        renderLinkedModuleOutlines(poseStack, lineBuffer, level, allTargets, allModules, activeChannel);
+
         bufferSource.endBatch(RenderType.lines());
 
         // Draw floating channel labels
@@ -158,5 +168,55 @@ public class LinkingModeRenderer {
         }
 
         poseStack.popPose();
+    }
+
+    // Dashpanels per module bounding box rendering
+    private static void renderLinkedModuleOutlines(PoseStack poseStack, VertexConsumer lineBuffer, Level level,
+                                                   Map<Integer, List<BlockPos>> allTargets,
+                                                   Map<Integer, List<String>> allModules, int activeChannel) {
+        if (level == null || allModules == null || allModules.isEmpty()) return;
+        for (Map.Entry<Integer, List<String>> entry : allModules.entrySet()) {
+            int ch = entry.getKey();
+            List<String> modules = entry.getValue();
+            List<BlockPos> targets = allTargets.get(ch);
+            if (modules == null || modules.isEmpty() || targets == null) continue;
+
+            boolean isActive = (ch == activeChannel);
+            // active channel = yellow, others = grey
+            float r = isActive ? 1.0f  : 0.5f;
+            float g = isActive ? 0.85f : 0.5f;
+            float b = isActive ? 0.0f  : 0.5f;
+            float alpha = isActive ? 1.0f : 0.6f;
+
+            for (BlockPos panelPos : targets) {
+                if (!dev.bennethogan.universalkeyboard.compat.PanelControl.isPanel(level, panelPos)) continue;
+                net.minecraft.core.Direction facing = panelFacing(level.getBlockState(panelPos));
+                for (String name : modules) {
+                    var o = dev.bennethogan.universalkeyboard.compat.PanelControl
+                            .getModuleOutline(level, panelPos, name);
+                    if (o == null) continue;
+                    poseStack.pushPose();
+                    poseStack.translate(panelPos.getX(), panelPos.getY() + 0.75, panelPos.getZ());
+                    poseStack.rotateAround(com.mojang.math.Axis.YP.rotationDegrees(
+                            facing.toYRot() + (facing.getAxis() == net.minecraft.core.Direction.Axis.Z ? 0 : 180)),
+                            0.5f, 0f, 0.5f);
+                    poseStack.translate((o.x() + o.sizeX()) / 16f, 0f, (o.y() + o.sizeY()) / 16f);
+                    poseStack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(180));
+                    poseStack.translate(0f, 0f, -0.25f);
+                    // draw the shape cause its private
+                    for (AABB box : o.shape().toAabbs())
+                        LevelRenderer.renderLineBox(poseStack, lineBuffer,
+                                box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, r, g, b, alpha);
+                    poseStack.popPose();
+                }
+            }
+        }
+    }
+
+    private static net.minecraft.core.Direction panelFacing(net.minecraft.world.level.block.state.BlockState state) {
+        var prop = state.getBlock().getStateDefinition().getProperty("facing");
+        if (prop instanceof net.minecraft.world.level.block.state.properties.DirectionProperty dp)
+            return state.getValue(dp);
+        return net.minecraft.core.Direction.NORTH;
     }
 }

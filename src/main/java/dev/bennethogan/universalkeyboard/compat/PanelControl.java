@@ -34,6 +34,11 @@ public final class PanelControl {
     private static Class<?> iMultiOutputClass;
 
     private static Method mGetSelectedModule; // PanelBlockEntity.getSelectedModules(Player) -> String
+    private static Method mGetShape;       // Module.getShape() -> VoxelShape (for the link outline)
+    private static Method mGetModPos;      // Module.getPos() -> org.joml.Vector2i (grid coords)
+    private static Method mGetModSize;     // Module.getSize() -> org.joml.Vector2i
+    private static java.lang.reflect.Field fModuleType; // Module.type -> ModuleType
+    private static Method mTypeGetKey;     // ModuleType.getKey(ModuleType) -> ResourceLocation (static)
     private static Method mGetModule;      // PanelBlockEntity.getModule(String) -> Module
     private static Method mGetModules;     // PanelBlockEntity.getModules() -> ModuleMap (a Map)
     private static Method mGetOrCreate;    // ModulesNetworkMember.getOrCreate() -> ModulesNetwork
@@ -59,6 +64,18 @@ public final class PanelControl {
                     net.minecraft.world.entity.player.Player.class);
         } catch (Throwable ignored) {
         }
+        try {
+            Class<?> moduleClass = Class.forName("moth.boxxed.panels.api.module.Module");
+            mGetShape   = moduleClass.getMethod("getShape");
+            mGetModPos  = moduleClass.getMethod("getPos");
+            mGetModSize = moduleClass.getMethod("getSize");
+        } catch (Throwable ignored) {}
+        try {
+            Class<?> moduleClass     = Class.forName("moth.boxxed.panels.api.module.Module");
+            Class<?> moduleTypeClass = Class.forName("moth.boxxed.panels.api.module.ModuleType");
+            fModuleType = moduleClass.getField("type");
+            mTypeGetKey = moduleTypeClass.getMethod("getKey", moduleTypeClass);
+        } catch (Throwable ignored) {}
         try {
             String api = "moth.boxxed.panels.api.module.";
             String cc  = "moth.boxxed.panels.compat.computercraft.";
@@ -127,11 +144,49 @@ public final class PanelControl {
 
     public static boolean isDrivable(Object module) {
         if (module == null) return false;
+        if (iExternalUpdatableClass != null && iExternalUpdatableClass.isInstance(module)) return true;
         if (iMultiInputClass != null && iMultiInputClass.isInstance(module)) return false;
         if (iMultiOutputClass != null && iMultiOutputClass.isInstance(module)) return false;
-        return (iExternalUpdatableClass != null && iExternalUpdatableClass.isInstance(module))
-                || (iOutputClass != null && iOutputClass.isInstance(module))
+        return (iOutputClass != null && iOutputClass.isInstance(module))
                 || (iModuleLuaObjectClass != null && iModuleLuaObjectClass.isInstance(module));
+    }
+
+    // Control paths
+    public enum ModuleKind { SWITCH, LEVER, KNOB, MOMENTARY, JOYSTICK, OUTPUT, GENERIC, NONE }
+
+    private static ModuleKind kindOf(Object module) {
+        if (module == null) return ModuleKind.NONE;
+        try {
+            if (fModuleType != null && mTypeGetKey != null) {
+                Object key = mTypeGetKey.invoke(null, fModuleType.get(module));
+                if (key instanceof net.minecraft.resources.ResourceLocation rl) {
+                    switch (rl.getPath()) {
+                        case "switch":           return ModuleKind.SWITCH;
+                        case "control_lever":    return ModuleKind.LEVER;
+                        case "knob":             return ModuleKind.KNOB;
+                        case "momentary_switch": return ModuleKind.MOMENTARY;
+                        case "joystick":         return ModuleKind.JOYSTICK;
+                        default: break; // unknown/new type — fall through to interface checks
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        if (iMultiInputClass != null && iMultiInputClass.isInstance(module)) return ModuleKind.JOYSTICK;
+        if (iExternalUpdatableClass != null && iExternalUpdatableClass.isInstance(module)) return ModuleKind.GENERIC;
+        if (iOutputClass != null && iOutputClass.isInstance(module)) return ModuleKind.OUTPUT;
+        if (iModuleLuaObjectClass != null && iModuleLuaObjectClass.isInstance(module)) return ModuleKind.GENERIC;
+        return ModuleKind.NONE;
+    }
+
+    public static ModuleKind moduleKind(Level level, BlockPos panelPos, String moduleName) {
+        if (!isPresent() || !driveReady || level == null || moduleName == null || moduleName.isEmpty())
+            return ModuleKind.NONE;
+        BlockEntity be = level.getBlockEntity(panelPos);
+        if (!isPanel(be)) return ModuleKind.NONE;
+        try {
+            return kindOf(mGetModule.invoke(be, moduleName));
+        } catch (Throwable ignored) {}
+        return ModuleKind.NONE;
     }
 
     public static boolean isModuleDrivable(Level level, BlockPos pos, String moduleName) {
@@ -158,7 +213,27 @@ public final class PanelControl {
         return "";
     }
 
-    // get value 0-15, 0 if not found
+    public record ModuleOutline(net.minecraft.world.phys.shapes.VoxelShape shape,
+                                int x, int y, int sizeX, int sizeY) {}
+
+    public static ModuleOutline getModuleOutline(Level level, BlockPos panelPos, String moduleName) {
+        if (!isPresent() || mGetShape == null || mGetModPos == null || mGetModSize == null
+                || level == null || moduleName == null || moduleName.isEmpty()) return null;
+        BlockEntity be = level.getBlockEntity(panelPos);
+        if (!isPanel(be)) return null;
+        try {
+            if (mGetModule == null) mGetModule = panelBeClass.getMethod("getModule", String.class);
+            Object module = mGetModule.invoke(be, moduleName);
+            if (module == null) return null;
+            Object shape = mGetShape.invoke(module);
+            org.joml.Vector2i pos  = (org.joml.Vector2i) mGetModPos.invoke(module);
+            org.joml.Vector2i size = (org.joml.Vector2i) mGetModSize.invoke(module);
+            if (!(shape instanceof net.minecraft.world.phys.shapes.VoxelShape vs)) return null;
+            return new ModuleOutline(vs, pos.x, pos.y, size.x, size.y);
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
     public static int getValue(Level level, BlockPos panelPos, String moduleName) {
         if (!isPresent() || !driveReady || level == null) return 0;
         BlockEntity be = level.getBlockEntity(panelPos);
@@ -171,7 +246,7 @@ public final class PanelControl {
         return 0;
     }
 
-    // Drive a module to value 0-15, server-side
+
     public static void setValue(Level level, BlockPos panelPos, String moduleName, int value) {
         if (!isPresent() || !driveReady || level == null) return;
         BlockEntity be = level.getBlockEntity(panelPos);
@@ -180,22 +255,52 @@ public final class PanelControl {
             Object module = mGetModule.invoke(be, moduleName);
             if (module == null) return;
             int v = Math.max(0, Math.min(15, value));
-            boolean driven;
-            if (iExternalUpdatableClass.isInstance(module)) {
-                mSetNum.invoke(module, List.of(v));
-                driven = true;
-            } else if (iOutputClass.isInstance(module)) {
-                mSetAnalog.invoke(module, v);
-                driven = true;
-            } else if (iModuleLuaObjectClass.isInstance(module)) {
-                driven = invokeLuaMethod(module, "setState", v > 0);
-            } else {
-                driven = false;
+            boolean exUpd = iExternalUpdatableClass != null && iExternalUpdatableClass.isInstance(module);
+            boolean driven = false;
+            switch (kindOf(module)) {
+                case KNOB -> {
+                    if (exUpd) { mSetNum.invoke(module, List.of(v * 24)); driven = true; }
+                }
+                case MOMENTARY -> {
+                    if (exUpd) { mSetNum.invoke(module, List.of(v > 0 ? 1 : 0)); driven = true; }
+                }
+                case SWITCH -> {
+                    if (exUpd) { mSetNum.invoke(module, List.of(v > 0 ? 1 : 0)); driven = true; }
+                    else driven = invokeLuaMethod(module, "setState", v > 0);
+                }
+                case JOYSTICK -> {  }
+                case LEVER, GENERIC -> {
+                    if (exUpd) { mSetNum.invoke(module, List.of(v)); driven = true; }
+                    else if (iModuleLuaObjectClass.isInstance(module))
+                        driven = invokeLuaMethod(module, "setState", v > 0);
+                }
+                case OUTPUT -> {
+                    if (iOutputClass.isInstance(module)) { mSetAnalog.invoke(module, v); driven = true; }
+                }
+                case NONE -> { }
             }
             if (driven) {
                 Object net = mGetOrCreate.invoke(be);
                 if (net != null) mNetworkUpdate.invoke(be, net);
             }
+        } catch (Throwable ignored) {}
+    }
+
+
+    public static void setJoystick(Level level, BlockPos panelPos, String moduleName,
+                                   int x, int y, boolean trigger) {
+        if (!isPresent() || !driveReady || level == null) return;
+        BlockEntity be = level.getBlockEntity(panelPos);
+        if (!isPanel(be)) return;
+        try {
+            Object module = mGetModule.invoke(be, moduleName);
+            if (module == null || kindOf(module) != ModuleKind.JOYSTICK) return;
+            if (iExternalUpdatableClass == null || !iExternalUpdatableClass.isInstance(module)) return;
+            int cx = Math.max(-100, Math.min(100, x));
+            int cy = Math.max(-100, Math.min(100, y));
+            mSetNum.invoke(module, List.of(cx, cy, trigger ? 1 : 0));
+            Object net = mGetOrCreate.invoke(be);
+            if (net != null) mNetworkUpdate.invoke(be, net);
         } catch (Throwable ignored) {}
     }
 

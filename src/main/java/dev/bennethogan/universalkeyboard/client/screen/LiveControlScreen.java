@@ -546,19 +546,42 @@ public class LiveControlScreen extends Screen {
         return switch (b.camDir) {
             case UP, ZOOM_IN -> "Up";
             case DOWN, ZOOM_OUT -> "Dn";
+            case LEFT, RIGHT -> "Stick";
             default -> "On/Off";
         };
     }
 
-    // PAN action cell cycles On/Off -> Up -> Down
-    private static void cyclePanAction(LiveControlBinding b, int dir) {
-        LiveControlBinding.CamDir[] v = {
-            LiveControlBinding.CamDir.TOGGLE,
-            LiveControlBinding.CamDir.UP,
-            LiveControlBinding.CamDir.DOWN
+    // options specific to modules
+    private LiveControlBinding.CamDir[] panActionOptions(LiveControlBinding b) {
+        return switch (panTargetKind(b)) {
+            case JOYSTICK          -> new LiveControlBinding.CamDir[]{ LiveControlBinding.CamDir.LEFT };
+            case SWITCH, MOMENTARY -> new LiveControlBinding.CamDir[]{ LiveControlBinding.CamDir.TOGGLE };
+            case KNOB, LEVER, GENERIC, OUTPUT -> new LiveControlBinding.CamDir[]{
+                    LiveControlBinding.CamDir.TOGGLE, LiveControlBinding.CamDir.UP, LiveControlBinding.CamDir.DOWN };
+            case NONE -> new LiveControlBinding.CamDir[]{   // unknown / unloaded — offer everything
+                    LiveControlBinding.CamDir.TOGGLE, LiveControlBinding.CamDir.UP,
+                    LiveControlBinding.CamDir.DOWN, LiveControlBinding.CamDir.LEFT };
         };
-        int cur = 0;
+    }
+
+    // Control-path kind of the module this binding targets, resolved client-side for the UI
+    private dev.bennethogan.universalkeyboard.compat.PanelControl.ModuleKind panTargetKind(LiveControlBinding b) {
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        java.util.List<String> names = panelModuleNames(b);
+        net.minecraft.core.BlockPos panel = LiveControlManager.panelOnChannel(keyboardPos, b.channel);
+        if (mc.level == null || names == null || names.isEmpty()
+                || b.panModule < 0 || b.panModule >= names.size() || panel == null)
+            return dev.bennethogan.universalkeyboard.compat.PanelControl.ModuleKind.NONE;
+        return dev.bennethogan.universalkeyboard.compat.PanelControl
+                .moduleKind(mc.level, panel, names.get(b.panModule));
+    }
+
+
+    private void cyclePanAction(LiveControlBinding b, int dir) {
+        LiveControlBinding.CamDir[] v = panActionOptions(b);
+        int cur = -1;
         for (int i = 0; i < v.length; i++) if (v[i] == b.camDir) { cur = i; break; }
+        if (cur < 0) { b.camDir = v[0]; return; }
         b.camDir = v[((cur + dir) % v.length + v.length) % v.length];
     }
 
@@ -567,6 +590,10 @@ public class LiveControlScreen extends Screen {
         int count = panModuleCount(b);
         int max = Math.max(1, count);
         b.panModule = ((b.panModule + dir) % max + max) % max;
+        LiveControlBinding.CamDir[] opts = panActionOptions(b);
+        boolean ok = false;
+        for (LiveControlBinding.CamDir d : opts) if (d == b.camDir) { ok = true; break; }
+        if (!ok) b.camDir = opts[0];
     }
 
     private int panModuleCount(LiveControlBinding b) {

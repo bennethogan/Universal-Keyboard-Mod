@@ -3,6 +3,7 @@ package dev.bennethogan.universalkeyboard.livecontrol;
 import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
 import dev.bennethogan.universalkeyboard.client.GunManeuver;
 import dev.bennethogan.universalkeyboard.client.gamepad.GamepadLiveDriver;
+import dev.bennethogan.universalkeyboard.client.gamepad.MouseLiveDriver;
 import dev.bennethogan.universalkeyboard.compat.PeripheralHelper;
 import dev.bennethogan.universalkeyboard.config.ModConfig;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlBinding.ActionType;
@@ -106,6 +107,7 @@ public class LiveControlManager {
     // Dashpanels (PAN). Per channel, per module analog value carry (0-15), and last value sent so packets arent oversent when not needed
     private static final Map<Long, Double>  panValues   = new HashMap<>();
     private static final Map<Long, Integer> panLastSent = new HashMap<>();
+    private static final Map<Long, int[]>   panStickLast = new HashMap<>(); // joystick {x,y} last sent
     private static final double PAN_RAMP_PER_TICK = 0.5;   // ~15 over ~1.5s at base
     // ── Activation ───────────────────────────────────────────────────────────
 
@@ -243,6 +245,7 @@ public class LiveControlManager {
         camZoomAccum.clear();
         panValues.clear();
         panLastSent.clear();
+        panStickLast.clear();
         pendingWarning = null;
         pendingWarningTicks = 0;
         gunTgtWasFiring = false;
@@ -548,12 +551,24 @@ public class LiveControlManager {
         Map<Long, Double>    rampDelta = new HashMap<>();
         Set<Long>            touched   = new java.util.HashSet<>();
 
+        Map<Long, int[]> stickNow = new HashMap<>();        // key -> (x, y) aggregate (-100 to 100)
+
         for (int i = 0; i < bindings.size(); i++) {
             LiveControlBinding b = bindings.get(i);
             if (b.actionType != ActionType.PAN) continue;
             long key = panKey(b.channel, b.panModule);
-            touched.add(key);
             boolean activeNow = isBindingActive(i);
+            if (b.camDir == LiveControlBinding.CamDir.LEFT) {
+                int[] agg = stickNow.computeIfAbsent(key, k -> new int[2]);
+                if (activeNow && MouseLiveDriver.isFocused()) {
+                    agg[0] += Math.round(100 * (MouseLiveDriver.analogMagnitude(MouseCodes.AXIS_X_POS)
+                                              - MouseLiveDriver.analogMagnitude(MouseCodes.AXIS_X_NEG)));
+                    agg[1] += Math.round(100 * (MouseLiveDriver.analogMagnitude(MouseCodes.AXIS_Y_NEG)
+                                              - MouseLiveDriver.analogMagnitude(MouseCodes.AXIS_Y_POS)));
+                }
+                continue;
+            }
+            touched.add(key);
             switch (b.camDir) {
                 case TOGGLE -> {
                     boolean[] t = hasToggle.computeIfAbsent(key, k -> new boolean[2]);
@@ -568,6 +583,18 @@ public class LiveControlManager {
                 }
                 default -> { }
             }
+        }
+
+        // Push stick states that changed
+        for (Map.Entry<Long, int[]> e : stickNow.entrySet()) {
+            long key = e.getKey();
+            int x = Math.max(-100, Math.min(100, e.getValue()[0]));
+            int y = Math.max(-100, Math.min(100, e.getValue()[1]));
+            int[] last = panStickLast.get(key);
+            boolean changed = (last == null) ? (x != 0 || y != 0) : (last[0] != x || last[1] != y);
+            if (!changed) continue;
+            panStickLast.put(key, new int[]{x, y});
+            ModPackets.sendPanStick(keyboardPos, panChannelOf(key), panModuleOf(key), x, y, false);
         }
 
         for (long key : touched) {
