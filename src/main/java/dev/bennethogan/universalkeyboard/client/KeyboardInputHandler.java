@@ -33,6 +33,7 @@ public class KeyboardInputHandler {
             LiveControlManager.tick();
         } else if (KeyboardCaptureManager.isCCCapturing()) {
             GamepadLiveDriver.resetLive();
+            GamepadLiveDriver.pollCcPassthrough(); // forward controller changes to the computer
             MouseLiveDriver.pollLive(); // cosmetic only — no binding dispatch
         } else {
             GamepadLiveDriver.resetLive();

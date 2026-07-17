@@ -286,7 +286,6 @@ public final class PanelControl {
         } catch (Throwable ignored) {}
     }
 
-
     public static void setJoystick(Level level, BlockPos panelPos, String moduleName,
                                    int x, int y, boolean trigger) {
         if (!isPresent() || !driveReady || level == null) return;

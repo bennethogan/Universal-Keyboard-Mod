@@ -36,6 +36,8 @@ public class KeyboardCaptureManager {
             mode        = CaptureMode.CC;
             capturedPos = keyboardPos;
         } else {
+            // flush gamepad releases while capturedPos is still valid, so Lua sees clean button-ups
+            dev.bennethogan.universalkeyboard.client.gamepad.GamepadLiveDriver.resetCcPassthrough();
             mode        = CaptureMode.NONE;
             capturedPos = null;
             capturedChannel = 1;
@@ -44,6 +46,8 @@ public class KeyboardCaptureManager {
 
     public static void exitCapture() {
         if (capturedPos == null) return;
+        // flush gamepad releases while capturedPos is still valid, so Lua sees clean button-ups
+        dev.bennethogan.universalkeyboard.client.gamepad.GamepadLiveDriver.resetCcPassthrough();
         BlockPos pos = capturedPos;
         mode        = CaptureMode.NONE;
         capturedPos = null;
@@ -123,6 +127,17 @@ public class KeyboardCaptureManager {
     public static void forwardChar(char character) {
         if (capturedPos == null) return;
         ModPackets.sendCharPacket(capturedPos, character);
+    }
+
+    // Gamepad passthrough for CC computer mode only
+    public static void forwardGamepadButton(String name, int index, boolean pressed) {
+        if (capturedPos == null || mode != CaptureMode.CC) return;
+        ModPackets.sendGamepadCcEvent(capturedPos, false, name, index, pressed ? 1f : 0f);
+    }
+
+    public static void forwardGamepadAxis(String name, int index, float value) {
+        if (capturedPos == null || mode != CaptureMode.CC) return;
+        ModPackets.sendGamepadCcEvent(capturedPos, true, name, index, value);
     }
 
     /** Called by scroll handler to cycle channel while in capture mode. */

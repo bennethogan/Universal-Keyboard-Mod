@@ -1,7 +1,6 @@
 package dev.bennethogan.universalkeyboard.client.screen;
 
 import dev.bennethogan.universalkeyboard.blockentity.LinkedKeyboardBlockEntity;
-import dev.bennethogan.universalkeyboard.blockentity.WirelessCopycatBlockEntity;
 import dev.bennethogan.universalkeyboard.network.ModPackets;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -105,7 +104,7 @@ public class LinkFrequencyScreen extends PanelScreen {
                 addRenderableWidget(box);
 
                 addRenderableWidget(IconButton.make(ModIcons.DICE, Component.literal("Randomize"),
-                        b -> box.setValue(WirelessCopycatBlockEntity.generateFreq()),
+                        b -> box.setValue(dev.bennethogan.universalkeyboard.wireless.WirelessFreqs.generate()),
                         panelX + COL_RND, rowY + 1, BTN));
                 addRenderableWidget(IconButton.make(ModIcons.COPY, Component.literal("Copy"),
                         b -> Minecraft.getInstance().keyboardHandler.setClipboard(box.getValue()),
@@ -121,7 +120,7 @@ public class LinkFrequencyScreen extends PanelScreen {
                 addRenderableWidget(DarkButton.make(
                         Component.literal("+ Add W" + (freqs.size() + 1)), b -> {
                             syncBoxesToFreqs();
-                            freqs.add(WirelessCopycatBlockEntity.generateFreq());
+                            freqs.add(dev.bennethogan.universalkeyboard.wireless.WirelessFreqs.generate());
                             rebuildWidgets();
                         }, panelX + COL_DEL, rowY + 1, PANEL_W - PAD * 2, 14));
             }

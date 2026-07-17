@@ -576,7 +576,6 @@ public class LiveControlScreen extends Screen {
                 .moduleKind(mc.level, panel, names.get(b.panModule));
     }
 
-
     private void cyclePanAction(LiveControlBinding b, int dir) {
         LiveControlBinding.CamDir[] v = panActionOptions(b);
         int cur = -1;
@@ -890,9 +889,10 @@ public class LiveControlScreen extends Screen {
         if (exclOverlaySlot >= 0 && exclOverlaySlot < bindings.size()) {
             LiveControlBinding b = bindings.get(exclOverlaySlot);
             b.odExcludes          = normalizeExclInput(exclInput);
-            double m = parseMultiplier(cfgMultInput, b.overdriveMultiplier);
+            double old = b.overdriveMultiplier;
+            double m = parseMultiplier(cfgMultInput, old);
             b.overdriveMultiplier = m;
-            registerOverdriveRatio(m);
+            replaceOverdriveRatio(old, m);
         }
         closeCfgOverlay();
     }
@@ -1165,12 +1165,19 @@ public class LiveControlScreen extends Screen {
         return LiveControlBinding.OVERDRIVE_VALUES.clone();
     }
 
-    private static void registerOverdriveRatio(double v) {
+
+    private static void replaceOverdriveRatio(double oldV, double newV) {
+        if (oldV == newV) return;
         try {
             java.util.TreeSet<Double> set = new java.util.TreeSet<>();
             List<? extends Double> cur = ModConfig.CLIENT.overdriveRatios.get();
-            if (cur != null) for (Double d : cur) if (d != null) set.add(d);
-            if (!set.add(v)) return;   // already present
+            if (cur != null && !cur.isEmpty()) {
+                for (Double d : cur) if (d != null) set.add(d);
+            } else {
+                for (double d : LiveControlBinding.OVERDRIVE_VALUES) set.add(d);
+            }
+            set.remove(oldV);
+            set.add(newV);
             ModConfig.CLIENT.overdriveRatios.set(new java.util.ArrayList<>(set));
             ModConfig.CLIENT.overdriveRatios.save();
         } catch (Exception ignored) {}

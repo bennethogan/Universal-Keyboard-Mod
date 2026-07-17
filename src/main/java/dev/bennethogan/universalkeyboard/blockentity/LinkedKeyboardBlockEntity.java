@@ -535,6 +535,13 @@ public class LinkedKeyboardBlockEntity extends BlockEntity {
     }
     public void sendKeyUpEvent(int keyCode) { queueEventOnLinkedComputer("key_up", keyCode); }
 
+
+    // gamepad passthrough for CC computer mode
+    public void sendGamepadEvent(boolean axis, String name, int index, float value) {
+        if (axis) queueEventOnLinkedComputer("gamepad_axis", name, value, index);
+        else      queueEventOnLinkedComputer("gamepad_button", name, value > 0.5f, index);
+    }
+
     // ----- Create inline capture -----
 
     public boolean isInlineCapturing() { return inlineCaptureBuffer != null; }

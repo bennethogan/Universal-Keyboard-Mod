@@ -1,5 +1,6 @@
 package dev.bennethogan.universalkeyboard.client.gamepad;
 
+import dev.bennethogan.universalkeyboard.client.KeyboardCaptureManager;
 import dev.bennethogan.universalkeyboard.config.ModConfig;
 import dev.bennethogan.universalkeyboard.livecontrol.GamepadCodes;
 import dev.bennethogan.universalkeyboard.livecontrol.LiveControlManager;
@@ -62,6 +63,74 @@ public final class GamepadLiveDriver {
     }
 
     public static boolean hasGamepad() { return enabled() && POLLER.anyPresent(); }
+
+    // ── CC computer passthrough ───────────────────────────────────────────────────
+
+    private static final boolean[] ccButtons = new boolean[JoystickPoller.MAX_BUTTONS];
+    private static final float[]   ccAxes    = new float[JoystickPoller.MAX_AXES];
+    private static int ccDevice = -1;
+
+    private static final String[] CC_BUTTON_NAMES = {
+            "a", "b", "x", "y", "left_bumper", "right_bumper", "back", "start", "guide",
+            "left_stick", "right_stick", "dpad_up", "dpad_right", "dpad_down", "dpad_left" };
+    private static final String[] CC_AXIS_NAMES = {
+            "left_x", "left_y", "right_x", "right_y", "left_trigger", "right_trigger" };
+
+    public static void pollCcPassthrough() {
+        if (!enabled()) return;
+        POLLER.poll(advanced());
+        int d = firstPresent();
+        if (d != ccDevice) { flushCcReleases(); ccDevice = d; }
+        if (d < 0) return;
+        boolean basic = POLLER.isBasic(d);
+
+        int bc = POLLER.buttonCount(d);
+        for (int i = 0; i < bc; i++) {
+            boolean p = POLLER.button(d, i);
+            if (p != ccButtons[i]) {
+                ccButtons[i] = p;
+                KeyboardCaptureManager.forwardGamepadButton(ccButtonName(basic, i), i, p);
+            }
+        }
+        int ac = POLLER.axisCount(d);
+        for (int i = 0; i < ac; i++) {
+            float v = POLLER.axis(d, i);
+            // normalize gamepad triggers for lua
+            if (basic && (i == GLFW.GLFW_GAMEPAD_AXIS_LEFT_TRIGGER || i == GLFW.GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER))
+                v = (v + 1f) / 2f;
+            v = Math.round(v * 50f) / 50f;          // quantize to 0.02 steps to avoid packet spam
+            if (Math.abs(v) < 0.02f) v = 0f;        // deadzone snap to center
+            if (v != ccAxes[i]) {
+                ccAxes[i] = v;
+                KeyboardCaptureManager.forwardGamepadAxis(ccAxisName(basic, i), i, v);
+            }
+        }
+    }
+
+    public static void resetCcPassthrough() {
+        flushCcReleases();
+        ccDevice = -1;
+    }
+
+    private static void flushCcReleases() {
+        boolean basic = ccDevice >= 0 && POLLER.isBasic(ccDevice);
+        for (int i = 0; i < ccButtons.length; i++)
+            if (ccButtons[i]) { ccButtons[i] = false; KeyboardCaptureManager.forwardGamepadButton(ccButtonName(basic, i), i, false); }
+        for (int i = 0; i < ccAxes.length; i++)
+            if (ccAxes[i] != 0f) { ccAxes[i] = 0f; KeyboardCaptureManager.forwardGamepadAxis(ccAxisName(basic, i), i, 0f); }
+    }
+
+    private static int firstPresent() {
+        for (int d = 0; d < JoystickPoller.MAX_DEVICES; d++) if (POLLER.present(d)) return d;
+        return -1;
+    }
+
+    private static String ccButtonName(boolean basic, int i) {
+        return (basic && i < CC_BUTTON_NAMES.length) ? CC_BUTTON_NAMES[i] : "button_" + i;
+    }
+    private static String ccAxisName(boolean basic, int i) {
+        return (basic && i < CC_AXIS_NAMES.length) ? CC_AXIS_NAMES[i] : "axis_" + i;
+    }
 
     // ── Calibration support (primary device, basic sticks) ────────────────────────
 

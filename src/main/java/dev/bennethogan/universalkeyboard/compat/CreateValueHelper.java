@@ -46,9 +46,9 @@ public class CreateValueHelper {
 
             createPresent = true;
             UniversalKeyboardMod.LOGGER.info("Create detected — scroll value support active.");
-        } catch (ClassNotFoundException e) {
+        } catch (ClassNotFoundException | NoClassDefFoundError e) {
             UniversalKeyboardMod.LOGGER.info("Create not present — scroll value support disabled.");
-        } catch (Exception e) {
+        } catch (Throwable e) {
             UniversalKeyboardMod.LOGGER.warn("Create reflection setup failed: {}", e.getMessage());
         }
     }

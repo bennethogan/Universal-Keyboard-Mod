@@ -26,7 +26,6 @@ import net.neoforged.neoforge.client.model.data.ModelProperty;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 
 public class WirelessCopycatBlockEntity extends CopycatBlockEntity implements PartialSafeNBT {
 
@@ -34,8 +33,6 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity implements Pa
 
     public static final int FACES      = 6;
     public static final int LOCATE_ALL = -2;
-    private static final Random RAND = new Random();
-    private static final String FREQ_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
     private final String[] freqs = new String[FACES];
     private final boolean[] enabled = new boolean[FACES];
@@ -51,9 +48,8 @@ public class WirelessCopycatBlockEntity extends CopycatBlockEntity implements Pa
     }
 
     public static String generateFreq() {
-        char[] result = new char[6];
-        for (int i = 0; i < 6; i++) result[i] = FREQ_CHARS.charAt(RAND.nextInt(FREQ_CHARS.length()));
-        return new String(result);
+        // create-free utility in case that causes an issue when/if screens that arent create dependant generate frequencies
+        return dev.bennethogan.universalkeyboard.wireless.WirelessFreqs.generate();
     }
 
     public String[] getFreqs()    { return freqs.clone(); }

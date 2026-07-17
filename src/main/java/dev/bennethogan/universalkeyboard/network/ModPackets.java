@@ -213,7 +213,23 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    // PAN Stick — drive a joystick module with x/y (-100 to 100) & trigger
+    // Gamepad passthrough
+    public record GamepadCcEventPacket(BlockPos keyboardPos, boolean axis, String name,
+                                       int index, float value) implements CustomPacketPayload {
+        public static final Type<GamepadCcEventPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(UniversalKeyboardMod.MOD_ID, "gamepad_cc_event"));
+        public static final StreamCodec<FriendlyByteBuf, GamepadCcEventPacket> CODEC =
+                StreamCodec.composite(
+                        BlockPos.STREAM_CODEC,      GamepadCcEventPacket::keyboardPos,
+                        ByteBufCodecs.BOOL,         GamepadCcEventPacket::axis,
+                        ByteBufCodecs.STRING_UTF8,  GamepadCcEventPacket::name,
+                        ByteBufCodecs.INT,          GamepadCcEventPacket::index,
+                        ByteBufCodecs.FLOAT,        GamepadCcEventPacket::value,
+                        GamepadCcEventPacket::new);
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    // PAN Stick — drive a joystick module with x/y (-100 to 100) and trigger with mouse
     public record PanStickPacket(BlockPos keyboardPos, int channel, int moduleIndex,
                                  int x, int y, boolean trigger) implements CustomPacketPayload {
         public static final Type<PanStickPacket> TYPE =
@@ -572,6 +588,7 @@ public class ModPackets {
         registrar.optional().playToServer(GunFirePacket.TYPE,         GunFirePacket.CODEC,                 ModPackets::handleGunFire);
         registrar.optional().playToServer(PanSetPacket.TYPE,          PanSetPacket.CODEC,                  ModPackets::handlePanSet);
         registrar.optional().playToServer(PanStickPacket.TYPE,       PanStickPacket.CODEC,                ModPackets::handlePanStick);
+        registrar.optional().playToServer(GamepadCcEventPacket.TYPE, GamepadCcEventPacket.CODEC,          ModPackets::handleGamepadCcEvent);
         registrar.optional().playToServer(GunReleasePacket.TYPE,      GunReleasePacket.CODEC,              ModPackets::handleGunRelease);
         registrar.playToServer(ApplyPositionMovePacket.TYPE,        ApplyPositionMovePacket.CODEC,        ModPackets::handleApplyPositionMove);
 
@@ -898,6 +915,9 @@ public class ModPackets {
     }
     public static void sendPanStick(BlockPos keyboardPos, int channel, int moduleIndex, int x, int y, boolean trigger) {
         PacketDistributor.sendToServer(new PanStickPacket(keyboardPos, channel, moduleIndex, x, y, trigger));
+    }
+    public static void sendGamepadCcEvent(BlockPos keyboardPos, boolean axis, String name, int index, float value) {
+        PacketDistributor.sendToServer(new GamepadCcEventPacket(keyboardPos, axis, name, index, value));
     }
     public static void sendGunRelease(BlockPos keyboardPos, int channel) {
         PacketDistributor.sendToServer(new GunReleasePacket(keyboardPos, channel));
@@ -1939,6 +1959,16 @@ public class ModPackets {
                         .setValue(level, panel, name, packet.value())));
     }
 
+    private static void handleGamepadCcEvent(GamepadCcEventPacket pkt, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            BlockEntity be = sp.serverLevel().getBlockEntity(pkt.keyboardPos());
+            if (!(be instanceof LinkedKeyboardBlockEntity kb)) return;
+            if (!kb.isUsableBy(sp)) return;
+            kb.sendGamepadEvent(pkt.axis(), pkt.name(), pkt.index(), pkt.value());
+        });
+    }
+
     private static void handlePanStick(PanStickPacket packet, IPayloadContext ctx) {
         ctx.enqueueWork(() -> drivePanModule(ctx, packet.keyboardPos(), packet.channel(), packet.moduleIndex(),
                 (level, panel, name) -> dev.bennethogan.universalkeyboard.compat.PanelControl
@@ -2380,8 +2410,12 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
+        return dev.bennethogan.universalkeyboard.block.ModBlocks.WIRELESS_COPYCAT == null;
+    }
+
     private static void handleSaveWirelessCopycatConfig(SaveWirelessCopycatConfigPacket pkt, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
+            if (wirelessCopycatUnavailable()) return;
             if (!(ctx.player() instanceof ServerPlayer sp)) return;
             net.minecraft.world.level.block.entity.BlockEntity be = sp.serverLevel().getBlockEntity(pkt.pos());
             if (be instanceof WirelessCopycatBlockEntity cb) cb.setConfig(pkt.freqs(), pkt.enabled());
@@ -2390,6 +2424,7 @@ public class ModPackets {
 
     private static void handleTestWirelessCopycatFace(TestWirelessCopycatFacePacket pkt, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
+            if (wirelessCopycatUnavailable()) return;
             if (!(ctx.player() instanceof ServerPlayer sp)) return;
             net.minecraft.world.level.block.entity.BlockEntity be = sp.serverLevel().getBlockEntity(pkt.pos());
             if (!(be instanceof WirelessCopycatBlockEntity cb)) return;
@@ -2401,6 +2436,7 @@ public class ModPackets {
 
     private static void handleLocateWirelessCopycat(LocateWirelessCopycatPacket pkt, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
+            if (wirelessCopycatUnavailable()) return;
             if (!(ctx.player() instanceof ServerPlayer sp)) return;
             dev.bennethogan.universalkeyboard.wireless.rs.WirelessRSNetwork
                     .getPositions(sp.serverLevel(), pkt.freq())

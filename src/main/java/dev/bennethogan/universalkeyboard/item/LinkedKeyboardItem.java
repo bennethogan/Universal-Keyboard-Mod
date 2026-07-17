@@ -86,8 +86,9 @@ public class LinkedKeyboardItem extends BlockItem {
 
         if (player == null) return InteractionResult.PASS;
 
-        // Special: shift+right-click a WirelessCopycat → import its enabled face freqs onto the item
-        if (player.isShiftKeyDown() && level.getBlockEntity(pos) instanceof WirelessCopycatBlockEntity cb) {
+        if (player.isShiftKeyDown()
+                && dev.bennethogan.universalkeyboard.block.ModBlocks.WIRELESS_COPYCAT != null
+                && level.getBlockEntity(pos) instanceof WirelessCopycatBlockEntity cb) {
             if (!level.isClientSide) importCopycatFreqs(stack, player, cb);
             return InteractionResult.sidedSuccess(level.isClientSide);
         }
