@@ -2410,6 +2410,7 @@ public class ModPackets {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
+    private static boolean wirelessCopycatUnavailable() {
         return dev.bennethogan.universalkeyboard.block.ModBlocks.WIRELESS_COPYCAT == null;
     }
 
